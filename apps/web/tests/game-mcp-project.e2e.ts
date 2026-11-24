@@ -1,7 +1,8 @@
 /**
  * A connected agent creates a game project through WASD Engine's MCP server in the shipped Web composition: the
  * overview of the server instructions, with every shipped plugin, fits in the 4,096 characters that Claude Code keeps
- * and puts a fitting download before Nano Banana and ElevenLabs, a plugin's guide comes from `search_game_tools`, and
+ * and puts a fitting download before Nano Banana and ElevenLabs, a plugin's guide comes from `search_game_tools`, the
+ * bundled game-look skill and an add-on's guide with the files it links come from `game_addons`, and
  * `create_game_project` makes the folder in WASD Engine's folder for game projects with a Git repository and its one
  * commit, as the Create game project dialog does, and registers it with no Session, its result ends with the new game
  * guidance of WASD Engine's game tools overlay, the window's sidebar lists it as a game project, and the project's
@@ -80,6 +81,18 @@ it('creates a game project for a connected agent, which the window lists as a ga
   const guide = await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'blender' } })
   expect((guide.content as { type: string; text?: string }[])[0]?.text)
     .toContain('Blender guide (where it names one of the tools below without the blender_ prefix, add the prefix):\n\nBlender runs headless')
+
+  // A connected agent has no skills: it reads the bundled game-look skill, which the add-ons' guide names, and each
+  // add-on's guide with the files it links through game_addons, with the Blender tool named as this server offers it.
+  const textOf = (called: Awaited<ReturnType<Client['callTool']>>): string =>
+    (called.content as { type: string; text?: string }[]).flatMap(block => block.type === 'text' ? [block.text ?? ''] : []).join('\n')
+  const addons = textOf(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'game' } }))
+  expect(addons).toContain('read it with action guide and its name as id:\n- game-look: Make a 3D Godot game look finished')
+  expect(textOf(await client.callTool({ name: 'game_addons', arguments: { action: 'guide', id: 'game-look' } }))).toContain('# The look of a 3D game')
+  const mpfb = textOf(await client.callTool({ name: 'game_addons', arguments: { action: 'guide', id: 'mpfb' } }))
+  expect(mpfb).toContain('wasd_addons.enable("mpfb")` with `blender_execute_python`')
+  expect(mpfb).toContain('The file references/asset-packs.md, which this guide links:\n\n# MakeHuman system assets')
+  expect(mpfb).not.toContain('mcp__')
 
   // The agent names the model it is, which WASD Engine cannot see, so the game's page can credit it.
   const result = await client.callTool({ name: 'create_game_project', arguments: { name: NAME, model: 'Claude Fable 5.2' } })

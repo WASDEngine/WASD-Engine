@@ -2,7 +2,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { GameAddonCatalogError, loadCatalog, MAX_ICON_BYTES, parseGuide, searchCatalog } from '../src/catalog.ts'
+import { GameAddonCatalogError, guideReferences, loadCatalog, loadGuides, MAX_ICON_BYTES, parseGuide, searchCatalog } from '../src/catalog.ts'
 import { editableCatalogEntries, pin, scratch, TREE_ASSETS_ARCHIVE, URLS, writeCatalog, type Scratch } from './fixtures.ts'
 
 let dir: Scratch | undefined
@@ -143,6 +143,52 @@ describe('loadCatalog', () => {
 
   it('rejects an unreadable catalog folder', async () => {
     await expect(loadCatalog('/nonexistent/catalog')).rejects.toThrow(/Cannot read the add-on catalog/u)
+  })
+
+  it('rejects a guide that links a file its folder does not have, since its readers would find nothing there', async () => {
+    const path = await catalogWith(() => {})
+    await writeFile(join(path, 'test-rig', 'SKILL.md'), '---\nname: test-rig\ndescription: x\n---\nNames are in [references/names.md](references/names.md).\n')
+    await expect(loadCatalog(path)).rejects.toThrow(/test-rig.SKILL\.md links references\/names\.md, which cannot be read/u)
+    await mkdir(join(path, 'test-rig', 'references'))
+    await writeFile(join(path, 'test-rig', 'references', 'names.md'), 'rigs\n')
+    expect((await loadCatalog(path)).entries).toHaveLength(4)
+  })
+})
+
+describe('guideReferences', () => {
+  it('lists each references/ file a guide names once, in the order of first mention', () => {
+    expect(guideReferences('See [references/a.md](references/a.md), then `references/b-2.md` and references/a.md; not references/c.txt or ../references.')).toEqual(['references/a.md', 'references/b-2.md'])
+    expect(guideReferences('No links.')).toEqual([])
+  })
+})
+
+describe('loadGuides', () => {
+  async function guideAt(name: string, body = '# Guide\n'): Promise<string> {
+    const folder = join(dir!.root, 'guides', name)
+    await mkdir(folder, { recursive: true })
+    await writeFile(join(folder, 'SKILL.md'), `---\nname: ${name}\ndescription: The ${name} guide.\n---\n\n${body}`)
+    return join(folder, 'SKILL.md')
+  }
+
+  it('loads guides by the name in their frontmatter, in order, with their folders', async () => {
+    const catalog = await loadCatalog(await catalogWith(() => {}))
+    const look = await guideAt('game-look')
+    const sound = await guideAt('game-sound')
+    const guides = await loadGuides([look, sound], catalog)
+    expect([...guides.keys()]).toEqual(['game-look', 'game-sound'])
+    expect(guides.get('game-look')).toEqual({ name: 'game-look', description: 'The game-look guide.', body: '\n# Guide\n', folder: join(dir!.root, 'guides', 'game-look') })
+    expect(await loadGuides([], catalog)).toEqual(new Map())
+  })
+
+  it('rejects a relative or unreadable path, a name that an add-on or another guide has, and a missing linked file', async () => {
+    const catalog = await loadCatalog(await catalogWith(() => {}))
+    await expect(loadGuides(['guides/game-look/SKILL.md'], catalog)).rejects.toThrow(/must be absolute/u)
+    await expect(loadGuides([join(dir!.root, 'missing.md')], catalog)).rejects.toThrow(/Cannot read the guide/u)
+    await expect(loadGuides([await guideAt('test-camera')], catalog)).rejects.toThrow(/name test-camera is a catalog add-on's id/u)
+    const look = await guideAt('game-look')
+    await expect(loadGuides([look, look], catalog)).rejects.toThrow(/another guide is named game-look/u)
+    await expect(loadGuides([await guideAt('Game Look')], catalog)).rejects.toThrow(/must be kebab-case/u)
+    await expect(loadGuides([await guideAt('game-feel', 'See references/feel.md.\n')], catalog)).rejects.toThrow(/links references\/feel\.md, which cannot be read/u)
   })
 })
 

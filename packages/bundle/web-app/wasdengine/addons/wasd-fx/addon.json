@@ -7,7 +7,7 @@
   "cue": "effects by name: explosion, fire, smoke, hit flash, dissolve",
   "summary": "Eighteen effects in one line each: explosions, sparks, impacts, muzzle flashes, magic, pickups, fire, smoke, steam, embers. Also a hit flash, an outline, and a dissolve on any thing. No setup.",
   "useWhen": "Something in a 3D game hits, breaks, burns, fires, lands, is picked up, or casts a spell and should show it: WasdFx.play(\"explosion\", position) from any script. Also fires and smoke that keep running, a flash on what is hit, an outline round what is selected, and a thing that dissolves away.",
-  "avoidWhen": "A 2D game, or an effect that must follow a path, such as a sword's trail (Trail Renderer). For beams, halos, and fog use WASD Light.",
+  "avoidWhen": "A 2D game, or an effect that must follow a path, such as a sword's trail, which trail-renderer draws. Beams, halos, fog, and a flame's glow and flicker are wasd-light's; a mark left behind, such as a scorch or a bullet hole, is wasd-decals'.",
   "tags": [
     "vfx",
     "effects",
@@ -31,7 +31,20 @@
     "outline",
     "highlight",
     "dissolve",
-    "3d"
+    "3d",
+    "dust",
+    "electric",
+    "zap",
+    "teleport",
+    "poof",
+    "gunshot",
+    "coin",
+    "campfire",
+    "slime",
+    "splatter",
+    "sparkle",
+    "candle",
+    "spell"
   ],
   "stages": [
     "content",

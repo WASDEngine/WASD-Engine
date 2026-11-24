@@ -18,14 +18,14 @@
   en: bbff250eba0f1b89
   zh: 0a618f05cc88ee2b
 /deepseek-ai-dsh-game-addons/use-this-package/default-composition:
-  en: ade6d3938c3b80fc
-  zh: 7d4a8a751e92c0a6
+  en: 37f78d6e26afa8a9
+  zh: c783e8183e88396b
 /deepseek-ai-dsh-game-addons/use-this-package/the-catalog:
   en: 06fcdd750e33666b
   zh: ddaf00ed3b82d5ae
 /deepseek-ai-dsh-game-addons/use-this-package/the-tool:
-  en: e7982a168c4c3860
-  zh: 3b83840135006687
+  en: c591143907637213
+  zh: feea59d0b8dc0e99
 /deepseek-ai-dsh-game-addons/use-this-package/when-the-agent-installs-one:
   en: 66079811c8acf7ff
   zh: d898ed858d83d7c2
@@ -33,8 +33,8 @@
   en: e3576afab2e5f48f
   zh: b830e7fd1f025326
 /deepseek-ai-dsh-game-addons/use-this-package/blender-add-ons:
-  en: 1c19dbdb442970e4
-  zh: a3cff16a10da970d
+  en: e2b28c2daa511c8e
+  zh: 218c00715ce92b09
 /deepseek-ai-dsh-game-addons/use-this-package/the-add-ons-dialog:
   en: 8f35c3d988471792
   zh: 28aa24052bcaf9ae
@@ -54,8 +54,8 @@
   en: c17d2aa0c515f8f3
   zh: 36ec89a86841b76c
 /deepseek-ai-dsh-game-addons/model-experience/system-prompt-section/what-the-model-sees:
-  en: 71bb92ce4e0aaf8e
-  zh: f31ce0663829b59b
+  en: a2d7dda09fa85b56
+  zh: b022ba185be0d410
 /deepseek-ai-dsh-game-addons/model-experience/system-prompt-section/what-the-model-sees/section-text:
   en: 0f7724bcd908c288
   zh: 7f4887b7d5255b7d
@@ -72,11 +72,11 @@
   en: 5ae2356d17bdfb07
   zh: 3db1377eb0f3c532
 /deepseek-ai-dsh-game-addons/model-experience/tool-declaration/what-the-model-sees:
-  en: ab0c9c1b7ea0eff3
-  zh: 5c3628fa056b40fc
+  en: 0be9430abe7d7918
+  zh: e5533c60eb507d28
 /deepseek-ai-dsh-game-addons/model-experience/tool-declaration/token-effect:
-  en: 4303982c21a5affd
-  zh: 96199e8b2b064586
+  en: 43f556aa28b777dd
+  zh: 7f53e20906b354d3
 /deepseek-ai-dsh-game-addons/model-experience/tool-declaration/kv-cache-effect:
   en: f9644afc85a6b1ee
   zh: 4d65a72a2dbd24d2
@@ -96,11 +96,11 @@
   en: beaabb79f229692a
   zh: 8573891441963be4
 /deepseek-ai-dsh-game-addons/model-experience/tool-results/what-the-model-sees:
-  en: 9e7c62741e9bccae
-  zh: dc91964113ea21b1
+  en: 0f2a646a9540b7a6
+  zh: 6988a9d8dccd28f0
 /deepseek-ai-dsh-game-addons/model-experience/tool-results/token-effect:
-  en: 11746912af9d9ac6
-  zh: 9043d2f9526d408a
+  en: ee5026bb98c6bd10
+  zh: ef3711d27fab2b4e
 /deepseek-ai-dsh-game-addons/model-experience/tool-results/kv-cache-effect:
   en: 49b9a70497a9d6bc
   zh: 9733aea1aad0b2df

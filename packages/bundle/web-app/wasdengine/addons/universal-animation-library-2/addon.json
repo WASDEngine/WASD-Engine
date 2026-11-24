@@ -16,7 +16,10 @@
     "combat",
     "parkour",
     "zombie",
-    "3d"
+    "3d",
+    "melee",
+    "sword",
+    "shield"
   ],
   "stages": [
     "content"

@@ -4,17 +4,18 @@
   "host": "godot",
   "version": "1.0.0",
   "category": "physics",
-  "cue": "ragdoll for any humanoid: go limp, take hits, get up",
+  "cue": "ragdoll for any humanoid: go limp on death, get up",
   "summary": "A ragdoll for any humanoid Skeleton3D from one node: bodies sized to the mesh at any scale, joint limits like a body's, hits, settling, and a blend back into animation.",
   "useWhen": "A humanoid character must fall limp when it dies, is knocked out, or is thrown, and perhaps get up again afterwards.",
-  "avoidWhen": "A death animation or a fade-out is enough, or the character is not a humanoid.",
+  "avoidWhen": "A death animation or a fade-out is enough, or the character is not a humanoid. Hit reactions that keep the character on its feet, such as flinches and staggers, are active-ragdoll's.",
   "tags": [
     "ragdoll",
     "physics",
     "character",
     "death",
     "humanoid",
-    "3d"
+    "3d",
+    "knockout"
   ],
   "stages": [
     "content",

@@ -6,7 +6,8 @@
 # `elevenlabs` and `image-generation` make
 # their audio and images through the WASDEngine API origin (the same expression as deepseek-account's inferenceOrigin in
 # packages/bundle/base/wasdengine/gateway.cordis.patch.yml), which charges them to the signed-in account.
-# `game-addons` reads the add-on catalog shipped beside this file in `addons/`,
+# `game-addons` reads the add-on catalog shipped beside this file in `addons/`, serves the bundled `game-look` skill
+# as a guide that goes with it (`guides`),
 # downloads an add-on only when one is installed, and keeps its archives under `dataRoot`; Blender add-ons unpack into
 # `blenderStore`, which the `blender` row's `addonStore` names for its workers. A profile patch turns a row off with
 # `- id: <row>` and `disabled: true`, which the Plugins
@@ -52,6 +53,10 @@
         catalogDir: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@deepseek-ai/dsh-web-app/package.json')), 'wasdengine', 'addons')
         dataRoot: !!js dshHomePath('game-addons')
         blenderStore: !!js dshHomePath('game-addons', 'blender')
+        # The gamedev preset's bundled game-look skill, which connected agents, who have no skills, read with the
+        # game_addons guide action.
+        guides: !!js >-
+          [process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@deepseek-ai/dsh-web-app/package.json')), 'wasdengine', 'skills', 'game-look', 'SKILL.md')]
     - id: gimp
       name: '@deepseek-ai/dsh-gimp'
       config:

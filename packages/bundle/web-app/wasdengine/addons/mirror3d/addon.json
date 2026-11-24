@@ -6,8 +6,8 @@
   "category": "rendering",
   "cue": "flat mirrors and reflective floors that show the scene",
   "summary": "A flat mirror that reflects the real scene, moving characters included, from a second camera: wall mirrors, polished floors, still pools, and shop windows.",
-  "useWhen": "A flat surface must show a true reflection of the scene: a bathroom or dance-studio mirror, a marble or wet floor, a window at night, or a still pool, where a ReflectionProbe is too blurry or shows no characters.",
-  "avoidWhen": "The surface is curved or rough, which a ReflectionProbe or the sky reflection covers; the water moves, which wasd-water draws with its own reflections; or many mirrors would be on screen at once.",
+  "useWhen": "A flat surface must show a true reflection of the scene: a bathroom or dance-studio mirror, a marble or wet floor, or a window at night, where a ReflectionProbe is too blurry or shows no characters.",
+  "avoidWhen": "The surface is curved or rough, which a ReflectionProbe or the sky reflection covers; it is water, still or moving, which wasd-water mirrors itself; or many mirrors would be on screen at once.",
   "tags": [
     "mirror",
     "reflection",

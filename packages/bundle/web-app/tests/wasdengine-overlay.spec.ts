@@ -29,6 +29,7 @@ import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentLayerInput } fro
 import { HIDDEN_BUNDLES, PROFILE_TEMPLATES, PROTECTED_PLUGINS } from '@deepseek-ai/dsh-official-bundles'
 import SkillRegistry, { renderSkillContent } from '@deepseek-ai/dsh-skill'
 import * as SkillFileSystem from '@deepseek-ai/dsh-skill-filesystem'
+import { loadCatalog, loadGuides } from '@deepseek-ai/dsh-game-addons/src/catalog.ts'
 import GameMcpServer from '@deepseek-ai/dsh-game-mcp'
 import * as NewGameGuidance from '@deepseek-ai/dsh-new-game-guidance'
 import * as TodoContinuation from '@deepseek-ai/dsh-todo-continuation'
@@ -437,8 +438,10 @@ describe('WASDEngine overlay', () => {
       }
       const store = `dshHomePath('${GAME_ADDONS}', 'blender')`
       if (id === GAME_ADDONS) {
-        expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['catalogDir', 'dataRoot', 'blenderStore'])
+        expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['catalogDir', 'dataRoot', 'blenderStore', 'guides'])
         expect(expression(configOf(entry).catalogDir, `${id}.catalogDir`), `${id}.catalogDir`).toMatch(/resolve\('@deepseek-ai\/dsh-web-app\/package\.json'\)\), 'wasdengine', 'addons'\)$/u)
+        // Connected agents, which have no skills, read the bundled game-look skill through the guide action.
+        expect(expression(configOf(entry).guides, `${id}.guides`), `${id}.guides`).toMatch(/^\[.*resolve\('@deepseek-ai\/dsh-web-app\/package\.json'\)\), 'wasdengine', 'skills', 'game-look', 'SKILL\.md'\)\]$/u)
         expect(expression(configOf(entry).blenderStore, `${id}.blenderStore`), `${id}.blenderStore`).toBe(store)
       } else if (id === 'blender') {
         expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['dataRoot', 'addonStore'])
@@ -912,8 +915,12 @@ describe('gamedev preset', () => {
     expect(web).toContain('tune the browser\'s look from what `godot_run` with `web: true` and the Web check\'s screenshot show, never from the numbers alone.')
   })
 
-  it('has game-look order the work on a 3D game\'s look, name the add-on of each step from the shipped catalog, and end with checks', () => {
-    const text = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'game-look', 'SKILL.md'), 'utf8')
+  it('has game-look order the work on a 3D game\'s look, name the add-on of each step from the shipped catalog, and end with checks', async () => {
+    const path = join(webAppDir, 'wasdengine', 'skills', 'game-look', 'SKILL.md')
+    const text = readFileSync(path, 'utf8')
+    // Connected agents read it through the game_addons guide action, so it names no skill and no tool by a Session's name.
+    expect(text).not.toMatch(/the skill named|`(?:game-design-doc|godot-project|godot-web|multiplayer)`|mcp__/u)
+    expect([...(await loadGuides([path], await loadCatalog(join(webAppDir, 'wasdengine', 'addons')))).keys()]).toEqual(['game-look'])
     const sections = [
       '## 1. Write the look down first', '## 2. Light: `wasd-look`', '## 3. Surfaces: `wasd-materials`', '## 4. Fill the world', '## 5. Characters',
       '## 6. Motion', '## 7. Feedback', '## 8. Interface', '## 9. One screen look, last: `wasd-post`', '## Check', '## When it looks wrong',

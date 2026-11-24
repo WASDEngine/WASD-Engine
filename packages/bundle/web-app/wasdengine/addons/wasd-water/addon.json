@@ -6,7 +6,7 @@
   "category": "environment",
   "cue": "water: sea, lake, river, waterfall, lava; floating",
   "summary": "Water for 3D games: a node with ocean waves, light through crests, trailing foam, depth colors, refraction, caustics, mirrored scenery, and 16 looks from sea to toon and lava; rivers; floating bodies.",
-  "useWhen": "A 3D game shows water or another liquid: a sea, lake, pond, river, waterfall, pool, swamp, or lava, realistic or toon, low-poly, or retro, with waves, shore foam, things that float, or a camera that dives.",
+  "useWhen": "A 3D game shows water or another liquid: a sea, lake, pond, river, waterfall, pool, swamp, or lava, realistic or toon, low-poly, or retro, with waves, foam on a beach, boats and crates that float, swimmers, or a camera that dives under.",
   "avoidWhen": "2D games, or a liquid the player never sees up close, where a flat tinted plane is enough.",
   "tags": [
     "water",
@@ -21,7 +21,13 @@
     "lava",
     "buoyancy",
     "shader",
-    "3d"
+    "3d",
+    "boat",
+    "ship",
+    "beach",
+    "underwater",
+    "swim",
+    "pool"
   ],
   "stages": [
     "content",

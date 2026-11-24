@@ -7,7 +7,7 @@
  * add-on, its size, license, and conflicts from a search with words, a category, or an id.
  * @module @deepseek-ai/dsh-game-addons/src/prompt
  */
-import { CATEGORIES } from './catalog.ts'
+import { CATEGORIES, type GuideHeader } from './catalog.ts'
 import type { GameAddon, GameAddonCategory } from './types.ts'
 
 /** Name of the Session's system prompt section. */
@@ -88,37 +88,26 @@ export function sessionPrompt(entries: readonly GameAddon[]): string {
   if (entries.length === 0) return ''
   return `# Game add-ons
 
-game_addons installs tested third-party add-ons into the game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with the built-in Godot and Blender. ${JUDGMENT}
+game_addons installs tested add-ons, WASD Engine's own and third-party ones, into the game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with the built-in Godot and Blender. ${JUDGMENT}
 Before you build what a listed add-on does, read about it: ${DETAILS} After installing one, load its guide, the skill named by its id, before using it, and tell the user what you added and why, with its license and any credit it requires. Remove an add-on only when the game no longer uses it.
 
 Every add-on, under its category, with what it is for:
 ${catalogLines(entries)}`
 }
 
-/**
- * The order in which a 3D game's look is built, for connected agents, which have no `game-look` skill. It names the
- * steps and no add-on, so it holds whichever add-ons the user turned off.
- */
-const LOOK_ORDER = 'A 3D game looks finished when it is built in this order, each step with the add-on that the index lists for it: '
-  + '1. before the first scene, write down the game\'s style, its light, a palette with one accent color for what the player must notice, and two or three reference pictures; '
-  + '2. light the scene, and judge everything after it in that light; '
-  + '3. give every mesh a surface, so that none stays white; '
-  + '4. fill the world with ground, cover, and water in large, middle, and small shapes; '
-  + '5. add characters whose feet do not slide and that cast a shadow, with faces that blink and speak where they are seen up close; '
-  + '6. put motion into every view: wind, cloth, light in the air, fire, smoke, water; '
-  + '7. answer every hit, shot, and landing with an effect, a mark that stays, and a movement of the camera; '
-  + '8. give the interface a look, a typeface, a loading screen, and button prompts; '
-  + '9. lay one screen look over the finished picture, last. '
-  + 'Then look at screenshots from the player\'s camera in three places, with godot_run web: true as well, and fix whatever was left as the engine made it.'
+/** The line before the guides that go with the add-ons, in the index's search result and the MCP server's instructions. */
+export const GUIDES_HEADING = 'Before the work each of these guides is for, read it with action guide and its name as id:'
 
 /**
- * The game add-ons part of WASD Engine's MCP server instructions. It lists no add-on: the server's overview has connected
- * agents read the catalog's index with action search.
+ * The game add-ons part of WASD Engine's MCP server instructions. It lists no add-on, since the server's overview has
+ * connected agents read the catalog's index with action search, but it lists the guides that go with the add-ons, such
+ * as the `game-look` guide that the Session's agent reads as a skill, which connected agents have none of.
+ * @param guides - the guides' names and descriptions.
  * @returns the instructions.
  */
-export function mcpInstructions(): string {
-  return `game_addons installs tested third-party add-ons into the user's game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with WASD Engine's Godot 4.7 and Blender 5.2. ${JUDGMENT}
+export function mcpInstructions(guides: readonly GuideHeader[]): string {
+  const listed = guides.length === 0 ? '' : `\n${GUIDES_HEADING}\n${guides.map(guide => `- ${guide.name}: ${guide.description}`).join('\n')}`
+  return `game_addons installs tested add-ons, WASD Engine's own and third-party ones, into the user's game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with WASD Engine's Godot 4.7 and Blender 5.2. ${JUDGMENT}
 Read the catalog's index with action search and no query before you plan a game: it lists every add-on under its category with what it is for. Before you build what a listed add-on does, read about it: ${DETAILS}
-Install one with action install and project set to the absolute folder that holds project.godot; it unpacks the add-on into addons/, enables it in project.godot, adds its license to THIRD_PARTY_NOTICES.md, and imports the project. Before using an add-on, read its guide with action guide, and for a Blender add-on run import wasd_addons; wasd_addons.enable("<id>") with blender_execute_python. Tell the user what you added and why, with its license and any credit it requires.
-${LOOK_ORDER}`
+Install one with action install and project set to the absolute folder that holds project.godot; it unpacks the add-on into addons/, enables it in project.godot, adds its license to THIRD_PARTY_NOTICES.md, and imports the project. Before using an add-on, read its guide with action guide, and for a Blender add-on run import wasd_addons; wasd_addons.enable("<id>") with blender_execute_python. Tell the user what you added and why, with its license and any credit it requires.${listed}`
 }

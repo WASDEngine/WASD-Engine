@@ -62,7 +62,7 @@ This needs a tile property `data_kind` and an `area` object with the property `g
 
 1. `godot_run` imports the map. Its result lists only `ERROR:`/`WARNING:` lines from the import, such as `ERROR: Image file '...' not found.` or `ERROR: Tileset file '...' not found. -> Continuing but result may be unusable`; YATI's other messages (`Import succeeded.`, `Unknown class` warnings) are not kept.
 2. Read the result: the `path=` line of the map's `.import` names the imported scene, `res://.godot/imported/level1.tmx-<hash>.tscn`, a text scene you can read (never edit it).
-3. With the map in the running scene, `godot_scene_tree` shows the layers and objects, and `godot_eval` checks details, for example `scene.get_node("Level1/Ground").get_used_cells().size()` or `scene.get_node("Level1/Objects/Spawn").get_meta("hp")`. `load()` is not available in `godot_eval` expressions.
+3. With the map in the running scene, `godot_scene_tree` shows the layers and objects, and `godot_eval` checks details, for example `scene.get_node("level1/Ground").get_used_cells().size()` or `scene.get_node("level1/Objects/Spawn").get_meta("hp")`. To `load()` a resource there, give `godot_eval` `code` instead of an expression.
 4. Without a scene: after a `godot_run` has imported the map, run a SceneTree script with `godot_script` that loads and instantiates the map and prints what you need, then read its output.
 
 ## Pitfalls

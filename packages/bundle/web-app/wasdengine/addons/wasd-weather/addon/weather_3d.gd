@@ -396,6 +396,22 @@ func _bury(plant: Array, snow: float) -> void:
 		ground.set_shader_parameter(&"grass_height", float(plant[1]) * (1.0 - smoothstep(0.0, 0.2, snow)))
 
 
+## Whether the scene shows through a surface of a mesh, where the cover would lie over its holes and clear parts: a
+## BaseMaterial3D with transparency, or a shader that writes ALPHA, as WASD Materials' cut-out leaves, glass, hair, and
+## lashes do.
+static func _shows_through(mesh: GeometryInstance3D) -> bool:
+	var materials: Array[Material] = [mesh.material_override]
+	if mesh.material_override == null and mesh is MeshInstance3D and (mesh as MeshInstance3D).mesh != null:
+		for surface: int in (mesh as MeshInstance3D).mesh.get_surface_count():
+			materials.append((mesh as MeshInstance3D).get_active_material(surface))
+	for material: Material in materials:
+		if material is BaseMaterial3D and (material as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+			return true
+		if material is ShaderMaterial and (material as ShaderMaterial).shader != null and (material as ShaderMaterial).shader.code.contains("ALPHA"):
+			return true
+	return false
+
+
 func _cover_node(node: Node) -> void:
 	if not is_instance_valid(node):
 		return
@@ -410,10 +426,7 @@ func _cover_node(node: Node) -> void:
 	if not (node is MeshInstance3D or node is CSGShape3D):
 		return
 	var mesh := node as GeometryInstance3D
-	var material: Material = mesh.material_override
-	if material == null and node is MeshInstance3D and (node as MeshInstance3D).mesh != null and (node as MeshInstance3D).mesh.get_surface_count() > 0:
-		material = (node as MeshInstance3D).get_active_material(0)
-	if material is BaseMaterial3D and (material as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+	if _shows_through(mesh):
 		return
 	if mesh.material_overlay != null and mesh.material_overlay != _cover_material:
 		return

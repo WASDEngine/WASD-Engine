@@ -46,11 +46,13 @@ const signal = new AbortController().signal
  * @param catalogDir - the catalog folder; the test catalog by default.
  * @param before - runs with the configuration before the plugin starts, such as to leave a store from an earlier version.
  * @param allowed - the user's switches; every add-on is on by default.
+ * @param guides - the `SKILL.md` files of the guides that go with the add-ons; none by default.
  */
 async function compose(
   catalogDir?: string,
   before?: (config: { readonly blenderStore: string }) => Promise<void>,
   allowed?: Record<string, boolean>,
+  guides?: readonly string[],
 ) {
   dir = await scratch('compose')
   const project = await writeProject(join(dir.root, 'work', 'game'))
@@ -71,11 +73,20 @@ async function compose(
   const asked: ApprovalRequest[] = []
   ctx.provide('approval', { config: { policy: 'ask' }, overrideOf: () => undefined, request: (request: ApprovalRequest) => { asked.push(request); return Promise.resolve('rejected') } } as never)
   const providers: string[] = []
-  ctx.provide('gameMcp', { provide: (provider: { id: string }) => { providers.push(provider.id); return () => { providers.splice(providers.indexOf(provider.id), 1) } } } as never)
+  const instructions = new Map<string, string | undefined>()
+  ctx.provide('gameMcp', {
+    provide: (provider: { id: string; instructions?: string }) => {
+      providers.push(provider.id)
+      instructions.set(provider.id, provider.instructions)
+      return () => { providers.splice(providers.indexOf(provider.id), 1) }
+    },
+  } as never)
   const config = { catalogDir: catalogDir ?? await writeCatalog(dir.root), dataRoot: join(dir.root, 'data'), blenderStore: join(dir.root, 'data', 'blender') }
   await before?.(config)
   // The fiber resolves the raw configuration, which turns `allowed` into its live reference.
-  const fiber = ctx.plugin(GameAddons, { ...config, ...allowed === undefined ? {} : { allowed } })
+  const fiber = ctx.plugin(GameAddons, {
+    ...config, ...allowed === undefined ? {} : { allowed }, ...guides === undefined ? {} : { guides: [...guides] },
+  })
   await fiber
   const scope = ctx.plugin(() => {})
   const route = { provider: 'test', model: 'm' }
@@ -87,7 +98,7 @@ async function compose(
     whenIdle: () => Promise.resolve(),
   }
   await ctx.agents.register(agent)
-  return { ctx, fiber, project, agent, downloads, imports, config, providers, asked }
+  return { ctx, fiber, project, agent, downloads, imports, config, providers, instructions, asked }
 }
 
 /** The text of the plugin's system prompt section, or undefined when the prompt has none. */
@@ -205,6 +216,24 @@ describe('game add-ons plugin', () => {
     } finally {
       await root.cleanup()
     }
+  })
+
+  it('shows a guide that goes with the add-ons through its tool and lists it in the game MCP provider\'s instructions', async () => {
+    const root = await scratch('guides')
+    try {
+      await mkdir(join(root.root, 'look'))
+      await writeFile(join(root.root, 'look', 'SKILL.md'), '---\nname: test-look\ndescription: Make a game look finished.\n---\n\nFrame it with `test-camera`.\n')
+      const { ctx: context, agent, instructions } = await compose(undefined, undefined, undefined, [join(root.root, 'look', 'SKILL.md')])
+      expect(text(await call(context, agent, TOOL_NAME, { action: 'guide', id: 'test-look' }))).toBe('Frame it with `test-camera`.')
+      expect(text(await call(context, agent, TOOL_NAME, { action: 'search' }))).toContain('\n- test-look: Make a game look finished.')
+      expect(instructions.get('game')).toContain('read it with action guide and its name as id:\n- test-look: Make a game look finished.')
+    } finally {
+      await root.cleanup()
+    }
+  })
+
+  it('does not start with a guide it cannot read', async () => {
+    await expect(compose(undefined, undefined, undefined, ['/nonexistent/look/SKILL.md'])).rejects.toThrow(/Cannot read the guide \/nonexistent\/look\/SKILL\.md/u)
   })
 
   it('does not start with an invalid catalog', async () => {

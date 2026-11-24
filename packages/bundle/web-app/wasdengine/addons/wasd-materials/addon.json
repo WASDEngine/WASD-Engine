@@ -7,7 +7,7 @@
   "cue": "materials by name, no textures or UVs: bricks, wood, metal",
   "summary": "Materials by name with no texture files and no UV maps: concrete, bricks, planks, metal, rock, and more; right materials and cut-outs from downloaded textures; toon with outlines, glass, glow, skin.",
   "useWhen": "Meshes, CSG shapes, or generated geometry would otherwise wear flat colors: a gray-box level, buildings, props, terrain. Also to turn a Poly Haven or ambientCG texture folder or one picture into a correct material, for leaf and decal cut-outs, a toon look, glass, glow, and human skin, eyes, hair.",
-  "avoidWhen": "Every model already comes textured from Blender or a download and nothing else needs a surface; or the game is 2D.",
+  "avoidWhen": "Every model already comes textured from Blender or a download and nothing else needs a surface; or the game is 2D. A look over the whole picture, such as ink lines or a comic grade, is wasd-post's.",
   "tags": [
     "material",
     "texture",
@@ -28,7 +28,21 @@
     "skin",
     "cutout",
     "alpha",
-    "3d"
+    "3d",
+    "stone",
+    "sand",
+    "dirt",
+    "asphalt",
+    "tiles",
+    "floor",
+    "wall",
+    "ground",
+    "leaves",
+    "fence",
+    "blockout",
+    "emissive",
+    "emission",
+    "neon"
   ],
   "stages": [
     "prototype",

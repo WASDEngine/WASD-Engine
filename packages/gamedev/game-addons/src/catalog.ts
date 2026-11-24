@@ -3,13 +3,14 @@
  * `SKILL.md`, its usage guide, beside folders without an entry that Godot add-ons name as overlays. An add-on that WASD
  * Engine wrote has no archive: a Godot one is its overlay folders, a Blender extension its `blender.files` folder.
  * Loading validates every entry, its archive pin, its setup script, overlay folders, and extension files, and its
- * guide's frontmatter, and rejects a catalog whose entries name unknown conflicts. Every entry has a category and a cue,
- * the few words the catalog's index says of it. Search ranks entries by query words against their ids, titles, tags,
- * cues, and descriptions.
+ * guide's frontmatter and the `references/` files the guide links, and rejects a catalog whose entries name unknown
+ * conflicts. Every entry has a category and a cue, the few words the catalog's index says of it. Search ranks entries
+ * by query words against their ids, titles, tags, cues, and descriptions. Guides that go with the add-ons without being
+ * one's, such as the order in which a 3D game's look is built, load from their own files beside the catalog.
  * @module @deepseek-ai/dsh-game-addons/src/catalog
  */
 import { access, readdir, readFile, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
 import type { GameAddon, GameAddonCategory, GameAddonHost, GameAddonStage } from './types.ts'
@@ -148,6 +149,36 @@ export function parseGuide(raw: string, source: string): ParsedGuide {
     throw new GameAddonCatalogError(`${source} needs string name and description fields in its frontmatter.`)
   }
   return { name, description: description.trim(), body: lines.slice(closing + 1).join('\n') }
+}
+
+/** A file of a guide's folder that the guide links, such as `references/asset-packs.md`. */
+const REFERENCE_LINK = /\breferences\/[A-Za-z0-9_.-]+\.md\b/gu
+
+/**
+ * The files of its folder that a guide links: each `references/<name>.md` that its text names, in the order of their
+ * first mention.
+ * @param body - the guide's Markdown.
+ * @returns the paths relative to the guide's folder, with `/` separators, each once.
+ */
+export function guideReferences(body: string): string[] {
+  return [...new Set(body.match(REFERENCE_LINK) ?? [])]
+}
+
+/**
+ * Check that a guide's folder has every file the guide links.
+ * @param folder - absolute folder of the guide.
+ * @param body - the guide's Markdown.
+ * @param source - path named in errors.
+ * @throws {GameAddonCatalogError} for a linked file that cannot be read.
+ */
+async function checkReferences(folder: string, body: string, source: string): Promise<void> {
+  for (const reference of guideReferences(body)) {
+    try {
+      await access(join(folder, ...reference.split('/')))
+    } catch (error) {
+      throw new GameAddonCatalogError(`${source} links ${reference}, which cannot be read: ${(error as Error).message}`)
+    }
+  }
 }
 
 /** Check the host-specific requirements of one parsed entry. */
@@ -331,6 +362,7 @@ export async function loadCatalog(dir: string): Promise<GameAddonCatalog> {
     }
     const guide = parseGuide(guideText, guidePath)
     if (guide.name !== entry.id) throw new GameAddonCatalogError(`${guidePath}: name ${guide.name} must equal the add-on id ${entry.id}.`)
+    await checkReferences(join(dir, folder), guide.body, guidePath)
     if (entry.icon !== undefined) icons[entry.id] = await readIcon(join(dir, folder, entry.icon.file))
     entries.push(entry)
     guides.set(entry.id, { name: guide.name, description: guide.description })
@@ -343,6 +375,41 @@ export async function loadCatalog(dir: string): Promise<GameAddonCatalog> {
   }
   entries.sort((a, b) => a.host === b.host ? a.title.localeCompare(b.title, 'en') : a.host === 'godot' ? -1 : 1)
   return new GameAddonCatalog(dir, entries, guides, icons)
+}
+
+/** A guide that goes with the add-ons without being one's, such as the order in which a 3D game's look is built with them. */
+export interface CatalogGuide extends ParsedGuide {
+  /** Absolute folder of its `SKILL.md`, which holds the files it links. */
+  readonly folder: string
+}
+
+/**
+ * Load the guides that go with the add-ons.
+ * @param paths - absolute paths of their `SKILL.md` files.
+ * @param catalog - the loaded catalog, whose ids no guide may take as its name.
+ * @returns the guides by the name in their frontmatter, in the order of `paths`.
+ * @throws {GameAddonCatalogError} for a path that is not absolute or cannot be read, invalid frontmatter, a name that is
+ *   not kebab-case or that an add-on or another guide has, and a linked file that the guide's folder lacks.
+ */
+export async function loadGuides(paths: readonly string[], catalog: GameAddonCatalog): Promise<ReadonlyMap<string, CatalogGuide>> {
+  const guides = new Map<string, CatalogGuide>()
+  for (const path of paths) {
+    if (!isAbsolute(path)) throw new GameAddonCatalogError(`The guide path ${JSON.stringify(path)} must be absolute.`)
+    let text: string
+    try {
+      text = await readFile(path, 'utf8')
+    } catch (error) {
+      throw new GameAddonCatalogError(`Cannot read the guide ${path}: ${(error as Error).message}`)
+    }
+    const guide = parseGuide(text, path)
+    if (!ADDON_ID_PATTERN.test(guide.name)) throw new GameAddonCatalogError(`${path}: name ${guide.name} must be kebab-case.`)
+    if (catalog.get(guide.name) !== undefined) throw new GameAddonCatalogError(`${path}: name ${guide.name} is a catalog add-on's id.`)
+    if (guides.has(guide.name)) throw new GameAddonCatalogError(`${path}: another guide is named ${guide.name}.`)
+    const folder = dirname(path)
+    await checkReferences(folder, guide.body, path)
+    guides.set(guide.name, { ...guide, folder })
+  }
+  return guides
 }
 
 /** Filters and words of one catalog search. */

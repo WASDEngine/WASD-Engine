@@ -6,8 +6,8 @@
   "category": "interface",
   "cue": "loading screen and shader warm-up that work in browsers",
   "summary": "Scene changes behind a loading screen with a bar that moves, in Web builds too, and every shader compiled before play, so the first explosion or enemy does not stall the game.",
-  "useWhen": "The game has more than one scene, a level that takes over a second to load, or stalls the first time an effect, an enemy, or a new material shows: a Web build above all, where Godot's background loading freezes the page and each shader compiles the moment it is first drawn.",
-  "avoidWhen": "The whole game is one small scene that starts at once and shows everything from the first frame.",
+  "useWhen": "The game has more than one scene, a level that takes over a second to load, or stalls or hitches the first time an effect, an enemy, or a new material shows: a Web build above all, where Godot's background loading freezes the page and each shader compiles the moment it is first drawn.",
+  "avoidWhen": "The whole game is one small scene that shows every effect, enemy, and material from its first frame. One scene that stalls at a first spawn still needs it: Godot loads run/main_scene without a warm-up, so start in a small boot or menu scene that changes to the level with WasdLoader.",
   "tags": [
     "loading",
     "loading-screen",
@@ -19,7 +19,12 @@
     "web",
     "progress",
     "preload",
-    "interface"
+    "interface",
+    "transition",
+    "change-scene",
+    "compile",
+    "precompile",
+    "compilation"
   ],
   "stages": [
     "content",

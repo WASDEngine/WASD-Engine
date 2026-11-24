@@ -6,8 +6,8 @@
   "category": "interface",
   "cue": "styled menus and HUD: themes, bars, damage numbers, toasts",
   "summary": "Six looks for every control in the game, so no menu ships in Godot's gray, and a HUD's pieces: bars, floating damage numbers, toasts, key prompts, a crosshair, a radar, a hurt flash, and fades.",
-  "useWhen": "The game has any menu, settings screen, or HUD: health and stamina bars, damage numbers, pickup and checkpoint messages, an interaction prompt, a crosshair, a radar. Install it with the first control, so every screen is styled from the start.",
-  "avoidWhen": "The interface is drawn entirely from the game's own art, with its own Theme and textures.",
+  "useWhen": "The game has any menu or HUD: health and stamina bars, damage numbers, pickup and checkpoint messages, an interaction prompt, a crosshair, a radar. Install it with the first control, so every screen is styled from the start, in the game's own font if it has one.",
+  "avoidWhen": "The interface is drawn entirely from the game's own art, with its own Theme and textures. It styles screens but builds none: a main menu, saved options, key rebinding, pause, and credits come from maaacks-menus-template, which takes this look; gamepad button pictures from controller-icons.",
   "tags": [
     "ui",
     "hud",
@@ -22,7 +22,11 @@
     "minimap",
     "prompt",
     "fade",
-    "interface"
+    "interface",
+    "font",
+    "typeface",
+    "style",
+    "button"
   ],
   "stages": [
     "prototype",

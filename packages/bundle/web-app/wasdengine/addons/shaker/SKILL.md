@@ -18,7 +18,7 @@ Shaker adds an offset to properties every frame and removes it again, so the tar
 
 ## Camera shake on a hit (2D)
 
-Shake `Camera2D.offset`, not `position`: game code that sets the camera position every frame would fight the shake.
+Shake `Camera2D.offset`, not `position`: game code that sets the camera position every frame would fight the shake. With `phantom-camera`, whose host sets the camera's offsets itself, shake the camera with its `PhantomCameraNoiseEmitter2D` or `3D`, as its guide says, and keep Shaker for objects and UI.
 
 ```gdscript
 func on_player_hit() -> void:

@@ -11,7 +11,7 @@ The add-on folder `res://addons/universal_animation_library/` holds:
 
 ## 1. Retarget each model once
 
-The model is a `.glb`, `.gltf`, or `.fbx` file in the project with a humanoid skeleton: an MPFB human, a Rigify game skeleton (see the rigify guide), a Mixamo download, or a Quaternius character. Once the project has imported it, call `godot_script` with `script: "res://addons/universal_animation_library/retarget.gd"` and `args: ["res://characters/hero.glb"]`; several models may follow. It prints one line per model:
+The model is a `.glb`, `.gltf`, or `.fbx` file in the project with a humanoid skeleton: an MPFB human, a Rigify game skeleton (`rigify`'s guide), a Mixamo download, or a Quaternius character. Once the project has imported it, call `godot_script` with `script: "res://addons/universal_animation_library/retarget.gd"` and `args: ["res://characters/hero.glb"]`; several models may follow. It prints one line per model:
 
 ```
 RETARGETED res://characters/hero.glb: skeleton Human_rig/Skeleton3D, bone map mpfb_game_engine (53 of its 55 bones found), saved as res://characters/hero.bone_map.tres. ...
@@ -31,7 +31,7 @@ It picks the map in `bone_maps/` that names the most bones of the model's skelet
 
 ## 2. Play the clips
 
-Give the AnimationPlayer the library, and point its `root_node` at the model's instance, which owns `%GeneralSkeleton`; with the default `..` no track finds its bone:
+A `wasd-character` plays these clips by itself, and `wasd-crowd` bakes them for a crowd; for clips of your own, give the AnimationPlayer the library, and point its `root_node` at the model's instance, which owns `%GeneralSkeleton`; with the default `..` no track finds its bone:
 
 ```
 [gd_scene format=3]

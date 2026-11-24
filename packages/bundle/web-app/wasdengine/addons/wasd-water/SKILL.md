@@ -5,7 +5,7 @@ description: WASD Water is installed in this project. A Godot node for water in 
 
 # WASD Water
 
-`res://addons/wasd_water/` (CC0, no plugin to enable; the classes are global): `WasdWater3D` (`water_3d.gd`) is a body of water, `WasdWaterFloater3D` makes a RigidBody3D float, `WasdWaterPresets` holds the looks. It draws on Forward+, Mobile, and the Compatibility renderer of Web builds alike.
+`res://addons/wasd_water/` (CC0, no plugin to enable; the classes are global): `WasdWater3D` is a body of water, `WasdWaterFloater3D` makes a RigidBody3D float, `WasdWaterPresets` has the looks. It draws on Forward+, Mobile, and Web builds' Compatibility renderer alike.
 
 ## Add water
 
@@ -16,10 +16,11 @@ description: WASD Water is installed in this project. A Godot node for water in 
 script = ExtResource("1_water")
 preset = "ocean"
 shape = 2
+size = Vector2(2000, 2000)
 wave_height = 1.2
 ```
 
-In code: `var water := WasdWater3D.new()`, set `preset` first, then other properties, then `add_child(water)`. The node's Y is the water level. `preset` puts every look and wave property back to that look, so properties set after it change it.
+In code: `var water := WasdWater3D.new()`, set `preset` first, then other properties, then `add_child(water)`, since `preset` resets every look and wave property. The node's Y is the water level.
 
 | `shape` | Mesh |
 |---|---|
@@ -61,13 +62,13 @@ In code: `var water := WasdWater3D.new()`, set `preset` first, then other proper
 - Flow: `flow` (m/s along world X and Z; for PATH across and along the path).
 - Foam: `crest_foam` (white caps where `wave_steepness` folds the crests), `foam_trail` (seconds foam stays behind a crest), `foam_trail_waves` (how many of the longest waves leave it), `foam_stretch` (streaks along the wind), `shore_foam`, `shore_foam_width` (m of depth), `shore_foam_lines`, `slope_foam` (rapids, falls), `foam_color`, `foam_noise`, `foam_scale`, `foam_speed`, `foam_hardness`.
 - Caustics: `caustics`, `caustics_scale`, `caustics_depth`, `caustics_pattern`. Edge: `edge_fade` (m). Time: `time_scale`.
-- Underwater: `underwater_effect`, `underwater_color`, `underwater_fog_density`; the node tints the view and sets the Environment's fog while the camera is under. Signals `camera_submerged` and `camera_surfaced` are for muffled audio.
+- Underwater: `underwater_effect`, `underwater_color`, `underwater_fog_density`; the node tints the view and sets the Environment's fog while the camera is under; signals `camera_submerged` and `camera_surfaced` time muffled audio.
 - `quality = 1` (`FAST`) reads neither screen nor depth: waves, white caps, rings, glitter, and the sky's reflection stay; refraction, depth colors, shore foam, caustics, and mirrored scenery go.
 
 ## Make it look good
 
-- The sky colors the water: under a gray sky it is gray. Give the scene a sky with color, a DirectionalLight3D for glitter and light through crests, and the Environment's glow for the sparks.
-- A sea reads as a sea when its waves are large on screen: `wave_length` 15 to 30 times `wave_height`, the camera within a few meters of the surface.
+- The sky colors the water: under a gray sky it is gray. Give the scene a sky with color, a sun (`wasd-look`'s or a DirectionalLight3D) for glitter and light through crests, and the Environment's glow for the sparks.
+- A sea reads as a sea when its waves are large on screen: `wave_length` 15 to 30 times `wave_height`, the camera a few meters over the surface.
 - Still water reads as water when it mirrors something: put trees, rocks, or a bank behind it and look across it at a flat angle.
 - `wave_count`, `foam_trail_waves`, and `reflection_steps` cost every pixel of the water. When the Web check or `godot_performance` shows the water costs too much, lower them, set `reflection = 0`, or use FAST.
 
@@ -75,15 +76,16 @@ In code: `var water := WasdWater3D.new()`, set `preset` first, then other proper
 
 ```gdscript
 var water := WasdWater3D.find(get_tree(), global_position)  # null away from water
-if water != null and water.is_underwater(global_position):
-	velocity += water.flow_at(global_position) * delta      # the current carries the swimmer
-var surface := water.height_at(global_position)             # world Y of the waves here, now
-water.add_ripple(global_position, 1.0)                      # rings: 1 a footstep, 3 a splash
+if water != null:
+	var surface := water.height_at(global_position)         # world Y of the waves here, now
+	if water.is_underwater(global_position):
+		velocity += water.flow_at(global_position) * delta  # the current carries the swimmer
+	water.add_ripple(global_position, 1.0)                  # rings: 1 a footstep, 3 a splash
 ```
 
 Also `depth_at(position)` (m of water over a point), `contains(position)`, and `depth` (how far down the water reaches, 50 m).
 
-A RigidBody3D floats with `WasdWaterFloater3D` children: one in the middle of a crate, or one per corner of a hull, level with the center of mass or above it. Each has `buoyancy` (2 floats half under), `submerge_depth` (about the hull's height), `drag`, `current_pull`, and signals `entered_water(speed)` and `left_water`.
+A RigidBody3D floats with `WasdWaterFloater3D` children, added before the body enters the tree: one in the middle of a crate, or one per corner of a hull, level with the center of mass or higher. Each has `buoyancy` (2 floats half under), `submerge_depth` (about the hull's height), `drag`, `current_pull`, and signals `entered_water(speed)` and `left_water`.
 
 ## Pitfalls
 

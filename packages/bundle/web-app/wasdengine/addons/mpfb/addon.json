@@ -7,14 +7,16 @@
   "cue": "realistic rigged humans: skin, hair, clothes, a face",
   "summary": "Rigged, dressed humans from MakeHuman's CC0 base mesh and assets in one call, by gender, age, ethnicity, hair, and clothes, with natural faces that a game can move, crowd humans, and .glb export.",
   "useWhen": "The game needs realistic human characters (player, NPCs, crowds) with a standard humanoid skeleton, and modelling and rigging them by hand would take too long.",
-  "avoidWhen": "Stylized, low-poly or non-human characters: model those, or rig them with Rigify.",
+  "avoidWhen": "Stylized, low-poly or non-human characters: model those, or rig them with rigify.",
   "tags": [
     "character",
     "human",
     "face",
-    "rigging",
     "procedural",
-    "3d"
+    "3d",
+    "people",
+    "npc",
+    "outfit"
   ],
   "stages": [
     "content"

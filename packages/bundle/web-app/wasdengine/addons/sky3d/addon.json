@@ -4,15 +4,13 @@
   "host": "godot",
   "version": "2.1.0",
   "category": "environment",
-  "cue": "day and night sky: sun, moon, stars, clouds, fog",
+  "cue": "desktop-only sky by date, hour, and place",
   "summary": "Day/night cycle for 3D scenes: a sky shader with sun, moon, stars, clouds and fog, sun and moon lights driven by game time, and exposure controls.",
   "useWhen": "A 3D game for desktop on Forward+ or Mobile needs a sky by date and place: sunrise, noon, sunset, and a starry night with the moon, with sunlight, shadows, and ambient light that follow the time, or a game clock with day and night.",
-  "avoidWhen": "The game is released to the Web, where its sky comes out darker, sunlit walls burn out, and dusk goes nearly black (measured): WASD Look runs a day there that shows as on desktop. Or a fixed sky is enough, which needs no add-on.",
+  "avoidWhen": "The game is released to the Web, where its sky comes out darker, sunlit walls burn out, and dusk goes nearly black (measured): wasd-look runs a day there that shows as on desktop. Or a fixed sky is enough, which needs no add-on.",
   "tags": [
     "sky",
     "3d",
-    "lighting",
-    "day-night",
     "environment"
   ],
   "stages": [

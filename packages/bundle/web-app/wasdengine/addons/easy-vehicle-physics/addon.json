@@ -7,7 +7,7 @@
   "cue": "drivable cars: suspension, gears, grip, drift, four presets",
   "summary": "Cars that drive like cars: ray-cast wheels with suspension, an engine with gears, tire grip by surface, steering and stability assists, and four tuned vehicles: arcade, simcade, drift, monster truck.",
   "useWhen": "The player or traffic drives cars that should accelerate through gears, lean, slide, and drift: a racing or driving game, an open world with roads, a stunt or delivery game. Tuning Godot's VehicleBody3D to this standard takes days.",
-  "avoidWhen": "A kart or toy car on a small track is enough, which starter-kit-racing gives with its track pieces, or the vehicles only follow paths without physics.",
+  "avoidWhen": "An arcade kart or toy truck that drifts round a track of pieces is enough, which starter-kit-racing starts as a whole game, or the vehicles only follow paths without physics.",
   "tags": [
     "vehicle",
     "car",

@@ -29,7 +29,7 @@ const WHAT = 'graphics_review sends an image to a specialized graphics expert re
 
 /** When to use it and how often; both surfaces state it the same way. */
 const WHEN = 'Use it only for graphics you make yourself, such as a model, texture, sprite, animation, UI, lighting, effect, or level that '
-  + 'you build, draw, or generate, and never for assets you download, such as from Poly Haven or the web, or for work that only adds them '
+  + 'you build, draw, or generate, and never for assets you download, such as from Poly Haven, ambientCG, or the web, or for work that only adds them '
   + 'to the game. Review each piece of graphics work at least twice and at most four times: capture the result, pass it to graphics_review, '
   + 'act on the review, and repeat with a new capture until that work has had four reviews, passing previous with what you changed and '
   + 'which notes you left and why. When the second or third review has nothing useful for that work, such as notes that repeat the last '

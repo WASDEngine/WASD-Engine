@@ -6,13 +6,16 @@
   "category": "gameplay",
   "cue": "behavior trees for NPC and enemy AI",
   "summary": "Behavior trees for NPC and enemy AI, built from selector, sequence and decorator nodes with your own action and condition scripts and a shared blackboard.",
-  "useWhen": "Enemies or NPCs need layered decisions such as patrol, chase, attack, flee and cooldowns that would become a tangle of if-statements or one large state machine script.",
-  "avoidWhen": "An enemy has two or three simple behaviors; a short match statement in its script is easier to follow.",
+  "useWhen": "Enemies or NPCs choose what to do by priority, re-checked every tick: patrol, chase, attack, flee, and cooldowns that would become a tangle of if-statements or one large state machine script.",
+  "avoidWhen": "An enemy has two or three simple behaviors, where a short match statement is easier to follow; or the logic is modes with explicit transitions, such as player movement, menus, or game flow, which godot-state-charts suits better.",
   "tags": [
     "ai",
     "npc",
     "enemy",
-    "behavior"
+    "behavior",
+    "behaviour",
+    "decision",
+    "patrol"
   ],
   "stages": [
     "prototype",

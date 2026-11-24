@@ -16,7 +16,7 @@ import { ambientCgMcpProvider } from '@deepseek-ai/dsh-ambientcg/src/mcp.ts'
 import { referenceMcpProvider } from '@deepseek-ai/dsh-art-references/src/mcp.ts'
 import * as Blender from '@deepseek-ai/dsh-blender'
 import { elevenLabsMcpProvider } from '@deepseek-ai/dsh-elevenlabs/src/mcp.ts'
-import { loadCatalog } from '@deepseek-ai/dsh-game-addons/src/catalog.ts'
+import { loadCatalog, loadGuides } from '@deepseek-ai/dsh-game-addons/src/catalog.ts'
 import { gameAddonMcpProvider } from '@deepseek-ai/dsh-game-addons/src/mcp.ts'
 import { assetMcpProvider } from '@deepseek-ai/dsh-game-assets/src/mcp.ts'
 import { audioMcpProvider } from '@deepseek-ai/dsh-game-audio/src/mcp.ts'
@@ -41,6 +41,9 @@ const DATA = join(fileURLToPath(new URL('.', import.meta.url)), 'never-written')
 
 /** The add-on catalog that the `game-addons` row of the game tools overlay reads. */
 const ADDONS = fileURLToPath(new URL('../wasdengine/addons', import.meta.url))
+
+/** The guide that the `game-addons` row of the game tools overlay serves with the catalog. */
+const LOOK_GUIDE = fileURLToPath(new URL('../wasdengine/skills/game-look/SKILL.md', import.meta.url))
 
 /** The fields of a workspace package manifest that this spec reads. */
 interface Manifest {
@@ -140,7 +143,9 @@ async function shippedProviders(): Promise<ReadonlyMap<string, GameMcpProvider>>
     ['@deepseek-ai/dsh-blender', await appProvider(ctx => ctx.plugin(Blender, Blender.Config({ dataRoot: join(DATA, 'blender') })))],
     ['@deepseek-ai/dsh-gimp', await appProvider(ctx => ctx.plugin(Gimp, Gimp.Config({ dataRoot: join(DATA, 'gimp') })))],
     ['@deepseek-ai/dsh-supercollider', await appProvider(ctx => ctx.plugin(SuperCollider, SuperCollider.Config({ dataRoot: join(DATA, 'supercollider') })))],
-    ['@deepseek-ai/dsh-game-addons', gameAddonMcpProvider({ manager: { catalog }, project: () => Promise.reject(new Error('no project in this spec')) } as never)],
+    ['@deepseek-ai/dsh-game-addons', gameAddonMcpProvider({
+      manager: { catalog }, guides: await loadGuides([LOOK_GUIDE], catalog), project: () => Promise.reject(new Error('no project in this spec')),
+    } as never)],
   ])
 }
 

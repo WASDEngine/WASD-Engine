@@ -4,18 +4,21 @@
  * filters returns the catalog's index, a few words on every add-on by category; one with an id, a category, or words
  * describes the best matches in full, so no result grows with the catalog. One set of definitions
  * serves the Session's own agent, whose project paths are relative to its working directory, and agents connected
- * through WASD Engine's MCP server, which name projects by absolute path. The agent decides when to install or remove
- * an add-on: neither action asks the user. An add-on that the user turned off in the Add-ons dialog is missing from
- * searches, its guide and installation are refused, and the list marks it.
+ * through WASD Engine's MCP server, which name projects by absolute path and call the Blender, GIMP, and SuperCollider
+ * tools by other names, which their guides and notes use. A guide comes with the `references/` files it links, and the
+ * guides that go with the add-ons without being one's, such as the order in which a 3D game's look is built, show by
+ * name and close the index. The agent decides when to install or remove an add-on: neither action asks the user. An
+ * add-on that the user turned off in the Add-ons dialog is missing from searches, its guide and installation are
+ * refused, the list marks it, and a guide that goes with the add-ons names it as turned off.
  * @module @deepseek-ai/dsh-game-addons/src/tools
  */
 import { join } from 'node:path'
 import { readFile } from 'node:fs/promises'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
-import { CATEGORIES, GUIDE_FILE, parseGuide } from './catalog.ts'
+import { CATEGORIES, GUIDE_FILE, guideReferences, parseGuide, type CatalogGuide } from './catalog.ts'
 import type { GameAddonManager } from './manager.ts'
-import { CATEGORY_TITLES, catalogIndex } from './prompt.ts'
+import { CATEGORY_TITLES, catalogIndex, GUIDES_HEADING } from './prompt.ts'
 import type { GameAddonCategory, GameAddonPresence, GameAddonStage, GameAddonView } from './types.ts'
 
 /** Name of the tool. */
@@ -37,6 +40,8 @@ const CHANGE_TIMEOUT_MS = 15 * 60_000
 export interface GameAddonToolHost {
   /** The add-on manager. */
   readonly manager: GameAddonManager
+  /** The guides that go with the add-ons without being one's, by name; action guide shows them and the index names them. */
+  readonly guides: ReadonlyMap<string, CatalogGuide>
   /**
    * The game project of a call.
    * @param requested - the `project` argument, or undefined for the nearest project.
@@ -59,6 +64,13 @@ export interface GameAddonToolWording {
   readonly installedGuide: (id: string) => string
   /** The list result's words on where each listed add-on's guide is, after its count. */
   readonly listedGuides: string
+  /**
+   * A text written for the Session's agent, such as a guide or an installation note, with the names this surface's
+   * agent calls the tools by.
+   * @param text - the text, which names the Blender, GIMP, and SuperCollider tools as a Session lists them.
+   * @returns the text with this surface's tool names.
+   */
+  readonly toolNames: (text: string) => string
 }
 
 /** Wording of the Session's own tool, whose agent reads an installed add-on's guide as the skill of its id. */
@@ -66,6 +78,7 @@ export const SESSION_WORDING: GameAddonToolWording = {
   project: 'Folder containing project.godot, relative to the working directory. Default: the nearest project.godot.',
   installedGuide: id => `Its guide is now the skill ${id}; load it before using the add-on.`,
   listedGuides: 'each one\'s guide is listed as the skill of its id',
+  toolNames: text => text,
 }
 
 const STRING = { type: 'string', required: true } as const
@@ -134,6 +147,11 @@ const OUTPUT_SCHEMA = {
           },
         },
       },
+    },
+    guides: {
+      type: 'array',
+      description: 'The guides that go with the add-ons, which action guide shows by name, from a search without words or filters.',
+      items: { type: 'object', additionalProperties: false, properties: { name: STRING, description: STRING } },
     },
     guide: { type: 'object', additionalProperties: false, properties: { id: STRING, title: STRING, presence: { type: 'string', enum: ['installed', 'found', 'absent'] }, text: STRING } },
     install: {
@@ -239,8 +257,10 @@ function render(value: ToolValue, wording: GameAddonToolWording): string {
             return `- ${addon.id}${addon.host === 'blender' ? ' (Blender)' : ''}: ${addon.cue}${state}`
           }),
         ].join('\n'))
+        const guides = (value.guides ?? []).map(guide => `- ${guide.name}: ${guide.description}`)
         return `The catalog's ${value.total ?? 0} add-ons${where}, under their categories, with what each is for:\n${groups.join('\n')}\n`
           + 'Search with an add-on\'s id, a category, or words for when it helps, when to skip it, its size, license, and conflicts; read its guide with action guide, or install it with action install.'
+          + (guides.length === 0 ? '' : `\n${GUIDES_HEADING}\n${guides.join('\n')}`)
       }
       const addons = value.addons ?? []
       if (addons.length === 0) return 'No catalog add-on matches. Search with other words, or without a query for the catalog\'s index; Godot and Blender may already do this without an add-on.'
@@ -301,6 +321,22 @@ function requireId(id: string | undefined, action: string): string {
 }
 
 /**
+ * A guide as action guide shows it: its text, then each file of its folder that it links, which the result's reader
+ * cannot open through the link, all with the names this surface's agent calls the tools by.
+ * @param folder - absolute folder of the guide.
+ * @param body - the guide's Markdown.
+ * @param wording - the surface's wording.
+ * @returns the text.
+ */
+async function guideText(folder: string, body: string, wording: GameAddonToolWording): Promise<string> {
+  const files = await Promise.all(guideReferences(body).map(async (reference) => {
+    const text = await readFile(join(folder, ...reference.split('/')), 'utf8')
+    return `The file ${reference}, which this guide links:\n\n${text.trim()}`
+  }))
+  return wording.toolNames([body.trim(), ...files].join('\n\n'))
+}
+
+/**
  * Build the `game_addons` tool definition for one surface.
  * @param host - the manager and the project resolution of this surface.
  * @param wording - how the descriptions name projects and the results point to add-on guides.
@@ -309,8 +345,8 @@ function requireId(id: string | undefined, action: string): string {
 export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAddonToolWording): ToolDefinition {
   return defineTool({
     name: TOOL_NAME,
-    description: 'Curated third-party add-ons for the game, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: lighting, sky, weather, terrain, water, grass, scattering, roads, and dungeons; materials, effects, light shafts, mirrors, trails, fur, surface marks, and screen looks; humans, rigs, animations, a character controller, and crowds; cloth, ropes, ragdolls, vehicles, and destruction; AI, state charts, dialogue, and inventories; cameras and shake; menus, HUD, loading screens, and button prompts; 2D levels; starter kits; texture baking; and tests. '
-      + 'action search without words gives the catalog\'s index, a few words on every add-on by category; with an add-on\'s id, a category, or words it says when each match helps, when to skip it, and whether the project has it. guide shows an add-on\'s usage guide; install adds one to the project; remove takes one out of the project; list shows the project\'s add-ons. '
+    description: 'Curated add-ons for the game, WASD Engine\'s own and third-party ones, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: lighting, sky, weather, terrain, water, grass, scattering, roads, and dungeons; materials, effects, light shafts, mirrors, trails, fur, surface marks, and screen looks; humans, rigs, animations, a character controller, and crowds; cloth, ropes, ragdolls, vehicles, and destruction; AI, state charts, dialogue, and inventories; cameras and shake; menus, HUD, loading screens, and button prompts; 2D levels; starter kits; texture baking; and tests. '
+      + 'action search without words gives the catalog\'s index, a few words on every add-on by category; with an add-on\'s id, a category, or words it says when each match helps, when to skip it, and whether the project has it. guide shows an add-on\'s usage guide, or a guide that a search without words lists; install adds one to the project; remove takes one out of the project; list shows the project\'s add-ons. '
       + 'Install an add-on yourself, without asking the user first, when the game needs what it does and Godot or Blender alone would take much longer; then tell the user what you added and its license.',
     parameters: {
       action: { type: 'string', enum: ACTIONS, required: true, description: 'search, guide, install, remove, or list.' },
@@ -318,7 +354,7 @@ export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAd
       category: { type: 'string', enum: CATEGORIES, description: 'For search: only add-ons of this category, as the index names it.' },
       host: { type: 'string', enum: ['godot', 'blender'], description: 'For search: only Godot or only Blender add-ons.' },
       stage: { type: 'string', enum: ['prototype', 'content', 'polish', 'ship'], description: 'For search: only add-ons for this stage of the game.' },
-      id: { type: 'string', description: 'For guide, install, and remove: the add-on id from search.' },
+      id: { type: 'string', description: 'For guide, install, and remove: the add-on id from search; for guide also the name of a guide that a search without words lists.' },
       replace: { type: 'boolean', description: 'For install: replace a copy of the add-on that is already in addons/ without a WASD Engine record. Default: false.' },
       project: { type: 'string', description: wording.project },
     },
@@ -347,7 +383,8 @@ export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAd
                 return { id: addon.id, host: addon.host, cue: addon.cue, ...state === undefined || state === 'absent' ? {} : { presence: state } }
               }),
             }))
-            return { action: 'search', ...projectDir === undefined ? {} : { projectDir }, total, index }
+            const guides = [...host.guides.values()].map(guide => ({ name: guide.name, description: guide.description }))
+            return { action: 'search', ...projectDir === undefined ? {} : { projectDir }, total, index, ...guides.length === 0 ? {} : { guides } }
           }
           const matches = await manager.search({
             ...args.query === undefined ? {} : { text: args.query },
@@ -364,15 +401,28 @@ export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAd
         }
         case 'guide': {
           const id = requireId(args.id, 'guide')
+          const own = host.guides.get(id)
+          if (own !== undefined) {
+            // A guide that names add-ons the user turned off says so, since agents cannot use them.
+            const off = manager.catalog.entries.filter(addon => !manager.allowed(addon.id) && own.body.includes(`\`${addon.id}\``)).map(addon => addon.id)
+            const note = off.length === 0 ? '' : `The user turned off ${off.join(', ')} in WASD Engine's Add-ons dialog, so agents cannot use ${off.length === 1 ? 'it' : 'them'}: do ${off.length === 1 ? 'its' : 'their'} steps without ${off.length === 1 ? 'it' : 'them'}.\n\n`
+            return { action: 'guide', guide: { id, title: id, text: `${note}${await guideText(own.folder, own.body, wording)}` } }
+          }
           const addon = manager.usableEntry(id)
           const projectDir = await host.project(args.project, exec).catch(() => undefined)
           const presence = projectDir === undefined ? undefined : (await manager.presence(projectDir)).get(id)
-          const path = join(manager.catalog.folder(id), GUIDE_FILE)
+          const folder = manager.catalog.folder(id)
+          const path = join(folder, GUIDE_FILE)
           const guide = parseGuide(await readFile(path, 'utf8'), path)
           return {
             action: 'guide',
             ...projectDir === undefined ? {} : { projectDir },
-            guide: { id, title: addon.title, ...presence === undefined ? {} : { presence: presence.state }, text: guide.body.trim() },
+            guide: {
+              id,
+              title: addon.title,
+              ...presence === undefined ? {} : { presence: presence.state },
+              text: await guideText(folder, guide.body, wording),
+            },
           }
         }
         case 'install': {
@@ -391,7 +441,7 @@ export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAd
               unchanged: result.unchanged,
               paths: [...result.addon.paths],
               importIssues: [...result.importIssues],
-              notes: [...result.notes],
+              notes: result.notes.map(note => wording.toolNames(note)),
             },
           }
         }

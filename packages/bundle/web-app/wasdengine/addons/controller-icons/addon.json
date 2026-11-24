@@ -15,11 +15,12 @@
     "keyboard",
     "button-prompts",
     "icons",
-    "hud",
     "tutorial",
     "ui",
     "2d",
-    "3d"
+    "3d",
+    "glyphs",
+    "joypad"
   ],
   "stages": [
     "polish",

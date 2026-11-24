@@ -1,11 +1,11 @@
 ---
 name: game-look
-description: Make a 3D Godot game look finished instead of like a prototype, with one written art direction and a fixed order of work (light, surfaces, a filled world, characters, motion, feedback, interface, one screen look), the tested add-on that does each step, and the checks that show whether it worked. Load before building or reworking the look of a 3D game, and when a game looks flat, empty, gray, or unfinished.
+description: Make a 3D Godot game look finished instead of like a prototype, with one written art direction and a fixed order of work (light, surfaces, a filled world, characters, motion, feedback, interface, one screen look), the tested add-on that does each step, and the checks that show whether it worked. Read it before building or reworking the look of a 3D game, and when a game looks flat, empty, gray, or unfinished.
 ---
 
 # The look of a 3D game
 
-A game looks finished when every part follows one decision and nothing is left as the engine made it: no gray background, no white mesh, no bare ground to the horizon, no default font. Work in the order below. Each step names the `game_addons` add-on that does it; install it when the game needs the step, and load its guide, the skill named by its id, for the calls. The WASD packs draw the same in a Web build as on desktop, which lighting and shaders written by hand often do not; `godot-web` says why.
+A game looks finished when every part follows one decision and nothing is left as the engine made it: no gray background, no white mesh, no bare ground to the horizon, no default font. Work in the order below. Each step names the `game_addons` add-on that does it; install it when the game needs the step, and read its guide for the calls, with `game_addons` action guide and its id. The WASD packs draw the same in a Web build as on desktop, which lighting and shaders written by hand often do not, since browsers draw with Godot's Compatibility renderer.
 
 ## 1. Write the look down first
 
@@ -41,7 +41,7 @@ Give every mesh a surface before adding more meshes. `WasdSurface.make("bricks")
 ## 4. Fill the world
 
 - Ground: `lite-terrain` for a landscape, `ant-landscape` for one modelled in Blender; `road-generator` for roads; `simple-dungeons` for rooms and corridors.
-- Cover: `simple-grass-textured` for grass, `protonscatter` for rocks, plants, and props, `sapling-tree-gen` for trees, Poly Haven models for the rest.
+- Cover: `simple-grass-textured` for grass, `protonscatter` for rocks, plants, and props, `sapling-tree-gen` for trees, Poly Haven models for the rest. `lite-terrain` grows its own grass and has colliders only near moving bodies: place props and trees on it at its `terrain_height_at()`.
 - Water: `wasd-water`, with the preset of the game's kind (`toon`, `low_poly`, `retro` beside `lake` and `ocean`).
 
 Build in three sizes: large shapes that frame the way (hills, buildings), middle ones (trees, rocks, furniture), and small ones (grass, pebbles, clutter). A level with only the large ones looks like a model; one with only small ones looks like noise. Leave no large surface plain.

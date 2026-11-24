@@ -80,7 +80,7 @@ flicker.style = WasdFlicker.Style.TORCH   # CANDLE, TORCH, FIRE, NEON, FAILING, 
 $Torch.add_child(flicker)                 # under the Light3D, or set flicker.light
 ```
 
-It moves the light's energy round the value the light had when the flicker entered the scene, and every `WasdHalo3D` under that light with it. `amount` (0.5) and `speed` (1). To change the light's own brightness later, call `flicker.set_base_energy(value)`.
+It moves the light's energy round the value the light had when the flicker entered the scene, and every `WasdHalo3D` under that light with it. `amount` (0.5) and `speed` (1). Add the halos before the flicker. To change the light's own brightness later, as `wasd-look`'s `set_shadowed_light()` does, call `flicker.set_base_energy(lamp.light_energy)` after it, or the flicker undoes it.
 
 ## WasdGobo3D: shade with holes
 
@@ -93,7 +93,7 @@ leaves.position.y = 8.0          # level, between the sun and the ground: tree s
 add_child(leaves)
 ```
 
-`kind` LEAVES, BARS, or GRID; `cover` (0.55: how much light it stops); `pattern_size` in meters (3 for leaves, 0.3 for bars); `sway` and `sway_speed` move it as wind moves leaves. Stood upright in a window or before a lamp it gives blinds or a grating. The light must cast shadows, and the pattern is only as sharp as the light's shadow map.
+`kind` LEAVES, BARS, or GRID; `cover` (0.55: how much light it stops); `pattern_size` in meters (3 for leaves, 0.3 for bars); `sway` and `sway_speed` move it as wind moves leaves. Stood upright in a window or before a lamp, with `kind = WasdGobo3D.Kind.BARS` or `GRID` and `sway = 0.0`, it gives blinds or a grating. The light must cast shadows, and the pattern is only as sharp as the light's shadow map.
 
 ## Pitfalls
 

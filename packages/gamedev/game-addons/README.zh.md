@@ -36,6 +36,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
     catalogDir: !!js <the dsh-web-app package folder>/wasdengine/addons
     dataRoot: !!js dshHomePath('game-addons')
     blenderStore: !!js dshHomePath('game-addons', 'blender')
+    guides: !!js [<the dsh-web-app package folder>/wasdengine/skills/game-look/SKILL.md]
 ```
 
 “游戏工具”标签页会用其图标列出这一行，“插件”页面的开关会在 profile 补丁中写入 `- id: game-addons` 与 `disabled: true` 来关闭它。插件需要 `tools`、`systemPrompt`、`workingDirectory`、`skills` 和 `typert` 服务。当 [`@deepseek-ai/dsh-godot`](../godot/README.zh.md) 的 `godot` 服务在运行时，插件会在安装后通过它导入项目；它通过 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 的 `gameMcp` 服务把工具提供给连接的智能体，并通过 Loader profile 提供的 [`@deepseek-ai/dsh-settings`](../../settings/settings/README.zh.md) 的 `settings` 服务保存“扩展”对话框的开关。
@@ -45,10 +46,11 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | `catalogDir` | 必填 | 目录文件夹的绝对路径：每个扩展一个文件夹，内含 `addon.json` 与 `SKILL.md` |
 | `dataRoot` | 必填 | 插件数据文件夹的绝对路径：下载的压缩包保存在 `archives/<sha256>.zip`，Blender 扩展的资源包解压到 `blender-assets/<id>/` |
 | `blenderStore` | 必填 | Blender 扩展存储目录的绝对路径，`blender` 行的 `addonStore` 也指向它 |
+| `guides` | `[]` | 与扩展配套、但不属于任何一个扩展的指南的 `SKILL.md` 文件绝对路径，例如 gamedev 预设内置的 `game-look` 技能：`action: guide` 按其 frontmatter 中的名称显示每份指南，不带查询词的搜索和 MCP 服务器的说明会列出每份指南及其描述 |
 | `downloadTimeoutMs` | `600000` | 一次压缩包下载（含响应体）的时间上限 |
 | `allowed` | `{}` | 按 id 记录智能体能否使用每个目录扩展；没有条目的扩展为开启。这是一个 volatile 字段：“扩展”对话框会在应用运行时写入它，profile 补丁也可以设置它，例如 `allowed: { gut: false }` |
 
-插件启动时会加载并检查整个目录，因此无效的条目、名称与 id 不同的指南，或指向不存在条目的冲突项，都会使插件无法启动。`allowed` 中目录没有的 id（例如后来的目录删除了的扩展）不起任何作用；插件会在启动时以及每次 `allowed` 变化后在警告中列出它。
+插件启动时会加载并检查整个目录及其 `guides`，因此无效的条目、名称与 id 不同或链接了其文件夹中没有的 `references/` 文件的指南、指向不存在条目的冲突项，或无法读取、名称已被占用的 `guides` 文件，都会使插件无法启动。`allowed` 中目录没有的 id（例如后来的目录删除了的扩展）不起任何作用；插件会在启动时以及每次 `allowed` 变化后在警告中列出它。
 
 ### 目录
 
@@ -58,8 +60,8 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 | 动作 | 作用 |
 |---|---|
-| `search` | 不带查询词和筛选条件时，显示目录索引：每个扩展列在其类别之下，附带提示以及项目中是否已有它。带 `query`（扩展的 id 或查询词）、`category`、`host`（`godot` 或 `blender`）或 `stage` 时，对匹配的扩展排序，显示最佳的 8 个以及匹配总数；查询为某个 id 时只显示该扩展。每个匹配项会显示其 id、版本、许可证、下载大小（无需下载时则说明它是 Blender 自带还是随 WASD Engine 提供）、摘要、何时使用、何时不必使用、与之冲突的扩展、要求的署名，以及项目中是否已有它 |
-| `guide` | 返回扩展的使用指南，并注明项目中尚未安装该扩展的情况 |
+| `search` | 不带查询词和筛选条件时，显示目录索引：每个扩展列在其类别之下，附带提示以及项目中是否已有它，之后是 `guides` 中的指南及其描述。带 `query`（扩展的 id 或查询词）、`category`、`host`（`godot` 或 `blender`）或 `stage` 时，对匹配的扩展排序，显示最佳的 8 个以及匹配总数；查询为某个 id 时只显示该扩展。每个匹配项会显示其 id、版本、许可证、下载大小（无需下载时则说明它是 Blender 自带还是随 WASD Engine 提供）、摘要、何时使用、何时不必使用、与之冲突的扩展、要求的署名，以及项目中是否已有它 |
+| `guide` | 返回扩展的使用指南，并注明项目中尚未安装该扩展的情况，之后附上指南链接的每个 `references/` 文件，因为结果的读者无法通过链接打开它们；对于 `guides` 中某份指南的名称，返回该指南，并注明其中提到的、已被用户关闭的扩展 |
 | `install` | 把 `id` 安装到项目中；`replace` 会替换 `addons/` 中已有但没有 WASD Engine 记录的副本 |
 | `remove` | 从项目中移除 `id`，把它的文件夹保留在备份中，并列出仍在使用它的项目文件 |
 | `list` | 列出项目中的目录扩展 |
@@ -93,7 +95,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 ### Blender 扩展
 
-`blender` 行的 `addonStore` 会以 `WASD_ADDON_STORE` 传给每个 Blender 工作进程。在工作进程中，`import wasd_addons; wasd_addons.enable("<id>")` 会通过名为 `wasd` 的扩展仓库以 `bl_ext.wasd.<module>` 启用存储目录中的扩展，或启用 Blender 自带的扩展，例如 Rigify，并运行条目的设置脚本；`wasd_addons.assets("<id>")` 返回其资源包所在的文件夹。`new_scene` 和执行的代码都可能加载出厂设置，从而停用所有扩展并重置其偏好设置，因此工作进程会再次启用它之前启用过的扩展，并再次运行它们的设置脚本。每个 Blender 扩展的指南都以这一调用开头。存储目录的索引会用 `allowed: false` 和工具的拒绝消息标记用户关闭的扩展，`enable` 和 `assets` 会抛出这条消息；每次 `allowed` 变化后，插件都会依次重写索引，因此最后一次变化会保留下来。
+`blender` 行的 `addonStore` 会以 `WASD_ADDON_STORE` 传给每个 Blender 工作进程。在工作进程中，`import wasd_addons; wasd_addons.enable("<id>")` 会通过名为 `wasd` 的扩展仓库以 `bl_ext.wasd.<module>` 启用存储目录中的扩展，或启用 Blender 自带的扩展，例如 Rigify，并运行条目的设置脚本；`wasd_addons.assets("<id>")` 返回其资源包所在的文件夹。`new_scene` 和执行的代码都可能加载出厂设置，从而停用所有扩展并重置其偏好设置，因此工作进程会再次启用它之前启用过的扩展，并再次运行它们的设置脚本。每个 Blender 扩展的指南都以这一调用开头，其中的 Blender 工具按会话列出的名称写作 `mcp__wasd_blender__execute_python`；对连接的智能体，指南和安装结果的备注会按 MCP 服务器提供的名称写作 `blender_execute_python`，GIMP 和 SuperCollider 工具也是如此。存储目录的索引会用 `allowed: false` 和工具的拒绝消息标记用户关闭的扩展，`enable` 和 `assets` 会抛出这条消息；每次 `allowed` 变化后，插件都会依次重写索引，因此最后一次变化会保留下来。
 
 ### “扩展”对话框
 
@@ -152,14 +154,14 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 #### 模型看到的内容
 
-会话的智能体会在 Godot 游戏部分之前看到 `game-addons` 部分：先是下面的部分文本，然后是目录索引：每个收录了扩展的类别一个标题，其下用户未关闭的每个扩展占一行，Godot 扩展在前，格式同下面的索引行；标题列出该类别随附条目所涵盖的内容，末尾的括号中是该类别的搜索值。连接的智能体会在 MCP 服务器说明的 `## Game add-ons` 之下读到相同的判断规则，但没有索引：指南让它用不带查询的 `action: search` 读同一份索引，用扩展的 id、类别或查询词搜索以了解细节，并以绝对路径的 `project`、`guide` 动作和 Blender 的 `wasd_addons.enable` 调用代替指南技能。指南的末尾是构建 3D 游戏观感的顺序：先写下观感，然后依次是光照、表面、世界、角色、动态、反馈和界面，最后才是一种屏幕风格，以及用来检查的截图。它只列出步骤，不提任何扩展，因此无论用户关闭了哪些扩展都成立；会话的智能体在随附的 `game-look` 技能中读到同样的顺序，该技能还列出每一步的扩展。因此连接的智能体只从这次搜索读一次索引。Claude Code 的模型只能通过 `search_game_tools` 读到这份指南；在它之前，说明的概述会列出该 provider 的描述：精选扩展能比新写的代码更好地完成常见的游戏工作，并附有示例，还要求在规划游戏之前用 `game_addons` 的 `action: search` 读目录索引，并在 `project.godot` 存在之后安装合适的扩展：安装需要它，而新游戏项目的文件夹里还没有它。
+会话的智能体会在 Godot 游戏部分之前看到 `game-addons` 部分：先是下面的部分文本，然后是目录索引：每个收录了扩展的类别一个标题，其下用户未关闭的每个扩展占一行，Godot 扩展在前，格式同下面的索引行；标题列出该类别随附条目所涵盖的内容，末尾的括号中是该类别的搜索值。连接的智能体会在 MCP 服务器说明的 `## Game add-ons` 之下读到相同的判断规则，但没有索引：指南让它用不带查询的 `action: search` 读同一份索引，用扩展的 id、类别或查询词搜索以了解细节，并以绝对路径的 `project`、`guide` 动作和 Blender 的 `wasd_addons.enable` 调用代替指南技能。指南的末尾列出 `guides` 中的指南及其描述，并要求在开展每份指南所针对的工作之前用 `action: guide` 读它：在 Web 与 Desktop profile 中，这就是随附的 `game-look` 技能，即构建 3D 游戏观感的顺序以及每一步所用的扩展；会话的智能体把它当作技能读取，而没有技能的连接智能体通过该动作读取，其中提到的、已被用户关闭的扩展会被标出。因此连接的智能体只从这次搜索读一次索引。Claude Code 的模型只能通过 `search_game_tools` 读到这份指南；在它之前，说明的概述会列出该 provider 的描述：精选扩展能比新写的代码更好地完成常见的游戏工作，并附有示例，还要求在规划游戏之前用 `game_addons` 的 `action: search` 读目录索引，并在 `project.godot` 存在之后安装合适的扩展：安装需要它，而新游戏项目的文件夹里还没有它。
 
 ##### 部分文本
 
 ```markdown
 # Game add-ons
 
-game_addons installs tested third-party add-ons into the game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with the built-in Godot and Blender. Decide yourself when one is worth it; you do not need to ask the user first. Install an add-on when the work at hand needs what it does and building that with plain Godot or Blender would take much longer or turn out worse, at the stage of the game where it helps. Skip it when Godot's own nodes, Blender's own tools, or a short script do the job, and do not install one in case it is needed later.
+game_addons installs tested add-ons, WASD Engine's own and third-party ones, into the game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with the built-in Godot and Blender. Decide yourself when one is worth it; you do not need to ask the user first. Install an add-on when the work at hand needs what it does and building that with plain Godot or Blender would take much longer or turn out worse, at the stage of the game where it helps. Skip it when Godot's own nodes, Blender's own tools, or a short script do the job, and do not install one in case it is needed later.
 Before you build what a listed add-on does, read about it: action search with an add-on's id, a category, or words shows when it helps, when to skip it, its download size, license, and conflicts. After installing one, load its guide, the skill named by its id, before using it, and tell the user what you added and why, with its license and any credit it requires. Remove an add-on only when the game no longer uses it.
 
 Every add-on, under its category, with what it is for:
@@ -187,11 +189,11 @@ Game systems: AI, state, dialogue, inventories (gameplay)
 
 #### 模型看到的内容
 
-会话的智能体会看到 `game_addons`，带有 `action`（`search`、`guide`、`install`、`remove` 或 `list`）以及可选的 `query`、`category`、`host`、`stage`、`id`、`replace` 和 `project`。描述会列出目录收录的扩展类别，说明不带查询词的搜索给出索引、带 id、类别或查询词的搜索给出细节，并告诉模型：当游戏需要某个扩展的功能、而只用 Godot 或 Blender 会耗时更长时，无需先征求用户同意即可自行安装，然后告诉用户它添加了什么及其许可证。连接的智能体看到的是同一个工具，其中 `project` 为绝对路径，描述末尾还有一句 `Before you plan a game, read the catalog's index with action search and no query.`，因为它的系统提示词中没有目录部分。
+会话的智能体会看到 `game_addons`，带有 `action`（`search`、`guide`、`install`、`remove` 或 `list`）以及可选的 `query`、`category`、`host`、`stage`、`id`、`replace` 和 `project`；对 `guide`，`id` 也可以是 `guides` 中某份指南的名称。描述会列出目录收录的扩展类别，说明不带查询词的搜索给出索引、带 id、类别或查询词的搜索给出细节，并告诉模型：当游戏需要某个扩展的功能、而只用 Godot 或 Blender 会耗时更长时，无需先征求用户同意即可自行安装，然后告诉用户它添加了什么及其许可证。连接的智能体看到的是同一个工具，其中 `project` 为绝对路径，描述末尾还有一句 `Before you plan a game, read the catalog's index with action search and no query.`，因为它的系统提示词中没有目录部分。
 
 #### Token 影响
 
-该声明约为 3,000 个字符的 JSON。提供者说明会为 MCP 服务器的说明增加约 1,500 个字符；它们不列出任何扩展，因为连接的智能体用 `action: search` 读索引。
+该声明约为 3,000 个字符的 JSON。提供者说明会为 MCP 服务器的说明增加约 2,000 个字符，其中包括随附 `game-look` 指南的那一行；它们不列出任何扩展，因为连接的智能体用 `action: search` 读索引，也不包含任何指南的正文，正文由 `action: guide` 返回。
 
 #### KV Cache 影响
 
@@ -215,11 +217,11 @@ Game systems: AI, state, dialogue, inventories (gameplay)
 
 #### 模型看到的内容
 
-不带查询词和筛选条件的搜索会列出索引，每个扩展一行，约 30 至 100 个字符，项目已有的扩展带 `[installed]` 或其他备注。带 id、类别或查询词的搜索最多列出 8 个匹配项，每个约 300 至 600 个字符，匹配更多时会说明匹配总数。安装结果会写明版本、许可证、安装路径、指南的技能名称（对没有技能的连接智能体，则改为可显示指南的 `guide` 动作）、诸如要求的署名或跳过导入之类的备注，以及最多 20 个导入问题，并请模型告诉用户它添加了该扩展、原因及其许可证；项目已有该版本时不提此请求。移除结果会写明移出的路径、保留它们的备份，以及最多 20 个仍在使用该扩展的文件。列表会标出用户关闭的扩展，对这类扩展的 guide 或 install 会失败，并给出约 180 个字符的说明。
+不带查询词和筛选条件的搜索会列出索引，每个扩展一行，约 30 至 100 个字符，项目已有的扩展带 `[installed]` 或其他备注，之后 `guides` 中的每份指南占一行，`game-look` 约 400 个字符。带 id、类别或查询词的搜索最多列出 8 个匹配项，每个约 300 至 600 个字符，匹配更多时会说明匹配总数。安装结果会写明版本、许可证、安装路径、指南的技能名称（对没有技能的连接智能体，则改为可显示指南的 `guide` 动作）、诸如要求的署名或跳过导入之类的备注，以及最多 20 个导入问题，并请模型告诉用户它添加了该扩展、原因及其许可证；项目已有该版本时不提此请求。移除结果会写明移出的路径、保留它们的备份，以及最多 20 个仍在使用该扩展的文件。列表会标出用户关闭的扩展，对这类扩展的 guide 或 install 会失败，并给出约 180 个字符的说明。
 
 #### Token 影响
 
-整个目录的索引约为 3,000 个字符，带查询词的搜索最多约 5,000 个字符；指南结果即指南本身；其他结果为几百个字符。
+整个目录的索引约为 3,000 个字符，带查询词的搜索最多约 5,000 个字符；指南结果即指南本身及其链接的文件，例如 MPFB 列出 MakeHuman 资源的约 2,200 个字符的清单；其他结果为几百个字符。
 
 #### KV Cache 影响
 

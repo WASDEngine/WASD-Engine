@@ -21,9 +21,9 @@ It prints one line:
 CROWD_BAKED res://characters/walker.glb: 2649 vertices in 4 surfaces, clips Idle, Walk, Jog_Fwd, 57 frames, textures of 2048 by 114 pixels, saved as res://crowd/walker.res (2.1 MB) in 0.1 s.
 ```
 
-- A humanoid that was retargeted for `universal-animation-library` and has no clips of its own gets that library's: name them without `ual/`. Without `--clips` every clip is baked, which for that library is far too many: name the two or three the crowd needs.
+- A humanoid that was retargeted for `universal-animation-library` and has no clips of its own gets that library's: name them without `ual/`. For the clips of `universal-animation-library-2`, such as `Zombie_Walk_Fwd`, bake a scene whose AnimationPlayer holds the `ual2` library, as that guide shows. Without `--clips` every clip is baked, which for that library is far too many: name the two or three the crowd needs.
 - Bake clips that loop: a member plays its clip round and round.
-- The file grows with vertices times frames, 16 bytes each before compression. Keep a crowd model under about 3,000 vertices (in Blender, a Decimate modifier above the Armature modifier) and `--fps` at 10 to 15; frames in between are blended.
+- The file grows with vertices times frames, 16 bytes each before compression. Keep a crowd model under about 3,000 vertices (in Blender, a Decimate modifier above the Armature modifier; an `mpfb` human with `detail="low"` needs it too) and `--fps` at 10 to 15; frames in between are blended.
 - Each surface keeps its material's color, texture, roughness, and metal; see-through materials are cut out at 40% cover.
 
 `CROWD_FAILED` says what is missing. From code, `WasdCrowdBaker.bake(model, ["moves/Walk"], 12.0)` returns the same `WasdCrowdData` for a model instance, in a tenth of a second for a model this size, so a game may also bake while a level loads.
@@ -69,7 +69,7 @@ Make members differ: a tint on the clothes, a scale between 0.9 and 1.1 in the b
 
 - Not a node: it has no collision, no signals, and no children, and nothing can be attached to its hands. For someone the player meets up close, take the member out and put a `wasd-character` in its place.
 - Not blended: a new clip starts at once, without a cross-fade. At a crowd's distance that does not show.
-- Not culled one by one: the whole crowd is drawn or none of it. Use several crowds for places far apart.
+- Not culled one by one: the whole crowd is drawn or none of it, and it is never culled until its `custom_aabb`, set after `capacity`, holds the box its members stay in. Use several crowds, each with its box, for places far apart.
 - Every member casts a shadow. For a crowd of thousands, set `crowd.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF`.
 
 ## Birds, fish, butterflies: WasdFlock3D

@@ -12,7 +12,10 @@
     "import",
     "physics",
     "3d",
-    "blender"
+    "collision",
+    "collider",
+    "glb",
+    "gltf"
   ],
   "stages": [
     "content"

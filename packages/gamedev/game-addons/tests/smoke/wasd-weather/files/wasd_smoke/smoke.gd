@@ -124,6 +124,19 @@ func _run() -> void:
 	statue.position = Vector3(4, 1, 0)
 	statue.add_to_group(WasdWeather3D.BARE_GROUP)
 	level.add_child(statue)
+	# A tree whose second surface is a cut-out leaf card, drawn by a shader that writes ALPHA, as WASD Materials' are.
+	var tree_mesh := ArrayMesh.new()
+	tree_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, box.get_mesh_arrays())
+	tree_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, QuadMesh.new().get_mesh_arrays())
+	tree_mesh.surface_set_material(0, gray)
+	var cut := ShaderMaterial.new()
+	cut.shader = Shader.new()
+	cut.shader.code = "shader_type spatial;\nvoid fragment() {\n\tALBEDO = vec3(0.2, 0.5, 0.2);\n\tALPHA = step(0.5, fract(UV.x * 4.0));\n\tALPHA_SCISSOR_THRESHOLD = 0.5;\n}\n"
+	tree_mesh.surface_set_material(1, cut)
+	var tree := MeshInstance3D.new()
+	tree.mesh = tree_mesh
+	tree.position = Vector3(-8, 1, 0)
+	level.add_child(tree)
 	var rock := MeshInstance3D.new()
 	rock.mesh = box
 	rock.position = Vector3(8, 1, -4)
@@ -187,8 +200,8 @@ func _run() -> void:
 	var white := [_shade(snowed, Vector3(0, 0, 5)), _shade(snowed, Vector3(0, 2, 0)), _shade(snowed, Vector3(0, 1, 1))]
 	if white[0] < bare[0] + 0.12 or white[1] < bare[1] + 0.08 or absf(white[2] - bare[2]) > 0.05:
 		return _fail("with snow the ground, the crate's top, and its side went from %s to %s" % [bare, white])
-	if ground.material_overlay == null or glass.material_overlay != null or statue.material_overlay != null or rock.material_overlay != null:
-		return _fail("covered: ground %s, glass %s, marked statue %s, rock outside %s" % [ground.material_overlay, glass.material_overlay, statue.material_overlay, rock.material_overlay])
+	if ground.material_overlay == null or glass.material_overlay != null or statue.material_overlay != null or rock.material_overlay != null or tree.material_overlay != null:
+		return _fail("covered: ground %s, glass %s, marked statue %s, rock outside %s, cut-out tree %s" % [ground.material_overlay, glass.material_overlay, statue.material_overlay, rock.material_overlay, tree.material_overlay])
 	# What comes into the level later is covered too.
 	var late := MeshInstance3D.new()
 	late.mesh = box

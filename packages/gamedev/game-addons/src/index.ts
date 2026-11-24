@@ -1,14 +1,15 @@
 /**
- * Game add-ons: a curated catalog of third-party Godot add-ons and Blender add-ons, each pinned to an archive and a
- * SHA-256 and verified with WASD Engine's Godot and Blender, offered to the agent through one `game_addons` tool. The
- * `game-addons` system prompt section lists every add-on that agents may use with the stages at which it helps and when
- * to use it, and the agent installs one when it decides that the game needs it, without asking the user. Installing one
- * unpacks it into the game project (Godot) or the shared Blender add-on store, records it in the project's
- * `.wasdengine/addons.json`, and makes its usage guide a skill of the Sessions in that project; projects without it
- * never list the guide. The `gameAddons` Remote serves the Session header's Add-ons dialog, whose switches write the
- * `allowed` setting: an add-on that the user turned off there leaves the prompt section, the searches, and the guides,
- * and agents can no longer install it or enable it in Blender. Agents connected through WASD Engine's MCP server get
- * the same tool, with the catalog in the server's instructions.
+ * Game add-ons: a curated catalog of Godot add-ons and Blender add-ons, WASD Engine's own and third-party ones, each
+ * pinned to an archive and a SHA-256 or shipped in the catalog, and verified with WASD Engine's Godot and Blender,
+ * offered to the agent through one `game_addons` tool. The `game-addons` system prompt section lists every add-on that
+ * agents may use under its category with a few words on its use, and the agent installs one when it decides that the
+ * game needs it, without asking the user. Installing one unpacks it into the game project (Godot) or the shared Blender
+ * add-on store, records it in the project's `.wasdengine/addons.json`, and makes its usage guide a skill of the
+ * Sessions in that project; projects without it never list the guide. The `gameAddons` Remote serves the Session
+ * header's Add-ons dialog, whose switches write the `allowed` setting: an add-on that the user turned off there leaves
+ * the prompt section, the searches, and the guides, and agents can no longer install it or enable it in Blender. Agents
+ * connected through WASD Engine's MCP server get the same tool, whose search gives them the catalog's index, and the
+ * guides that go with the add-ons, such as the order in which a 3D game's look is built, through its guide action.
  * @module @deepseek-ai/dsh-game-addons
  */
 import { isAbsolute, join, resolve } from 'node:path'
@@ -27,7 +28,7 @@ import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { bundledArchivesDir } from './archive.ts'
-import { loadCatalog } from './catalog.ts'
+import { loadCatalog, loadGuides } from './catalog.ts'
 import { GameAddonManager, type ImportReport } from './manager.ts'
 import { gameAddonMcpProvider } from './mcp.ts'
 import { PROMPT_SECTION, sessionPrompt } from './prompt.ts'
@@ -52,6 +53,12 @@ export interface Config {
   dataRoot: string
   /** Absolute folder of the Blender add-on store, which the Blender plugin's `addonStore` names too. */
   blenderStore: string
+  /**
+   * Absolute paths of the `SKILL.md` files of guides that go with the add-ons without being one's, such as the order in
+   * which a 3D game's look is built with them: action guide shows each by the name in its frontmatter, and a search
+   * without words and the MCP server's instructions list each with its description.
+   */
+  guides: string[]
   /** Time limit of one archive download, including its body. */
   downloadTimeoutMs: number
   /**
@@ -86,6 +93,7 @@ export default class GameAddons extends TypertRemoteService {
     catalogDir: z.string().required(),
     dataRoot: z.string().required(),
     blenderStore: z.string().required(),
+    guides: z.array(z.string().min(1)).default([]),
     downloadTimeoutMs: z.natural().min(1).max(2_147_483_647).default(600_000),
     allowed: z.dict(z.boolean()).default({}).volatile(),
   })
@@ -114,6 +122,7 @@ export default class GameAddons extends TypertRemoteService {
   protected async [Service.init](): Promise<void> {
     const ctx = this.ctx
     const catalog = await loadCatalog(this.config.catalogDir)
+    const guides = await loadGuides(this.config.guides, catalog)
     let invalidate: (() => void) | undefined
     this.manager = new GameAddonManager({
       catalog,
@@ -136,6 +145,7 @@ export default class GameAddons extends TypertRemoteService {
     await this.manager.writeStoreIndex(this.lifetime.signal)
     const host: GameAddonToolHost = {
       manager: this.manager,
+      guides,
       project: async (requested, exec) => (await resolveGodotProject(await this.base(requested, exec), requested, exec.signal)).dir,
     }
     ctx.tools.register(gameAddonToolDefinition(host, SESSION_WORDING))
@@ -167,6 +177,7 @@ export default class GameAddons extends TypertRemoteService {
     ctx.inject(['gameMcp'], (inner) => {
       const mcpHost: GameAddonToolHost = {
         manager: this.manager,
+        guides,
         project: async (requested, exec) => {
           if (requested === undefined || !isAbsolute(requested)) throw new Error('Pass project as the absolute folder that holds project.godot.')
           return (await resolveGodotProject(requested, requested, exec.signal)).dir

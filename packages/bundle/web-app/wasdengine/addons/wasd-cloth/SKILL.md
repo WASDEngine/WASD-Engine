@@ -47,7 +47,7 @@ pin_rows = 2
 - `size` in meters; `facing` 0 hangs in the XY plane facing +Z, 1 lies in XZ facing +Y; `cell` is the grid spacing (0.06 m).
 - `fabric`: silk, cotton, canvas, denim, leather, rubber. It sets mass, stiffness, damping, and solver precision; `precision` overrides the iterations, and `custom` keeps SoftBody3D settings of your own.
 - `pinned_edges`: top, bottom, left, right, or a corner such as top_left; top is +Y when hanging and -Z when lying. `pin_rows = 2` stops stretching beside a pole.
-- `pin_target`: a node the pins move with, such as a pole, a BoneAttachment3D, or a ship; without it the pins stay put.
+- `pin_target`: the path of a node the pins move with, such as `NodePath("../Pole")`, a BoneAttachment3D, or a ship; without it the pins stay put.
 - The default material is double-sided; a `material_override` of your own needs `cull_mode = CULL_DISABLED`.
 - While the game runs, a new `size`, `cell`, or `facing` builds the sheet again, at rest where it rests (by its `pin_target` if it has one), with its fabric's current settings; its motion starts over. New `pinned_edges` (assign a new array), `pin_rows`, or `pin_target` pin it again: points that leave a pinned edge let go, new ones hold where they are or, with a target, where they rest relative to it.
 

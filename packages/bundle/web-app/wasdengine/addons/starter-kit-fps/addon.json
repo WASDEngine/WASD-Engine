@@ -4,10 +4,10 @@
   "host": "godot",
   "version": "2026.03.12+185fd23",
   "category": "kits",
-  "cue": "first-person shooter: player, blasters, enemies, HUD",
+  "cue": "first-person shooter: player, blasters, flying enemies",
   "summary": "Kenney's first-person shooter kit: a player with mouse and gamepad look, double jump, two blasters with recoil, flying enemies that shoot back, a health HUD, sounds, and a low-poly level.",
   "useWhen": "A new 3D game is a first-person shooter or first-person action game, and should start from a controller, weapons, enemies, and HUD that already work instead of from an empty scene.",
-  "avoidWhen": "The game is third-person or not a shooter, it already has a player controller, or it needs realistic gunplay with reloads and ballistics, which this kit does not have.",
+  "avoidWhen": "The game is third-person, which wasd-character covers; it already has a player controller; or it needs realistic gunplay with reloads and ballistics, which this kit lacks. A first-person game without weapons wants a hand-built CharacterBody3D, or a copy of this kit's player without its weapon code.",
   "tags": [
     "fps",
     "shooter",
@@ -17,7 +17,11 @@
     "weapons",
     "controller",
     "kenney",
-    "3d"
+    "3d",
+    "guns",
+    "rifle",
+    "shotgun",
+    "shooting"
   ],
   "stages": [
     "prototype"

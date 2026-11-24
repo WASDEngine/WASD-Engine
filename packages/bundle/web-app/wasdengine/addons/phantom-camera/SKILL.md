@@ -9,6 +9,7 @@ Installed in `res://addons/phantom_camera/` with its autoload `PhantomCameraMana
 
 ## Model
 
+- With `wasd-character`, whose orbit camera covers plain third person, set `hero.orbit_camera = false` before its `add_child` when a phantom camera takes over.
 - Keep one real `Camera2D` or `Camera3D` and give it one child node with the script `phantom_camera_host.gd` (class `PhantomCameraHost`). The host must be the camera's child.
 - Add `PhantomCamera2D` (Node2D) or `PhantomCamera3D` (Node3D) nodes anywhere. Every frame the host copies the active one's transform (and 2D `zoom`) onto the real camera and makes the camera `top_level`. Never move the real camera or use `Camera2D` smoothing; change the phantom cameras instead.
 - Active camera: highest `priority` (int, clamped to >= 0) among visible phantom cameras whose `host_layers` bitmask overlaps the host's `host_layers` (default 1). Avoid equal priorities. Setting `priority` or `visible` switches at once; the camera then tweens with the new camera's `tween_resource` (`PhantomCameraTween`: `duration` seconds, default 1.0; `transition` LINEAR 0, SINE 1, QUINT 2, QUART 3, QUAD 4, EXPO 5, ELASTIC 6, CUBIC 7, CIRC 8, BOUNCE 9, BACK 10; `ease` EASE_IN 0, EASE_OUT 1, EASE_IN_OUT 2, EASE_OUT_IN 3). `tween_on_load` (default true) also tweens at scene start; set it false to start in place.

@@ -4,10 +4,10 @@
   "host": "godot",
   "version": "1.0.0",
   "category": "environment",
-  "cue": "lighting by name: sky, sun, clouds, fog, day clock",
+  "cue": "scene lighting: sky, sun, fog, glow, day and night cycle",
   "summary": "A whole scene's lighting in one node: a sky with clouds, a sun with shadows, bounce light, fog, exposure, and glow, set by ten looks, a day clock, or an HDRI sky, and alike on every renderer.",
   "useWhen": "Any 3D game, in place of a hand-set WorldEnvironment and DirectionalLight3D, which tend to come out flat or burnt out and differ between desktop and Web builds: days, sunsets, nights, a day that runs, an HDRI sky from Poly Haven, a studio for one model, or a dim room for its lamps.",
-  "avoidWhen": "A 2D game, or a game whose own lighting already gives the look it wants and was checked in a Web build. Beside Sky3D, use one of the two in a scene: both own the sky and the sun.",
+  "avoidWhen": "A 2D game, or a game whose own lighting already gives the look it wants and was checked in a Web build. Use it or sky3d, not both: both own the sky and sun; sky3d suits desktop only. Fog in one place and lamp halos are wasd-light's, rain and snow wasd-weather's, a film grade wasd-post's.",
   "tags": [
     "lighting",
     "sky",
@@ -28,7 +28,11 @@
     "moon",
     "stars",
     "time-of-day",
-    "shadows"
+    "shadows",
+    "cycle",
+    "bloom",
+    "glow",
+    "overcast"
   ],
   "stages": [
     "prototype",

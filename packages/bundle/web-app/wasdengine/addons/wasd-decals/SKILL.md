@@ -52,13 +52,13 @@ For a mark the list lacks, such as a paw, a tire track, or a rune, make a textur
 
 ```gdscript
 var steps := WasdFootprints3D.new()
-$Player.add_child(steps)             # at the feet: the origin of a CharacterBody3D
+$Player.add_child(steps)             # at the soles: lower it, or raise reach, under a body centred higher
 steps.stepped.connect(func(at: Vector3, left: bool) -> void: $StepSound.play())
 ```
 
-Each physics frame it measures how far its parent has walked, and every `stride` meters (0.7) it lays a print on the ground under itself, the left foot and the right in turn, toes pointing the way the parent walks. Nothing lands while the parent is in the air. The signal `stepped(at, left)` tells where each foot lands: play the footstep sound there, or a puff of dust (`WasdFx.play("dust", at)` with `wasd-fx`).
+Each physics frame it measures how far its parent has walked, and every `stride` meters (0.7) it lays a print on the ground under itself, the left foot and the right in turn, toes pointing the way the parent walks. Nothing lands while the parent is in the air. The signal `stepped(at, left)` tells where each foot lands: play the footstep sound there, or a puff of dust (`WasdFx.play("impact", at, {"scale": 0.3})` with `wasd-fx`).
 
-Properties: `stride`, `spacing` (0.26 m between the left and the right line), `size` (0.3 m), `tint` (dark and faint for dust and mud; `Color(0.5, 0.56, 0.66, 0.7)` reads as dents in snow), `lifetime` (20 s), `capacity` (64), `ground_mask`, `reach` (0.5 m: how far below the node the ground may lie). `prints = false` stops the prints and keeps the signal, for footstep sounds on ground that takes no print: switch it by what the player walks on. `get_pool()` is the `WasdDecals3D` that holds the prints, to give it a texture of the game's own, such as a paw.
+Properties: `stride`, `spacing` (0.26 m between the left and the right line), `size` (0.3 m), `tint` (dark and faint for dust and mud; `Color(0.5, 0.56, 0.66, 0.7)` reads as dents in snow), `lifetime` (20 s), `capacity` (64), `ground_mask`, `reach` (0.5 m: how far below the node the ground may lie). `prints = false` stops the prints and keeps the signal, for footstep sounds on ground that takes no print: switch it by what the player walks on. `get_pool()` is the `WasdDecals3D` that holds the prints. For a print of the game's own, such as a paw, set its `mark = ""`, then its `texture` with the left print and the right side by side and `frames = Vector2i(2, 1)`. The ground needs a collider.
 
 ## A shadow under a character: WasdBlobShadow3D
 

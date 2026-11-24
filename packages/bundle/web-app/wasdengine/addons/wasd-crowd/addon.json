@@ -6,7 +6,7 @@
   "category": "characters",
   "cue": "crowds in one draw call; birds, fish, butterflies",
   "summary": "Crowds of one animated model, its clips baked once into textures, so hundreds of copies play them with no skeleton, each in its own clip, pace, and tint; and flocks of birds, fish, and butterflies.",
-  "useWhen": "Many copies of one animated character are on screen at once: an army, a horde, spectators, townsfolk, a herd. Or a world needs life in the background: birds overhead, fish under water, butterflies over a meadow. A hundred skinned characters stall a Web build; a thousand crowd members do not.",
+  "useWhen": "Many copies of one animated character on screen at once: an army, a zombie horde with universal-animation-library-2's clips, spectators, pedestrians, a herd; or life in the background: birds, fish under water, butterflies. A hundred skinned characters stall a Web build; a thousand of these do not.",
   "avoidWhen": "A handful of characters, or ones the player fights or talks to up close, which need skeletons for ragdolls, attachments, and blending: use wasd-character there.",
   "tags": [
     "crowd",
@@ -23,7 +23,11 @@
     "flock",
     "wildlife",
     "ambient-life",
-    "3d"
+    "3d",
+    "pedestrians",
+    "audience",
+    "zombies",
+    "swarm"
   ],
   "stages": [
     "content",

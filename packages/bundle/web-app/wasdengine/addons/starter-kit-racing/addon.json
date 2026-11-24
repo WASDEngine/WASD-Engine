@@ -7,7 +7,7 @@
   "cue": "arcade racing: drifting trucks, track pieces, camera",
   "summary": "Kenney's arcade racing kit: trucks and a motorcycle that drift, lean, and leave tire smoke, a chase camera that zooms with speed, engine and skid sounds, and a track built from GridMap pieces.",
   "useWhen": "A new 3D game is an arcade racer, kart game, or driving toy, and should start from vehicles that already feel good and a track that can be laid out from pieces.",
-  "avoidWhen": "The cars need real suspension, gears, and tire grip, which a VehicleBody3D setup gives, or the game is not about driving.",
+  "avoidWhen": "The cars need real suspension, gears, and tire grip, which easy-vehicle-physics gives; the roads are a network with lanes and crossings, which road-generator builds; or the game is not about driving.",
   "tags": [
     "racing",
     "driving",
@@ -17,7 +17,10 @@
     "kit",
     "gridmap",
     "kenney",
-    "3d"
+    "3d",
+    "cars",
+    "kart",
+    "motorcycle"
   ],
   "stages": [
     "prototype"

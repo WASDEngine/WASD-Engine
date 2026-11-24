@@ -37,7 +37,7 @@ assert bpy.ops.vrm.model_validate(armature_object_name=arm.name) == {'FINISHED'}
 result = bpy.ops.export_scene.vrm(filepath="/abs/path/hero.vrm", armature_object_name=arm.name)
 ```
 
-For an MPFB human, use its rig instead of `make_basic_armature`: `HumanService.add_builtin_rig(body, "game_engine")`, bake it (see the mpfb skill), then assign and export with `armature_object_name="Human.rig"` (tested: 52 human bones in the file). For VRM 0.x set `ext.spec_version = "0.0"`, run `assign_vrm0_humanoid_human_bones_automatically`, fill `ext.vrm0.meta.title` and `.author`, then export.
+For an MPFB human, use its rig instead of `make_basic_armature`: `HumanService.add_builtin_rig(body, "game_engine")`, bake it (the guide of `mpfb`, `game_addons` action guide), then assign and export with `armature_object_name="Human.rig"` (tested: 52 human bones in the file). For VRM 0.x set `ext.spec_version = "0.0"`, run `assign_vrm0_humanoid_human_bones_automatically`, fill `ext.vrm0.meta.title` and `.author`, then export.
 
 ## Import a .vrm and convert it for Godot
 
@@ -49,10 +49,10 @@ bpy.ops.import_scene.vrm(filepath="/abs/path/avatar.vrm",
                          set_view_transform_to_standard_on_import=False)
 arm = next(o for o in bpy.context.scene.objects if o.type == 'ARMATURE')
 hb = arm.data.vrm_addon_extension.vrm1.humanoid.human_bones
-result = {"spec": arm.data.vrm_addon_extension.spec_version, "hips": hb.hips.node.bone_name}
+result = {"armature": arm.name, "spec": arm.data.vrm_addon_extension.spec_version, "hips": hb.hips.node.bone_name}
 ```
 
-Then call the `export_gltf` tool with `selection: [arm.name]` (or `bpy.ops.export_scene.gltf(..., use_selection=True)`): the .glb has one skin with every bone and no VRM extensions. VRM-only data (expressions, spring bones, MToon shading) does not carry over; check the materials in Godot.
+Then call the `export_gltf` tool with `selection` set to the armature's name from `result` (or `bpy.ops.export_scene.gltf(..., use_selection=True)`): the .glb has one skin with every bone and no VRM extensions. VRM-only data (expressions, spring bones, MToon shading) does not carry over; check the materials in Godot.
 
 ## Verify
 

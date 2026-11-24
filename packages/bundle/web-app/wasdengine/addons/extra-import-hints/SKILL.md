@@ -25,7 +25,7 @@ The script replaces each hinted node with a new node and does not copy its posit
 
 ## Example: a mallet prop (Blender worker)
 
-Run with `mcp__wasd_blender__execute_python`, then write it with `mcp__wasd_blender__export_gltf` as `res://models/mallet.glb`:
+Run with `mcp__wasd_blender__execute_python`, then write it with `mcp__wasd_blender__export_gltf` to `<project>/models/mallet.glb`, an absolute path inside the game project:
 
 ```python
 import bpy

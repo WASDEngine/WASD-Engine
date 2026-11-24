@@ -6,8 +6,8 @@
   "category": "environment",
   "cue": "endless landscape from a seed: hills, biomes, LOD",
   "summary": "A whole landscape from one node and a seed: meadows, desert, salt flats, canyons, and mountains with grass, rock, snow, distance haze, level of detail, and collision that follows moving bodies.",
-  "useWhen": "The game needs a large natural outdoor world to roam, drive, or fly over: open-world exploration, survival, racing across country, or a wide backdrop, with ground that looks finished from the first run, in Web builds too.",
-  "avoidWhen": "The level is a designed place with specific hills, paths, and coastlines, which a Blender landscape or modelled ground gives; it is small or indoors; or the game is 2D.",
+  "useWhen": "The game needs a large natural outdoor world to roam, drive, or fly over: open-world exploration, survival, racing across country, or a wide backdrop, with ground that looks finished from the first run, in Web builds too. Roads over it come from road-generator, lakes and seas from wasd-water.",
+  "avoidWhen": "The level is one bounded, designed place, such as an island or a valley, which ant-landscape makes as a mesh and heightmap or which is modelled in Blender; it is small or indoors; or the game is 2D.",
   "tags": [
     "terrain",
     "landscape",
@@ -16,7 +16,12 @@
     "biomes",
     "lod",
     "environment",
-    "3d"
+    "3d",
+    "infinite",
+    "mountains",
+    "desert",
+    "canyons",
+    "ground"
   ],
   "stages": [
     "prototype",

@@ -72,7 +72,7 @@ In a `.tscn`, reference the source path: `[ext_resource type="SpriteFrames" path
 
 1. Call `godot_run`. Its result lists the `ERROR:`/`WARNING:` lines of the import step, such as `Export is failed. Errors chain:` (the chain's detail lines are not kept) or the Pixelorama warnings below.
 2. Read the `.import` file: `importer=` must be the importer you chose.
-3. With the art in the running scene, `godot_eval`: `scene.get_node("Player/AnimatedSprite2D").sprite_frames.get_animation_names()` and `.get_frame_count("walk")`; look with `godot_screenshot`. `load()` is not available in `godot_eval` expressions.
+3. With the art in the running scene, `godot_eval`: `scene.get_node("Player/AnimatedSprite2D").sprite_frames.get_animation_names()` and `.get_frame_count("walk")`; look with `godot_screenshot`. To `load()` a resource there, give `godot_eval` `code` instead of an expression.
 4. Without a scene: after a `godot_run` has imported the file, run a SceneTree script with `godot_script` that prints `load("res://art/hero.pxo").get_animation_names()` and read its output.
 
 ## Pitfalls

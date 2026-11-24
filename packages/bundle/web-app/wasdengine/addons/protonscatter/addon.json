@@ -7,13 +7,17 @@
   "cue": "rule-based scattering of rocks, plants, props",
   "summary": "Rule-based 3D scattering: fills box, sphere or path areas with MultiMesh instances or scene copies through a modifier stack, built at runtime from a seed.",
   "useWhen": "A 3D level needs many props placed procedurally, such as grass, rocks, trees, debris or fences over an area or along a path, reproducible from a seed and rebuilt from code.",
-  "avoidWhen": "A handful of props can be placed by hand, or a short script that fills one MultiMeshInstance3D is enough.",
+  "avoidWhen": "A handful of props can be placed by hand, or a short script that fills one MultiMeshInstance3D is enough. A field of swaying grass, reeds, or flowers is simple-grass-textured's.",
   "tags": [
     "scatter",
     "3d",
     "procedural",
     "foliage",
-    "level"
+    "level",
+    "forest",
+    "vegetation",
+    "trees",
+    "bushes"
   ],
   "stages": [
     "content",

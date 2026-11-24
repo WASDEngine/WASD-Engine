@@ -47,7 +47,7 @@ The actions are the game's own; define them in the project's input map. Traffic 
 `car.speed` in m/s (times 3.6 for km/h), `car.motor_rpm`, `car.current_gear` (-1 reverse, 0 neutral), `car.throttle_amount`, and `car.wheel_array`: each `Wheel` has `is_colliding()`, `last_collision_point`, `slip_vector` (x sideways, y along), and `surface_type`.
 
 - Engine sound: instance `engine_sound.tscn` as a child of the car and set its `vehicle` to the car; its pitch follows the motor.
-- Tire smoke with `wasd-fx`: for each wheel, when `wheel.is_colliding()` and `absf(wheel.slip_vector.x) > 1.0`, `WasdFx.play("dust", wheel.last_collision_point)` a few times a second.
+- Tire smoke with `wasd-fx`: for each wheel, when `wheel.is_colliding()` and `absf(wheel.slip_vector.x) > 1.0`, `WasdFx.play("poof", wheel.last_collision_point, {"scale": 0.5})` a few times a second.
 - A chase camera with `phantom-camera`, or a `Camera3D` that eases toward `car.global_position + car.global_basis.z * 6.0 + Vector3.UP * 2.5` and looks at the car.
 
 ## Ground
@@ -56,7 +56,7 @@ The ground needs a collider. A wheel takes its surface from the ground body's gr
 
 ## Tuning and another look
 
-Every setting is an exported property of the car with a tooltip: `max_torque` and `max_rpm` (power), `gear_ratios` and `final_drive`, `max_steering_angle`, `front_brake_bias`, `mass`, and `tire_stiffnesses`, `coefficient_of_friction`, and `rolling_resistance` by surface. Change them on the instance before `add_child`, when the car reads them; after a change later, call `car.initialize()`.
+Every setting is an exported property of the car with a tooltip: `max_torque` and `max_rpm` (power), `gear_ratios` and `final_drive`, `max_steering_angle`, `front_brake_bias`, `vehicle_mass` (not `mass`, which the car sets from it), and `tire_stiffnesses`, `coefficient_of_friction`, and `rolling_resistance` by surface. Change them on the instance before `add_child`, when the car reads them; after a change later, call `car.initialize()`.
 
 For a model of the game's own, keep a preset's physics and swap the meshes: the car's `body` node is a `MeshInstance3D`, and each wheel's mesh sits under its `Wheel` node. Move each `Wheel` to its hub on the new model and set `front_tire_radius` and `rear_tire_radius` to the new wheels, then `car.initialize()`.
 

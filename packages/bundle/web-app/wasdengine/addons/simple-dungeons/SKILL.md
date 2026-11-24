@@ -29,7 +29,10 @@ func build_dungeon(seed_number: int) -> DungeonGenerator3D:
 
 
 func _on_dungeon_done(dungeon: DungeonGenerator3D) -> void:
-	for room: DungeonBoxRoom in dungeon.get_node("RoomsContainer").get_children():
+	for child: Node in dungeon.get_node("RoomsContainer").get_children():
+		var room := child as DungeonBoxRoom
+		if room == null:
+			continue  # a room scene of your own, a DungeonRoom3D
 		var floor_middle := room.global_position + Vector3.DOWN * (room.voxel_scale.y * 0.5 - 0.3)
 		if String(room.name).begins_with("Hall"):
 			$Player.global_position = floor_middle + Vector3.UP * 0.2

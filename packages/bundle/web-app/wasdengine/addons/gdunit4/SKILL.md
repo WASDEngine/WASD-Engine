@@ -42,7 +42,7 @@ Any `.gd` file under the folder you pass with `-a` (subfolders included) whose s
 # res://tests/test_health.gd
 extends GdUnitTestSuite
 
-const Health = preload("res://scripts/health.gd")  # extends Node; var hp := 10; signal died; func hit(n)
+const Health = preload("res://scripts/health.gd")  # extends Node; var hp := 10; signal died; func hit(n); func roll() -> int
 
 func test_hit_lowers_hp() -> void:
 	var health: Node = auto_free(Health.new())

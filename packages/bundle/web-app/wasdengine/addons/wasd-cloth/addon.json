@@ -6,8 +6,8 @@
   "category": "physics",
   "cue": "cloth and ropes: flags, capes, curtains, cables, wind",
   "summary": "Cloth and ropes for 3D games: soft-body sheets with fabric presets, spring-bone chains for capes and skirts, ropes and cables that hang and swing, wind zones, a flag shader, and a cloth checker.",
-  "useWhen": "A 3D game has cloth or rope that moves: flags, banners, sails, curtains, capes, skirts, coat tails, hair, cloth that the player pushes, or ropes, cables, hanging lamps, and vines. Its sheets use SoftBody3D, which Jolt supports in Godot 4.7.",
-  "avoidWhen": "2D games, or cloth that never moves: drape it in Blender with wasd-cloth-blender.",
+  "useWhen": "A 3D game has cloth or rope that moves: flags, banners, sails, curtains, cloth that the player pushes, ropes, cables, hanging lamps, and vines, or capes, skirts, coat tails, and hair on the bone chains that wasd-cloth-blender adds to a model. Its sheets use SoftBody3D, which Jolt supports.",
+  "avoidWhen": "2D games, or cloth that never moves: drape it in Blender with wasd-cloth-blender. A human's clothes come with mpfb's humans and move with the body; only loose parts, such as a skirt or coat tails, need chains.",
   "tags": [
     "cloth",
     "physics",

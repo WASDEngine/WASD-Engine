@@ -55,8 +55,8 @@ It simulates the pinned sheet in wind on a copy and makes `Flag_loop`: one shape
 With the character's armature at its rest pose and the cloth mesh around the body:
 
 ```python
-print(cloth.add_chains("Cape", "Human_rig", anchor="spine_03", group="cape", columns=5, rows=6))
-print(cloth.add_chains("Skirt", "Human_rig", anchor="pelvis", group="skirt", columns=8, rows=4, layout="tube"))
+print(cloth.add_chains("Cape", "Human.rig", anchor="spine_03", group="cape", columns=5, rows=6))
+print(cloth.add_chains("Skirt", "Human.rig", anchor="pelvis", group="skirt", columns=8, rows=4, layout="tube"))
 ```
 
 It adds chains of bones named `cloth_<group>_<column>_<row>` from the top of the cloth down, `columns` across a sheet or, with `layout="tube"`, around it, parented to `anchor`. Then it weights the cloth to them and gives it an Armature modifier. The cloth loses its weights to the armature's other bones, and the top `top_band` (8% of its height) stays on the anchor.
@@ -73,4 +73,4 @@ It adds chains of bones named `cloth_<group>_<column>_<row>` from the top of the
 
 ## Check cloth
 
-`cloth.check(obj, colliders=(), rest=None)` measures cloth as it is: `not_numbers` (the simulation exploded), `stretch_p95` and `stretch_max` (fractions past the `rest` coordinates), `inside_colliders` (points more than 2 mm in), and `crossing_faces` (faces that pass through each other; drape with `self_collision=True` to remove them).
+`cloth.check(obj, colliders=(), rest=None)` measures cloth as it is: `not_numbers` (the simulation exploded), `stretch_p95` and `stretch_max` (fractions past the `rest` coordinates), `inside_colliders` (points more than 2 mm in), and `crossing_faces` (faces that pass through each other, which `drape`, whose `self_collision` is on by default, removes).

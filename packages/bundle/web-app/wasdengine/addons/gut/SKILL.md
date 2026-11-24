@@ -17,7 +17,7 @@ GUT runs only from its command-line runner here; its editor panel is not used. W
 # res://tests/test_health.gd
 extends GutTest
 
-const Health = preload("res://scripts/health.gd")  # extends Node; var hp := 10; signal died; func hit(n)
+const Health = preload("res://scripts/health.gd")  # extends Node; var hp := 10; signal died; func hit(n); func roll() -> int
 
 var health: Node
 

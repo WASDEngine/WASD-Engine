@@ -17,7 +17,8 @@ async function host(): Promise<{ host: GameAddonToolHost; catalog: Awaited<Retur
   dir = await scratch('mcp')
   const catalog = await loadCatalog(await writeCatalog(dir.root))
   // The provider reads only the catalog; the calls below stop in preparation, before the manager would run.
-  return { catalog, host: { manager: { catalog } as GameAddonToolHost['manager'], project: requested => Promise.resolve(requested ?? '/none') } }
+  const guides = new Map([['test-look', { name: 'test-look', description: 'Make a game look finished.', body: '# Look\n', folder: dir.root }]])
+  return { catalog, host: { manager: { catalog } as GameAddonToolHost['manager'], guides, project: requested => Promise.resolve(requested ?? '/none') } }
 }
 
 describe('gameAddonMcpProvider', () => {
@@ -42,8 +43,10 @@ describe('gameAddonMcpProvider', () => {
   it('sends connected agents to action search for the catalog, which the server instructions do not repeat', async () => {
     const { host: toolHost } = await host()
     const provider = gameAddonMcpProvider(toolHost)
-    expect(provider.instructions).toBe(mcpInstructions())
+    expect(provider.instructions).toBe(mcpInstructions([{ name: 'test-look', description: 'Make a game look finished.' }]))
     expect(provider.instructions).toContain('wasd_addons.enable')
+    // The guides that go with the add-ons are read through the guide action, since connected agents have no skills.
+    expect(provider.instructions).toContain('read it with action guide and its name as id:\n- test-look: Make a game look finished.')
     expect(provider.instructions).toContain('Read the catalog\'s index with action search and no query before you plan a game')
     expect(provider.instructions).not.toContain('test-camera')
   })

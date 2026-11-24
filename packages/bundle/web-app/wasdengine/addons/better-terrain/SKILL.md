@@ -61,7 +61,7 @@ func dig(layer: TileMapLayer, cell: Vector2i) -> void:
 	BetterTerrain.update_terrain_cell(layer, cell)
 ```
 
-To keep a tileset that you built in code, save it once from a `godot_script` with `ResourceSaver.save(ts, "res://tiles/walls.tres")`. The rules are saved with it.
+To keep a tileset that you built in code, save it once from the game script that builds it, where `BetterTerrain` is known, with `ResourceSaver.save(ts, "res://tiles/walls.tres")`, run the game once, and take the line out. The rules are saved with it.
 
 ## Write a terrain as .tres text
 
@@ -100,7 +100,7 @@ metadata/_better_terrain = {
 ## Verify in WASD Engine
 
 - Run the game with `godot_run`, then read cells with `godot_eval`: `root.get_node("BetterTerrain").get_cell(scene.get_node("Ground"), Vector2i(2, 0))` and `scene.get_node("Ground").get_cell_atlas_coords(Vector2i(2, 0))`. Look for seams with `godot_screenshot`.
-- Only game scripts know the global name `BetterTerrain`. In a `godot_eval` expression it fails with "Invalid named index", and in a `godot_script` (SceneTree script) it fails with "Identifier not found". In both, use `root.get_node("BetterTerrain")`; the autoload is present.
+- Game scripts and `godot_eval` expressions in the running game know the global name `BetterTerrain`. A `godot_script` (SceneTree script) does not: there it fails with "Identifier not found", so use `root.get_node("BetterTerrain")`.
 
 ## Pitfalls (seen on Godot 4.7.2)
 

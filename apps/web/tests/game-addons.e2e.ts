@@ -198,7 +198,7 @@ it('tells the model the catalog and lists an add-on guide only after an installa
   expect(catalogs(adapter.requests[2] as GenerateOptions).at(-1)).toContain('test-camera')
   // The system prompt lists the catalog from the first request on, and the installation asked the user nothing.
   const prompt = systemPrompt(adapter.requests[0] as GenerateOptions)
-  expect(prompt).toContain('# Game add-ons\n\ngame_addons installs tested third-party add-ons into the game project')
+  expect(prompt).toContain('# Game add-ons\n\ngame_addons installs tested add-ons, WASD Engine\'s own and third-party ones, into the game project')
   expect(prompt).toContain('\nCamera and game feel (camera)\n- test-camera: cameras that follow and frame targets')
   expect(questions).toEqual([])
   const skillResult = (adapter.requests[3] as GenerateOptions).messages.filter(message => message.role === 'tool').at(-1)?.content

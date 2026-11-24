@@ -15,7 +15,12 @@
     "meadow",
     "multimesh",
     "environment",
-    "3d"
+    "3d",
+    "flowers",
+    "plants",
+    "vegetation",
+    "reeds",
+    "wheat"
   ],
   "stages": [
     "content",

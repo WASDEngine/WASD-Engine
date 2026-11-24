@@ -7,7 +7,7 @@
   "cue": "ribbon trails: sword swings, tracers, speed streaks",
   "summary": "Ribbon trails and lines built as meshes: a TrailRenderer leaves a fading ribbon behind whatever moves, and a LineRenderer draws a ribbon through points set from code.",
   "useWhen": "Motion should leave a mark: sword and claw swings, bullet tracers, missile smoke, speed streaks behind cars and dashes, magic ribbons, lightning, lasers, and ropes drawn as ribbons. Particle trails draw nothing in Web builds; these do.",
-  "avoidWhen": "A puff of particles or a stretched sprite is enough, or the game is 2D, where Line2D does this.",
+  "avoidWhen": "A burst, such as a hit, a blast, or sparks, which wasd-fx plays by name; a stretched sprite is enough; or the game is 2D, where Line2D does this.",
   "tags": [
     "trail",
     "ribbon",
@@ -16,7 +16,10 @@
     "sword",
     "tracer",
     "streak",
-    "3d"
+    "3d",
+    "laser",
+    "slash",
+    "bullet"
   ],
   "stages": [
     "polish",

@@ -4,10 +4,10 @@
   "host": "godot",
   "version": "1.0.0",
   "category": "rendering",
-  "cue": "marks without textures: bullet holes, scorch, footprints",
+  "cue": "marks: bullet holes, scorch, footprints, blob shadows",
   "summary": "Marks that draw in Web builds, where Decal nodes do not: bullet holes, scorch marks, splats, cracks, and footprints drawn in code with no texture, a footprint trail, and a soft blob shadow.",
   "useWhen": "Shots, explosions, spills, impacts, or steps should leave marks on floors and walls, a character should leave footprints or needs footstep timing, or a character, pickup, or flying enemy needs a round shadow that shows where it is over the ground.",
-  "avoidWhen": "The mark must wrap around curved or uneven geometry, which only a Decal node on the Forward+ or Mobile renderer does, or the sun's real shadow is enough.",
+  "avoidWhen": "The mark must wrap around curved or uneven geometry, which only a Decal node on the Forward+ or Mobile renderer does, or the sun's real shadow is enough. The burst at the hit, such as sparks or dust, is wasd-fx's.",
   "tags": [
     "decal",
     "bullet-hole",

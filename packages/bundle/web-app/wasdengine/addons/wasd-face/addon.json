@@ -22,7 +22,14 @@
     "blend-shapes",
     "npc",
     "cutscene",
-    "3d"
+    "3d",
+    "talking",
+    "speaking",
+    "speech",
+    "lipsync",
+    "emotion",
+    "smile",
+    "gaze"
   ],
   "stages": [
     "content",

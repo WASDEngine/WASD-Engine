@@ -2,7 +2,8 @@ extends Node3D
 ## WASD Light smoke test (render run on the Compatibility renderer, the one every Web build uses): a halo glows
 ## round its lamp and hides behind a wall; a shaft brightens the air along a spotlight; a fog bank veils what
 ## stands in it by how much fog lies before it and nothing outside it; dust shows; a flicker moves its light and the
-## halo with it; and a shadow card throws shade that is part light, part dark.
+## halo with it; a shadow card throws shade that is part light, part dark; and stood upright it is striped, as blinds
+## and a grating are.
 
 const ID := "wasd-light"
 
@@ -230,5 +231,31 @@ func _run() -> void:
 	for kind: int in WasdGobo3D.Kind.size():
 		card.kind = kind as WasdGobo3D.Kind
 		await get_tree().process_frame
+
+	# 7. Stood upright, as blinds at a window, a BARS card is striped across its height, and a GRID card across its
+	# width too: drawn before a white wall, a line across the stripes meets both the card and the wall.
+	sun.queue_free()
+	var backdrop := _box(Vector3(14, 9, 0.2), Vector3(0, 2, 0), Color(1, 1, 1))
+	(backdrop.mesh.material as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	card.size = Vector2(6, 6)
+	card.pattern_size = 1.0
+	card.rotation_degrees = Vector3(90, 0, 0)
+	card.position = Vector3(0, 2, 4)
+	card.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	for check: Array in [[WasdGobo3D.Kind.BARS, false], [WasdGobo3D.Kind.GRID, true]]:
+		card.kind = check[0] as WasdGobo3D.Kind
+		var across: bool = check[1]
+		var upright := await _frame("gobo_upright_%d.png" % [card.kind], 4)
+		var shut := 0
+		var open := 0
+		for step: int in 41:
+			var along := -2.4 + step * 0.12
+			var luma := _at(upright, Vector3(along, 2.37, 4.0) if across else Vector3(0.37, 2.0 + along, 4.0), 1)
+			if luma < 0.3:
+				shut += 1
+			elif luma > 0.7:
+				open += 1
+		if shut < 6 or open < 6:
+			return _fail("an upright %s card shows %d covered and %d open samples along a line %s it" % [WasdGobo3D.Kind.keys()[card.kind], shut, open, "across" if across else "up"])
 	print("SMOKE_PASS ", ID)
 	get_tree().quit(0)

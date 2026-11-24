@@ -13,7 +13,7 @@ It complements `universal-animation-library`, which has idle, walk, run, crouch,
 
 ## 1. Retarget each model once
 
-The model is a `.glb`, `.gltf`, or `.fbx` file in the project with a humanoid skeleton: an MPFB human, a Rigify game skeleton (see the rigify guide), a Mixamo download, or a Quaternius character. Once the project has imported it, call `godot_script` with `script: "res://addons/universal_animation_library_2/retarget.gd"` and `args: ["res://characters/hero.glb"]`; several models may follow. A model retargeted with the other library's script is ready already. It prints one line per model:
+The model is a `.glb`, `.gltf`, or `.fbx` file in the project with a humanoid skeleton: an MPFB human, a Rigify game skeleton (`rigify`'s guide), a Mixamo download, or a Quaternius character. Once the project has imported it, call `godot_script` with `script: "res://addons/universal_animation_library_2/retarget.gd"` and `args: ["res://characters/hero.glb"]`; several models may follow. A model retargeted with the other library's script is ready already. It prints one line per model:
 
 ```
 RETARGETED res://characters/hero.glb: skeleton Human_rig/Skeleton3D, bone map mpfb_game_engine (53 of its 55 bones found), saved as res://characters/hero.bone_map.tres. ...

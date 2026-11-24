@@ -6,13 +6,17 @@
   "category": "gameplay",
   "cue": "branching dialogue from text files, with a balloon",
   "summary": "Branching dialogue written as .dialogue text files with characters, choices, conditions, variables and function calls, plus a ready-made dialogue balloon UI.",
-  "useWhen": "The game has NPC conversations, branching choices, quests, shops or story scenes whose lines depend on game state, or more dialogue than fits comfortably in GDScript arrays.",
+  "useWhen": "NPCs talk with the player in conversations with branching choices, or the game has quests, shops, or story scenes such as a visual novel's, whose lines depend on game state, need localization, or are more than fit comfortably in GDScript arrays.",
   "avoidWhen": "Only a few fixed lines, signs or tooltips; a Label or a short array of strings in GDScript is simpler.",
   "tags": [
     "dialogue",
     "story",
     "npc",
-    "ui"
+    "ui",
+    "conversation",
+    "choices",
+    "branching",
+    "novel"
   ],
   "stages": [
     "content"

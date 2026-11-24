@@ -7,11 +7,14 @@
   "cue": "noise terrain meshes and heightmaps",
   "summary": "Noise-based terrain: grid or sphere meshes from 19 noise types with seeds, height clamps, edge falloff and erosion; bake heights to a heightmap for Godot.",
   "useWhen": "A level needs hills, mountains, canyons, dunes or a small planet generated from noise, as a terrain mesh (.glb) or a heightmap image.",
-  "avoidWhen": "Flat ground or a hand-shaped blockout: a plane or a few primitives are enough.",
+  "avoidWhen": "Flat ground or a hand-shaped blockout: a plane or a few primitives are enough. An endless world to roam, which lite-terrain builds in the game, in Web builds too.",
   "tags": [
     "terrain",
     "procedural",
-    "3d"
+    "3d",
+    "mountains",
+    "island",
+    "planet"
   ],
   "stages": [
     "prototype",

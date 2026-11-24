@@ -42,7 +42,7 @@ The title is the project's name (`application/config/name`), the corner label it
 
 3. Pause: in the game's scene, a plain `Node` with the script `base/nodes/utilities/pause_menu_controller.gd` and `pause_menu_packed` set to `examples/scenes/windows/pause_menu.tscn`. `ui_cancel` (Escape, or the gamepad's Start once the game adds it to the action) opens the menu and pauses the tree; closing it resumes. The menu offers close, Restart, Options, Main Menu, and Exit. Nodes that must keep running while paused need `process_mode = PROCESS_MODE_ALWAYS`.
 
-4. Credits: `examples/scenes/credits/credits_label.tscn` is the text all credits screens show, a `RichTextLabel` with BBCode. WASD Engine replaced the add-on's placeholder text with a short neutral one; write the game's credits into its `text` in a copy, or from code, with the licenses and credits of every asset and add-on the game uses (`THIRD_PARTY_NOTICES.md` lists them). `examples/scenes/end_credits/end_credits.tscn` scrolls them after the ending and then returns to the main menu; change to it with `get_tree().change_scene_to_file()` when the game is won.
+4. Credits: `examples/scenes/credits/credits_label.tscn` is the text all credits screens show, a `RichTextLabel` with BBCode. WASD Engine replaced the add-on's placeholder text with a short neutral one; write the game's credits into the `text` of that file, the one file of the add-on's folder that is the game's to change, or point its `attribution_file_path` at a Markdown file and set `auto_update = true`, with the licenses and credits of every asset and add-on the game uses (`THIRD_PARTY_NOTICES.md` lists them). `examples/scenes/end_credits/end_credits.tscn` scrolls them after the ending and then returns to the main menu; change to it with `get_tree().change_scene_to_file()` when the game is won, or with `WasdLoader.change_scene()` in a game that has `wasd-loading`.
 
 5. Opening: `examples/scenes/opening/opening.tscn` fades through its `images` (the Godot logo by default; put the game's or studio's logo there) and then loads the main menu. Make it `run/main_scene` to use it.
 
@@ -56,7 +56,7 @@ The title is the project's name (`application/config/name`), the corner label it
 
 ## Make it the game's own
 
-The screens use Godot's default gray theme until the game gives them one: set a `Theme` resource with the game's font, colors, and button styles as `gui/theme/custom` in `project.godot`, and it restyles every screen at once. Add a background picture or the game's first level behind the main menu, and music. Do this before judging the menus by a screenshot.
+The screens use Godot's default gray theme until the game gives them one: set a `Theme` resource with the game's font, colors, and button styles as `gui/theme/custom` in `project.godot`, and it restyles every screen at once. With `wasd-ui`, set its `WasdUi.look` instead and no `gui/theme/custom`, which would override that look. Add a background picture or the game's first level behind the main menu, and music. Do this before judging the menus by a screenshot.
 
 To change a screen's layout or behavior, inherit it as above or copy its `.tscn` and `.gd` into the game's folders; keep the add-on's folder as installed.
 

@@ -107,7 +107,7 @@ func _physics_process(delta: float) -> void:
 	car.global_position = to
 ```
 
-At a crossing the agent goes straight on. `agent.change_lane(1)` moves a lane to the right (-1 left), and `agent.cars_in_lane(RoadLaneAgent.LaneChangeDir.CURRENT)` counts the agents ahead in its lane, to brake behind them. Lanes are also plain `Path3D` nodes, in the group `road_lanes`, for a path follower of your own.
+At a crossing the agent goes straight on. `agent.change_lane(1)` moves a lane to the right (-1 left), and `agent.cars_in_lane(RoadLaneAgent.LaneChangeDir.CURRENT)` counts every car registered in its lane, its own included (`RIGHT` and `LEFT` the next lanes', -1 where there is none), to choose a lane; to brake behind a car, measure the distance to the others in `agent.current_lane.get_vehicles()` or cast a ray ahead. Lanes are also plain `Path3D` nodes, in the group `road_lanes`, for a path follower of your own.
 
 ## Pitfalls
 

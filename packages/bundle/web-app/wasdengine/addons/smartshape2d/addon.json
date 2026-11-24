@@ -7,7 +7,7 @@
   "cue": "textured 2D terrain from a list of points",
   "summary": "Textured 2D terrain from a list of points: a tiled fill, edge textures chosen by edge direction, corners and tapers, and a generated collision polygon.",
   "useWhen": "A 2D game needs organic ground, hills, floating platforms, cliffs or walls with textured edges and fill, shaped by points in code or scene text instead of a tile grid.",
-  "avoidWhen": "Levels are tile-based, or a plain Polygon2D or Line2D with a texture looks good enough.",
+  "avoidWhen": "Levels are tile-based, which better-terrain autotiles, or a plain Polygon2D or Line2D with a texture looks good enough.",
   "tags": [
     "2d",
     "terrain",

@@ -1901,7 +1901,7 @@ export type Config = LocalConfig
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `skills` · `typert`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/gamedev/game-addons/src/index.ts:48`](../packages/gamedev/game-addons/src/index.ts)
+- `source`: [`packages/gamedev/game-addons/src/index.ts:49`](../packages/gamedev/game-addons/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -1912,6 +1912,12 @@ export interface Config {
   dataRoot: string
   /** Absolute folder of the Blender add-on store, which the Blender plugin's `addonStore` names too. */
   blenderStore: string
+  /**
+   * Absolute paths of the `SKILL.md` files of guides that go with the add-ons without being one's, such as the order in
+   * which a 3D game's look is built with them: action guide shows each by the name in its frontmatter, and a search
+   * without words and the MCP server's instructions list each with its description.
+   */
+  guides: string[]
   /** Time limit of one archive download, including its body. */
   downloadTimeoutMs: number
   /**

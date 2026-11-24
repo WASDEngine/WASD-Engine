@@ -23,7 +23,7 @@ afterEach(async () => {
 const WHAT = 'graphics_review sends an image to a specialized graphics expert reviewer model, which critiques it as a game art director and '
   + 'technical artist would and gives notes on how to make it look better, naming the WASD Engine tools and add-ons to consider.'
 const WHEN = 'Use it only for graphics you make yourself, such as a model, texture, sprite, animation, UI, lighting, effect, or level that '
-  + 'you build, draw, or generate, and never for assets you download, such as from Poly Haven or the web, or for work that only adds them '
+  + 'you build, draw, or generate, and never for assets you download, such as from Poly Haven, ambientCG, or the web, or for work that only adds them '
   + 'to the game. Review each piece of graphics work at least twice and at most four times: capture the result, pass it to graphics_review, '
   + 'act on the review, and repeat with a new capture until that work has had four reviews, passing previous with what you changed and '
   + 'which notes you left and why. When the second or third review has nothing useful for that work, such as notes that repeat the last '
@@ -69,7 +69,7 @@ describe('the graphics review in the agents\' instructions', () => {
     for (const wording of [SESSION_WORDING, MCP_WORDING]) {
       const tool = graphicsReviewToolDefinition(HOST, wording)
       expect(tool.description).toContain('Use it only for graphics you build, draw, or generate, never '
-        + 'for assets you download, such as from Poly Haven or the web, or for work that only adds them to the game. Call it at least twice and '
+        + 'for assets you download, such as from Poly Haven, ambientCG, or the web, or for work that only adds them to the game. Call it at least twice and '
         + 'at most four times for each piece of graphics work, each time with a new image of the result: after the work, then after acting on '
         + 'each review, up to four reviews, passing previous with what you changed and which notes you left; when the second or third review '
         + 'has nothing useful for that work, such as notes that repeat the last review\'s or ask for what you cannot change, you may stop '

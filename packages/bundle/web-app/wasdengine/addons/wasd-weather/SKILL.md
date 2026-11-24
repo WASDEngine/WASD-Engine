@@ -40,7 +40,7 @@ weather.weather = "rain"     # comes over weather.change_seconds (8)
 - `weather.wetness` and `weather.snow_cover` run from 0 to 1. Rain and snow raise them over `settle_seconds` (40 of the heaviest), and they dry and melt `clear_slowness` (3) times slower. Set them to begin soaked or snowed in: `weather.snow_cover = 1.0`.
 - Wet: everything darkens and shines. From a wetness of about 0.3, puddles stand on level ground, a third of it when soaked; they mirror the sky and the lamps, and rain ruffles them.
 - Snow: on what faces up, first in patches, then closed; walls stay bare.
-- Left bare: see-through materials, the nodes of other WASD packs (water, effects, light, marks), and every node in the group `wasd_weather_bare` with all under it. `weather.uncover(root)` takes the cover off.
+- Left bare: see-through materials, also shaders that write ALPHA, such as `wasd-materials`' cut-outs and glass, the nodes of other WASD packs (water, effects, light, marks), and every node in the group `wasd_weather_bare` with all under it. `weather.uncover(root)` takes the cover off.
 - With `lite-terrain` and `simple-grass-textured` the snow buries the grass by itself. A GridMap, and a mesh whose own shader moves its vertices, cannot take the cover: tint or swap those from `weather.snow_cover` in your own code.
 
 ## Rain on level ground

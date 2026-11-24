@@ -4,13 +4,16 @@
   "host": "godot",
   "version": "6.2.3",
   "category": "testing",
-  "cue": "unit tests with mocks and a scene runner",
+  "cue": "unit tests with mocks, spies, and simulated input",
   "summary": "Unit testing: test suites that extend GdUnitTestSuite, with fluent asserts, signal asserts, a scene runner, mocks and spies, run headless from the command line.",
   "useWhen": "The game has rules or systems worth checking automatically, including scenes driven frame by frame or with simulated input actions, and you want tests that run headless with godot_script after each change.",
-  "avoidWhen": "A one-off check is enough: print the values in a game run or read them with godot_eval instead.",
+  "avoidWhen": "A one-off check is enough: print the values in a game run or read them with godot_eval instead. Plain logic tests that should run with no setup suit gut, which runs straight from gut_cmdln.gd; this one needs a runner script written once.",
   "tags": [
     "testing",
-    "tools"
+    "tools",
+    "mock",
+    "spy",
+    "assert"
   ],
   "stages": [
     "prototype",

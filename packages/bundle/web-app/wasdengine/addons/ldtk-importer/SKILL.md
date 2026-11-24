@@ -74,7 +74,7 @@ The importer keeps an existing `tilesets/*.res` and only adds missing atlas sour
 
 1. `godot_run` imports the file. Its result lists the importer's `ERROR:`/`WARNING:` lines, such as `Cannot access source texture: ...`, `TileSetAtlasSource missing`, or `Detected null tilemap ...`; progress lines such as `[LDTK] Start Import` are not kept. The first import of a new `.ldtk`, and the game run right after it, warn `invalid UID ... using text path instead` for the generated files; this is harmless and stops on the next run.
 2. List the folder of the `.ldtk`: `tilesets/` and `levels/` must be there.
-3. With the world in the running scene, look at `godot_scene_tree`, and check with `godot_eval`, for example `scene.get_node("World/Level_0/Ground").get_used_cells().size()` or `scene.get_node("World/Level_0/Entities").entities.size()`. `load()` is not available in `godot_eval` expressions.
+3. With the world in the running scene, look at `godot_scene_tree`, and check with `godot_eval`, for example `scene.get_node("World/Level_0/Ground").get_used_cells().size()` or `scene.get_node("World/Level_0/Entities").entities.size()`. To `load()` a resource there, give `godot_eval` `code` instead of an expression.
 4. Without a scene: after a `godot_run` has imported the file, run a SceneTree script with `godot_script` that instantiates the world and prints what you need, then read its output.
 
 ## Pitfalls

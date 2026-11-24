@@ -97,6 +97,10 @@ _points = SubResource("Points")
 shape_material = ExtResource("4_mat")
 collision_update_mode = 1
 collision_polygon_node_path = NodePath("../Body/Collision")
+
+[node name="Body" type="StaticBody2D" parent="."]
+
+[node name="Collision" type="CollisionPolygon2D" parent="Body"]
 ```
 
 The material as `res://ground_material.tres`:

@@ -6,8 +6,8 @@
   "category": "characters",
   "cue": "third-person character: run, jump, stairs, clips, camera",
   "summary": "A third-person character in one node: camera-relative movement, a forgiving jump, stairs taken in stride, feet placed on steps and slopes, animations paced so feet do not slide, and an orbit camera.",
-  "useWhen": "The player, an enemy, or a companion is a character on foot in a 3D game: a third-person adventure, an action or exploration game, a platformer with a humanoid. With universal-animation-library a retargeted human walks, runs, and jumps with no animation code.",
-  "avoidWhen": "A first-person game, which starter-kit-fps starts, a vehicle, or a 2D game; or a character that moves on a grid or by clicks, which a few lines do.",
+  "useWhen": "The player, an enemy, or a companion is a character on foot in a 3D game: a third-person adventure or action game, a platformer whose hero is a humanoid, or click to move. With universal-animation-library a human walks, runs, and jumps with no animation code; phantom-camera can take over its camera.",
+  "avoidWhen": "A first-person game: a shooter starts from starter-kit-fps, one without weapons from a hand-built CharacterBody3D or that kit's player without its weapon code. Also a vehicle, a 2D game, a grid mover, a crowd (wasd-crowd), or a platformer on a ready level with coins (starter-kit-3d-platformer).",
   "tags": [
     "character",
     "controller",
@@ -22,7 +22,9 @@
     "orbit-camera",
     "locomotion",
     "npc",
-    "3d"
+    "3d",
+    "walk",
+    "click-to-move"
   ],
   "stages": [
     "prototype",

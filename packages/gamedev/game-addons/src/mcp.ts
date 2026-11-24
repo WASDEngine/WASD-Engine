@@ -1,10 +1,11 @@
 /**
  * The `game_addons` tool for agents connected through WASD Engine's MCP server: the Session's own definition with
  * projects named by absolute path, a description that asks for the catalog's index before a game is planned, and the
- * add-on judgment in the server's instructions, whose overview says what the add-ons add. Connected agents have no WASD Engine
- * skills, so they read an add-on's guide with the `guide` action, as the install and list results say. They decide
- * when to install an add-on as the Session's agent does; WASD Engine asks nobody, and their own harness applies its own
- * approval rules.
+ * add-on judgment in the server's instructions, whose overview says what the add-ons add. Connected agents have no WASD
+ * Engine skills, so they read an add-on's guide, and the guides that go with the add-ons, such as `game-look`, with the
+ * `guide` action, as the instructions and the install and list results say, with the names this server gives the
+ * Blender, GIMP, and SuperCollider tools. They decide when to install an add-on as the Session's agent does; WASD Engine
+ * asks nobody, and their own harness applies its own approval rules.
  * @module @deepseek-ai/dsh-game-addons/src/mcp
  */
 import { isAbsolute } from 'node:path'
@@ -15,11 +16,18 @@ import { gameAddonToolDefinition, type GameAddonToolHost, type GameAddonToolWord
 /** Provider id; it prefixes the tool name. */
 export const MCP_PROVIDER_ID = 'game'
 
+/**
+ * A Session's name of a Blender, GIMP, or SuperCollider tool, which reaches it from the MCP server `wasd_<app>` of the
+ * app's plugin as `mcp__wasd_<app>__<tool>`; this server offers the same tool as `<app>_<tool>`.
+ */
+const SESSION_APP_TOOL = /\bmcp__wasd_(blender|gimp|supercollider)__(?=[A-Za-z0-9])/gu
+
 /** Wording for connected agents, which name projects by absolute path and read guides with the guide action. */
 export const MCP_WORDING: GameAddonToolWording = {
   project: 'Absolute path of the folder that holds project.godot. Required for install, remove, and list; with search and guide it adds whether the project has each add-on.',
   installedGuide: id => `Read its guide with action guide and id ${id} before using the add-on.`,
   listedGuides: 'read each one\'s guide with action guide',
+  toolNames: text => text.replace(SESSION_APP_TOOL, '$1_'),
 }
 
 /**
@@ -61,7 +69,7 @@ export function gameAddonMcpProvider(host: GameAddonToolHost): GameMcpProvider {
     id: MCP_PROVIDER_ID,
     title: 'Game add-ons',
     description: MCP_DESCRIPTION,
-    instructions: mcpInstructions(),
+    instructions: mcpInstructions([...host.guides.values()]),
     tools: () => [tool],
     status: () => Promise.resolve({ state: 'ready' }),
   }

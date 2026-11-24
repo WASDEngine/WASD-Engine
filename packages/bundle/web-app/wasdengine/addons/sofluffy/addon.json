@@ -7,17 +7,18 @@
   "cue": "fur on any mesh: animals, mascots, moss, rugs; it bounces",
   "summary": "Shell fur on any mesh: a Fur node grows strands with length, density, curls, a color gradient along each strand, and springy physics that makes the fur swing when its owner moves.",
   "useWhen": "A hero creature, pet, mascot, or monster should look furry from near, or a rug, moss, or a pom-pom should be soft: one or two such things on screen, where their fur is what the player looks at.",
-  "avoidWhen": "Many furry things at once or far from the camera, where a fur texture reads the same: every shell draws the mesh again, 16 to 48 times.",
+  "avoidWhen": "Many furry things at once or far from the camera, where a fur texture reads the same: every shell draws the mesh again, 16 to 48 times. Human hair is not fur: it comes from mpfb's hair with wasd-materials' hair shader.",
   "tags": [
     "fur",
-    "hair",
     "shell",
     "creature",
     "animal",
     "fluffy",
     "moss",
     "shader",
-    "3d"
+    "3d",
+    "wool",
+    "furry"
   ],
   "stages": [
     "polish"

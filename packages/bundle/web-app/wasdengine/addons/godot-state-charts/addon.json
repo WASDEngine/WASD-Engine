@@ -6,13 +6,15 @@
   "category": "gameplay",
   "cue": "state charts built from nodes",
   "summary": "Hierarchical state machines built from nodes: compound, parallel and history states, event and timed transitions with guards, and enter/exit/process signals.",
-  "useWhen": "A player, enemy, menu or game flow has many modes with nested or parallel sub-states (grounded/airborne, armed/unarmed, pause) or needs delayed and guarded transitions that a flat enum state machine handles badly.",
-  "avoidWhen": "Two or three states with simple switches; an enum and a match statement in the script are enough.",
+  "useWhen": "A player, enemy, menu or game flow has many modes with nested or parallel sub-states (grounded/airborne, armed/unarmed, pause) or needs delayed and guarded transitions that a flat enum state machine handles badly. Its state can be saved and restored.",
+  "avoidWhen": "Two or three states with simple switches; an enum and a match statement in the script are enough. An NPC that picks among actions by priority, re-checked every tick, suits beehave better.",
   "tags": [
     "state",
     "ai",
     "character",
-    "logic"
+    "logic",
+    "fsm",
+    "state-machine"
   ],
   "stages": [
     "prototype",

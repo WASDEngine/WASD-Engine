@@ -123,7 +123,7 @@ func reseed(scatter: ProtonScatter, count: int, seed_value: int) -> void:
 - Web exports are single-threaded. Set `dbg_disable_thread = true` on every ProtonScatter node, because the default build starts a Thread.
 - Changing a modifier's property from code does not rebuild by itself: call `rebuild()`. Setting `global_seed` does rebuild.
 - `build_completed` fires one frame after the output appears. Wait for it before counting.
-- Create modifiers place points through the whole box height unless `restrict_height = true`. To put props on uneven ground, add `project_on_geometry.gd`; it only hits physics colliders.
+- Create modifiers place points through the whole box height unless `restrict_height = true`. To put props on uneven ground, add `project_on_geometry.gd`; it only hits physics colliders, and drops the points that miss. On `lite-terrain`, whose colliders exist only near moving bodies, place props by its `terrain_height_at()` instead.
 - `create_inside_random` can create fewer than `amount` points in a thin or curved area, but never more.
 - Do not edit the generated `ScatterOutput` node: every rebuild replaces it.
 - In Web builds `render_mode` 2 (GPU particles) draws nothing: keep 0 or 1. A relax modifier falls back from its compute shader by itself there. The Web export's notes name `scatter.gd` and `relax.gd` for these two paths; with `render_mode` 0 or 1 there is nothing to fix.

@@ -2,6 +2,7 @@
  * The `game_addons` tool as the Session's agent calls it through the real tool runtime and executor, with an approval
  * service under the `ask` policy that records every question: the agent installs and removes add-ons without one.
  */
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent, type Model } from '@deepseek-ai/dsh-agent'
@@ -15,11 +16,11 @@ import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import { afterEach, describe, expect, it } from 'vitest'
-import { loadCatalog } from '../src/catalog.ts'
+import { loadCatalog, loadGuides } from '../src/catalog.ts'
 import { GameAddonManager } from '../src/manager.ts'
 import { MCP_WORDING } from '../src/mcp.ts'
 import { gameAddonToolDefinition, SESSION_WORDING, TOOL_NAME, type GameAddonToolWording } from '../src/tools.ts'
-import { fakeDownloads, scratch, URLS, writeCatalog, writeProject, type Scratch } from './fixtures.ts'
+import { fakeDownloads, guideText, scratch, URLS, writeCatalog, writeProject, type Scratch } from './fixtures.ts'
 
 let dir: Scratch | undefined
 let ctx: Context | undefined
@@ -42,9 +43,18 @@ interface Setup {
   readonly off: Set<string>
 }
 
-async function setup(wording: GameAddonToolWording = SESSION_WORDING): Promise<Setup> {
+/** What a test changes in the catalog folder before it loads, and the guides that go with the add-ons. */
+interface SetupOptions {
+  readonly catalog?: (catalogDir: string) => Promise<void>
+  readonly guides?: (root: string) => Promise<readonly string[]>
+}
+
+async function setup(wording: GameAddonToolWording = SESSION_WORDING, options: SetupOptions = {}): Promise<Setup> {
   dir = await scratch('tools')
-  const catalog = await loadCatalog(await writeCatalog(dir.root))
+  const catalogDir = await writeCatalog(dir.root)
+  await options.catalog?.(catalogDir)
+  const catalog = await loadCatalog(catalogDir)
+  const guides = await loadGuides(await options.guides?.(dir.root) ?? [], catalog)
   const project = await writeProject(join(dir.root, 'work', 'game'))
   const downloads = fakeDownloads()
   const off = new Set<string>()
@@ -76,6 +86,7 @@ async function setup(wording: GameAddonToolWording = SESSION_WORDING): Promise<S
   } as never)
   ctx.tools.register(gameAddonToolDefinition({
     manager,
+    guides,
     project: async (requested) => {
       if (requested === undefined || requested === 'game') return project
       throw new Error(`No project.godot in ${requested}.`)
@@ -109,8 +120,8 @@ describe('game_addons', () => {
   it('tells the model what kinds of add-ons there are and to install what the game needs without asking the user', async () => {
     await setup()
     expect(ctx!.tools.get(TOOL_NAME)?.description).toBe(
-      'Curated third-party add-ons for the game, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: lighting, sky, weather, terrain, water, grass, scattering, roads, and dungeons; materials, effects, light shafts, mirrors, trails, fur, surface marks, and screen looks; humans, rigs, animations, a character controller, and crowds; cloth, ropes, ragdolls, vehicles, and destruction; AI, state charts, dialogue, and inventories; cameras and shake; menus, HUD, loading screens, and button prompts; 2D levels; starter kits; texture baking; and tests. '
-      + 'action search without words gives the catalog\'s index, a few words on every add-on by category; with an add-on\'s id, a category, or words it says when each match helps, when to skip it, and whether the project has it. guide shows an add-on\'s usage guide; install adds one to the project; remove takes one out of the project; list shows the project\'s add-ons. '
+      'Curated add-ons for the game, WASD Engine\'s own and third-party ones, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: lighting, sky, weather, terrain, water, grass, scattering, roads, and dungeons; materials, effects, light shafts, mirrors, trails, fur, surface marks, and screen looks; humans, rigs, animations, a character controller, and crowds; cloth, ropes, ragdolls, vehicles, and destruction; AI, state charts, dialogue, and inventories; cameras and shake; menus, HUD, loading screens, and button prompts; 2D levels; starter kits; texture baking; and tests. '
+      + 'action search without words gives the catalog\'s index, a few words on every add-on by category; with an add-on\'s id, a category, or words it says when each match helps, when to skip it, and whether the project has it. guide shows an add-on\'s usage guide, or a guide that a search without words lists; install adds one to the project; remove takes one out of the project; list shows the project\'s add-ons. '
       + 'Install an add-on yourself, without asking the user first, when the game needs what it does and Godot or Blender alone would take much longer; then tell the user what you added and its license.',
     )
   })
@@ -170,6 +181,59 @@ describe('game_addons', () => {
     const state = await setup()
     expect(text(await call(state, { action: 'guide', id: 'test-trees' }))).toBe('Test Trees is not installed in this project; install it with action install before following this guide.\n\n# test-trees\n\nUse it like this.')
     expect(text(await call(state, { action: 'guide' }))).toContain('action guide needs id')
+  })
+
+  /** A Blender guide that links a file of its folder and names a Blender tool as a Session lists it. */
+  async function linkingGuide(catalogDir: string): Promise<void> {
+    await writeFile(join(catalogDir, 'test-trees', 'SKILL.md'), guideText('test-trees', '\n\nRun it with `mcp__wasd_blender__execute_python`; the kinds are in [references/kinds.md](references/kinds.md).'))
+    await mkdir(join(catalogDir, 'test-trees', 'references'))
+    await writeFile(join(catalogDir, 'test-trees', 'references', 'kinds.md'), '# Kinds\n\nOak and birch; preview them with `mcp__wasd_blender__render_preview`.\n')
+  }
+
+  it('shows a guide with the files of its folder that it links, which its reader cannot open through the link', async () => {
+    const state = await setup(SESSION_WORDING, { catalog: linkingGuide })
+    expect(text(await call(state, { action: 'guide', id: 'test-trees' }))).toBe([
+      'Test Trees is not installed in this project; install it with action install before following this guide.',
+      '# test-trees',
+      'Use it like this.',
+      'Run it with `mcp__wasd_blender__execute_python`; the kinds are in [references/kinds.md](references/kinds.md).',
+      'The file references/kinds.md, which this guide links:',
+      '# Kinds',
+      'Oak and birch; preview them with `mcp__wasd_blender__render_preview`.',
+    ].join('\n\n'))
+  })
+
+  it('names the Blender tools as a connected agent calls them, in guides and in a Blender add-on\'s installation note', async () => {
+    const state = await setup(MCP_WORDING, { catalog: linkingGuide })
+    const guide = text(await call(state, { action: 'guide', id: 'test-trees' }))
+    expect(guide).toContain('Run it with `blender_execute_python`; the kinds are in [references/kinds.md](references/kinds.md).')
+    expect(guide).toContain('Oak and birch; preview them with `blender_render_preview`.')
+    expect(guide).not.toContain('mcp__')
+    const installed = text(await call(state, { action: 'install', id: 'test-rig' }))
+    expect(installed).toContain('In each Blender Session, run `import wasd_addons; wasd_addons.enable("test-rig")` with blender_execute_python before using Test Rig.')
+    expect(installed).not.toContain('mcp__')
+  })
+
+  /** A guide that goes with the add-ons, naming two of them, linking a file of its folder, and naming a Blender tool. */
+  async function lookGuide(root: string): Promise<readonly string[]> {
+    const folder = join(root, 'guides', 'test-look')
+    await mkdir(join(folder, 'references'), { recursive: true })
+    await writeFile(join(folder, 'SKILL.md'), '---\nname: test-look\ndescription: Make a game look finished. Read it before building its look.\n---\n\n# Look\n\nFrame it with `test-camera` or `other-camera`, check it with `mcp__wasd_blender__render_preview`, and see [references/steps.md](references/steps.md).\n')
+    await writeFile(join(folder, 'references', 'steps.md'), 'Light first.\n')
+    return [join(folder, 'SKILL.md')]
+  }
+
+  it('lists the guides that go with the add-ons after the index, shows one by its name, and names the add-ons in it that the user turned off', async () => {
+    const state = await setup(MCP_WORDING, { guides: lookGuide })
+    expect(text(await call(state, { action: 'search' }))).toMatch(/install it with action install\.\nBefore the work each of these guides is for, read it with action guide and its name as id:\n- test-look: Make a game look finished\. Read it before building its look\.$/u)
+    const look = await call(state, { action: 'guide', id: 'test-look' })
+    expect(look.isError).toBe(false)
+    expect(text(look)).toBe('# Look\n\nFrame it with `test-camera` or `other-camera`, check it with `blender_render_preview`, and see [references/steps.md](references/steps.md).\n\nThe file references/steps.md, which this guide links:\n\nLight first.')
+    state.off.add('test-camera')
+    expect(text(await call(state, { action: 'guide', id: 'test-look' }))).toMatch(/^The user turned off test-camera in WASD Engine's Add-ons dialog, so agents cannot use it: do its steps without it\.\n\n# Look\n/u)
+    state.off.add('other-camera')
+    expect(text(await call(state, { action: 'guide', id: 'test-look' }))).toMatch(/^The user turned off other-camera, test-camera in WASD Engine's Add-ons dialog, so agents cannot use them: do their steps without them\.\n\n/u)
+    expect(state.asked).toEqual([])
   })
 
   it('installs and removes an add-on without asking the user under the ask policy, and asks the model to tell the user', async () => {

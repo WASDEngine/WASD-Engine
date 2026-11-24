@@ -42,9 +42,9 @@ Setting `look` also sets the sun's place and `clouds`; change them after it.
 - `clouds` 0 to 1; `cloud_drift` (1 a light wind, 0 still) and `cloud_heading`.
 - `sun_strength`, `ambient_strength`, `fog_strength`, `exposure`: multiply the look's values; 1 keeps them. Dark shadows: raise `ambient_strength`. Everything too dark or bright: `exposure`.
 - `view_distance`: meters at which the world has faded into the sky. Set it to where the terrain or level ends (and the camera's `far` beyond it), or the world's edge shows as a line against the sky.
-- `look.get_horizon_color()` is the color the far world fades into, and the signal `applied` fires whenever the picture's values change, also at every step of a fade or a running day: hand the color on there to whatever fades by its own means, such as a WASD Light fog bank. `look.get_haze_range()` is where such a fade begins and ends to keep step with the fog; LiteTerrain's guide has the two lines for its ground.
+- `look.get_horizon_color()` is the color the far world fades into, and the signal `applied` fires whenever the picture's values change, also at every step of a fade or a running day: hand the color on there to whatever fades by its own means, such as a WASD Light fog bank. `look.get_haze_range()` is where such a fade begins and ends to keep step with the fog; the guide of `lite-terrain` has the two lines for its ground.
 - `overcast` (0 to 1) clouds any look or hour over: gray sky, weak sun, closed clouds. `added_fog` thickens the fog by a density per meter: 0.005 veils the distance, 0.03 hides everything beyond 80 meters, sky included. The `wasd-weather` add-on sets both, and its wind turns the clouds (`look.set_wind(wind)`).
-- `shadows`, and `quality`: Fast, Balanced (default), Best set edge smoothing (off, 2x, 4x), shadow softness, and how far the sun's shadows reach (40, 80, 140 m; `look.sun.directional_shadow_max_distance` for more). Balanced and Best keep shadows fine within 2 m of the camera, for faces in close-ups. "Leave as set" (3) keeps the project's settings.
+- `shadows`, and `quality`: Fast, Balanced (default), Best set edge smoothing (off, 2x, 4x), shadow softness, and how far the sun's shadows reach (40, 80, 140 m; for more, set `look.sun.directional_shadow_max_distance` after `add_child` and after each change of `quality`). Balanced and Best keep shadows fine within 2 m of the camera, for faces in close-ups. "Leave as set" (3) keeps the project's settings.
 
 ## A day that runs
 
@@ -54,7 +54,7 @@ look.day_minutes = 12.0  # a whole day in 12 minutes; 0 holds the hour
 look.night_changed.connect(func(is_night: bool) -> void: street_lamps.visible = is_night)
 ```
 
-The sun rises at 6 and sets at 18, the moon takes the other half; the looks blend through `day_looks`, pairs of an hour and a look. `day_peak_elevation` and `day_peak_azimuth` place the arc. `look.is_night()` tells which light is up. `clouds` stays as set.
+The sun rises at 6 and sets at 18, the moon takes the other half; the looks blend through `day_looks`, pairs of an hour and a look. `day_peak_elevation` and `day_peak_azimuth` place the arc. `look.is_night()` tells which light is up. `clouds` stays as set. Setting `look` or calling `fade_to()` stops the clock (`hour` -1): set `hour` again to run it.
 
 ## A photographed sky
 

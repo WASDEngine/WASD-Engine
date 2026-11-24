@@ -16,7 +16,11 @@
     "break",
     "debris",
     "physics",
-    "3d"
+    "3d",
+    "destructible",
+    "destroy",
+    "smash",
+    "crumble"
   ],
   "stages": [
     "content",

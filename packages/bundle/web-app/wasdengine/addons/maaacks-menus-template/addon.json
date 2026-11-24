@@ -6,8 +6,8 @@
   "category": "interface",
   "cue": "main menu, options, key rebinding, pause, credits",
   "summary": "The menus every finished game has: a main menu, options for audio, video, and key or gamepad rebinding that are saved, a pause menu, scrolling credits, and an opening screen for logos.",
-  "useWhen": "The game should start from a main menu and offer options, pause, and credits: add it once the game is playable, at the latest before a release, instead of building these screens and saved settings by hand.",
-  "avoidWhen": "The game is a jam-sized toy that starts straight into play and needs no settings, or its menus are part of the world and built from its own art.",
+  "useWhen": "The game should open on a splash of logos and a title screen with a main menu, and offer options with key remapping, pause, and credits: add it once the game is playable, at the latest before a release, instead of building these screens and saved settings by hand.",
+  "avoidWhen": "The game is a jam-sized toy that starts straight into play and needs no settings, or its menus are part of the world and built from its own art. For the look of these screens, add wasd-ui as well: its theme restyles them.",
   "tags": [
     "menu",
     "main-menu",
@@ -18,7 +18,13 @@
     "rebinding",
     "ui",
     "2d",
-    "3d"
+    "3d",
+    "title",
+    "end-credits",
+    "remap",
+    "controls",
+    "binding",
+    "keybinding"
   ],
   "stages": [
     "polish",

@@ -24,7 +24,7 @@ WasdUi.accent = Color(0.9, 0.3, 0.2)          # the game's own color for the but
 WasdUi.font = load("res://fonts/game.ttf")    # a typeface of the game's own: the strongest single change
 ```
 
-The look goes into the engine's default theme, so it reaches every control wherever it stands: under a CanvasLayer, in a popup, in another add-on's menus. A Theme of the game's own, on a control or in the project settings, still comes first; for a single change use `add_theme_color_override()` and its kin on the control.
+The look goes into the engine's default theme, so it reaches every control wherever it stands: under a CanvasLayer, in a popup, in another add-on's menus. A Theme of the game's own, on a control or in the project settings, still comes first, so give `maaacks-menus-template`'s screens, which take this look, no `gui/theme/custom`; for a single change use `add_theme_color_override()` and its kin on the control.
 
 Build menus from containers (a `PanelContainer` with a `VBoxContainer` in it): the look gives them their margins and spacing. Name the parts:
 
@@ -65,7 +65,7 @@ health.emptied.connect(_on_player_died)
 Two more nodes, added like any Control:
 
 ```gdscript
-var crosshair := WasdCrosshair.new()     # shape: DOT, CROSS, RING, CROSS_AND_DOT
+var crosshair := WasdCrosshair.new()     # shape: WasdCrosshair.Shape.DOT, CROSS, RING, CROSS_AND_DOT
 $Hud.add_child(crosshair)
 crosshair.spread = 6.0                   # opens while moving or firing
 crosshair.hit()                          # a hit mark; hit(true) for a kill

@@ -19,8 +19,8 @@ varying vec2 across;
 void vertex() {
 	across = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz;
 	if (abs(MODEL_NORMAL_MATRIX[1].y) < 0.5) {
-		// An upright card: its pattern runs along its own width and height.
-		across = VERTEX.xy * vec2(length(MODEL_MATRIX[0].xyz), length(MODEL_MATRIX[1].xyz));
+		// An upright card: its pattern runs along its own width and height, the plane's x and z.
+		across = VERTEX.xz * vec2(length(MODEL_MATRIX[0].xyz), length(MODEL_MATRIX[2].xyz));
 	}
 }
 

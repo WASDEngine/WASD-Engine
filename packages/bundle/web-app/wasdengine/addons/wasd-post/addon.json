@@ -7,7 +7,7 @@
   "cue": "screen looks in one pass: film, noir, comic, sketch, CRT",
   "summary": "The finished picture's look in one pass over the screen: color grade, vignette, grain, lens fringes, soft glow, ink lines, tilt-shift blur, pixels, scanlines, and sixteen named looks.",
   "useWhen": "The game is playable and its picture should get a mood or a style: a film grade, noir, horror, a faded photograph, a comic, a pencil sketch, an old television, night vision, a dream, or a miniature, the same in Web builds as on desktop, without touching the HUD.",
-  "avoidWhen": "Only brightness, contrast, or saturation need a nudge, which the Environment's adjustments do, or the look needs blur by distance, which no renderer of a Web build gives.",
+  "avoidWhen": "Only brightness, contrast, or saturation need a nudge, which wasd-look's values or the Environment give; ordinary bloom round lamps and screens, which is wasd-look's glow; outlines on the models themselves, which wasd-materials' toon draws; or blur by distance, which no Web build gives.",
   "tags": [
     "post-processing",
     "color-grading",
@@ -27,7 +27,14 @@
     "look",
     "shader",
     "2d",
-    "3d"
+    "3d",
+    "black-and-white",
+    "grayscale",
+    "sepia",
+    "pixelate",
+    "vintage",
+    "horror",
+    "cinematic"
   ],
   "stages": [
     "polish"

@@ -5,7 +5,7 @@ description: WASD Character 1.0.0 is installed in this project. WasdCharacter3D 
 
 # WASD Character 1.0.0
 
-`res://addons/wasd_character/` (CC0, written by WASD Engine; global classes, no plugin to enable). An MPFB human with the Universal Animation Library walked, ran, sprinted, jumped, and climbed stairs under it at 60 fps in a Web build, with no animation code.
+`res://addons/wasd_character/` (CC0, written by WASD Engine; global classes, no plugin to enable). Tested at 60 fps in a Web build with an MPFB human and the Universal Animation Library.
 
 ## A player character
 
@@ -15,7 +15,7 @@ hero.add_child(preload("res://characters/hero.glb").instantiate())    # the mode
 add_child(hero)
 ```
 
-In a scene file: a `CharacterBody3D` with the script `res://addons/wasd_character/character_3d.gd` and the model as its child. When it enters the tree it:
+In a scene file: a `CharacterBody3D` with the script `res://addons/wasd_character/character_3d.gd` and the model as its child: add the model before any other Node3D child, such as a shadow or a prop, or set `model`. When it enters the tree it:
 
 - gets a capsule of `body_size` (1.75 m high, 0.32 m radius) unless it has a collision shape of its own;
 - adds the input actions the project lacks, `move_left`, `move_right`, `move_forward`, `move_back`, `jump`, `sprint`, and `walk`: WASD and the arrow keys, Space, Shift, Ctrl, and on a gamepad the left stick, the bottom button, and the left stick's click. The dictionary `actions` names others;
@@ -28,7 +28,7 @@ Movement is relative to the camera. A light tilt of the stick, or Ctrl, walks; S
 
 With `universal-animation-library` installed and the model retargeted as that guide says, there is nothing to do: the character gives the model that library and plays Idle, Walk, Jog_Fwd, Sprint, Jump_Start, Jump, and Jump_Land. Each clip plays at the pace at which its feet stay planted at the body's speed, between 0.6 and 1.8 times.
 
-A model with clips of its own is searched for names that are, or end in, these, without regard to case; `_Loop` endings count:
+A model with clips of its own is searched for these names after any library prefix such as `moves/`, without regard to case; `_Loop` endings count:
 
 | For | Names |
 |---|---|
@@ -40,7 +40,7 @@ A model with clips of its own is searched for names that are, or end in, these, 
 
 A missing gait uses the nearest one. `hero.clips` holds what was found, to read or to change after `add_child`: `hero.clips["run"] = "moves/Gallop"`. A model without clips moves all the same.
 
-`hero.play_action("Sword_Attack")` plays a clip once, by its name or the end of it, and holds the character in place until it ends; `play_action("Wave", false)` lets it walk meanwhile. It returns false when the model has no such clip.
+`hero.play_action("Sword_Attack")` plays a clip once, by its name with or without its library prefix, and holds the character in place until it ends; `play_action("Wave", false)` lets it walk meanwhile. It returns false when the model has no such clip. The clips of `universal-animation-library-2` play once their library is added: `hero.animation_player.add_animation_library(&"ual2", preload("res://addons/universal_animation_library_2/UAL2_Standard.glb"))`.
 
 ## Settings
 
@@ -58,13 +58,13 @@ A missing gait uses the nearest one. `hero.clips` holds what was found, to read 
 | `model_turn` | 0 | 180 for a model that faces -Z, as Kenney's do |
 | `blend` | 0.2 s | cross-fade between clips |
 
-Signals: `jumped`, and `landed(speed)` with the speed of the fall: dust, a thud, a camera shake, or damage above some 12 m/s. `hero.teleport(place, facing)` puts it somewhere at rest, `hero.face_toward(direction)` turns the model at once, `hero.get_ground_speed()` reads its speed. To knock it back, add to `hero.velocity`.
+Signals: `jumped`, and `landed(speed)` with the speed of the fall, for dust, a thud, or damage. `hero.teleport(place, facing)` puts it somewhere at rest, `hero.face_toward(direction)` turns the model at once, `hero.get_ground_speed()` reads its speed. To knock it back, add to `hero.velocity`.
 
 ## Stairs and feet
 
 Steps, curbs, and door sills of up to `step_height` are walked, up and down, at any gait, with the gait's clip and no fall pose; stairs need no ramp. On a stair's edge a round body has no floor under its middle, so ask `hero.is_grounded()` where a game would ask `is_on_floor()`.
 
-A model with Godot's humanoid bone names, as every model retargeted for the Universal Animation Library has, gets `hero.feet`, a `WasdFootPlacement3D`: on stairs and slopes each foot stands on the ground under it, the hips sink for the lower foot (`sink`, 0.24 m), and the soles lean with the slope (`sole_tilt`, 30 degrees). On level ground nothing changes. Measured on stairs of 18 cm: both ankles 6.5 cm over their steps, as on the flat; without it one foot floats 30 cm. It casts two rays a physics step, so set `foot_placement = false` on the far members of a horde. The node also works by itself as a child of the `Skeleton3D` of any `CharacterBody3D` whose origin is at its feet.
+A model with Godot's humanoid bone names, as every model retargeted for the Universal Animation Library has, gets `hero.feet`, a `WasdFootPlacement3D`: on stairs and slopes each foot stands on the ground under it, the hips sink for the lower foot (`sink`, 0.24 m), and the soles lean with the slope (`sole_tilt`, 30 degrees). It casts two rays a physics step, so set `foot_placement = false` on the far members of a horde.
 
 ## Enemies and companions
 
@@ -82,11 +82,11 @@ func _physics_process(_delta: float) -> void:
 	guard.wish_gait = "run" if to_player.length() > 8.0 else "walk"                               # or "sprint"
 ```
 
-`guard.jump()` jumps and returns whether it could. With a `NavigationAgent3D` child, the direction is toward `agent.get_next_path_position()`.
+`guard.jump()` jumps and returns whether it could. To follow a `NavigationAgent3D`, set `guard.wish_direction = guard.global_position.direction_to(agent.get_next_path_position())` each physics frame.
 
 ## The camera
 
-`hero.camera_rig` is a `WasdOrbitCamera3D`: `distance` (4.5 m), `height` (where it looks, above the target's origin), `shoulder` (0.5 looks over the right shoulder), `pitch_limits`, `mouse_sensitivity`, `stick_speed`, `follow_speed`, `collision_mask` (what it stays in front of), `capture_mouse`. Its `camera` is the `Camera3D`: `hero.camera_rig.camera.fov = 60.0`.
+`hero.camera_rig` is a `WasdOrbitCamera3D`: `distance` (4.5 m), `height` (where it looks, above the target's origin), `shoulder` (0; 0.5 looks over the right shoulder), `pitch_limits`, `mouse_sensitivity`, `stick_speed`, `follow_speed`, `collision_mask` (what it stays in front of), `capture_mouse`. Its `camera` is the `Camera3D`: `hero.camera_rig.camera.fov = 60.0`.
 
 For a camera of the game's own, a fixed one, one that looks down, or `phantom-camera`, set `hero.orbit_camera = false` before `add_child`: movement is then relative to the current camera, and for one that looks straight down, to the top of the screen.
 
@@ -96,7 +96,7 @@ The camera also works alone, for a car or a ball: `var rig := WasdOrbitCamera3D.
 
 - `wasd-decals`: `hero.add_child(WasdBlobShadow3D.new())` and `hero.add_child(WasdFootprints3D.new())`, whose `stepped` signal times footstep sounds.
 - `wasd-materials`: an MPFB human's skin, eyes, and hair, by itself with `wasd-face`.
-- `wasd-fx`: `hero.landed.connect(func(speed: float) -> void: WasdFx.play("dust", hero.global_position))`.
+- `wasd-fx`: `hero.landed.connect(func(speed: float) -> void: WasdFx.play("impact", hero.global_position, {"scale": 0.5}))`.
 - `wasd-face`: a model with a face blinks by itself, and `hero.face` is its `WasdFace3D`: `hero.face.speak($Voice)`.
 
 ## Pitfalls
@@ -104,8 +104,7 @@ The camera also works alone, for a car or a ball: `var rig := WasdOrbitCamera3D.
 - The model must face +Z with its feet at its origin, as Godot's humanoid imports do. A character that runs backward needs `model_turn = 180`.
 - It moves itself: do not call `move_and_slide()` on it or set its position each frame. Set `wish_direction`, or `velocity` for a push.
 - It walks slopes of up to 45 degrees and steps of up to `step_height`. A higher ledge needs a jump; a ladder, code of the game's own.
-- In a Web build the mouse pointer is taken at the first click, as browsers demand.
-- For a first-person game, `starter-kit-fps` is the start.
+- For a first-person shooter, `starter-kit-fps` is the start.
 
 ## Check it
 
