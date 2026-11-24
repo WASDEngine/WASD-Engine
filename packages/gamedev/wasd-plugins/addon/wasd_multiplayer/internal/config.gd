@@ -6,6 +6,10 @@ extends RefCounted
 
 const CONFIG_PATH := "res://wasd_multiplayer.cfg"
 const DEFAULT_ORIGIN := "https://app.wasdengine.com"
+## The hostnames that serve the pages of the WASD website at DEFAULT_ORIGIN; a game's WASD page on any of them signs
+## its player in. They are named one by one rather than as *.wasdengine.com, because the hosts of WASD dedicated
+## servers, under play.wasdengine.com, answer for game creators' server builds.
+const WASD_SITE_ORIGINS := ["https://wasdengine.com", "https://app.wasdengine.com", "https://api.wasdengine.com"]
 const _UUID_PATTERN := "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 
 ## "player_hosted" or "dedicated".
@@ -14,8 +18,13 @@ var mode := "player_hosted"
 var max_players := 8
 ## Where the WASD play API lives, without a trailing slash.
 var api_origin := DEFAULT_ORIGIN
-## The WASD website, which signs players in, without a trailing slash.
+## The WASD website, which signs players in, without a trailing slash. A game played outside a WASD game page opens
+## its sign-in window there.
 var app_origin := DEFAULT_ORIGIN
+## The origins of the WASD website's pages: a page of one of them that frames the game is the game's WASD page, which
+## signs its player in. Unset, it is every hostname of the site at app_origin: WASD_SITE_ORIGINS for WASD's own site,
+## else app_origin alone. app_origin always counts.
+var site_origins := PackedStringArray()
 ## The released game's id (a UUID), or "" before the first release.
 var game_id := ""
 ## The release this build belongs to; 0 for builds that were never released.
@@ -54,9 +63,15 @@ static func origin_of(url: String) -> String:
 	return (url.substr(0, scheme_end + 3) + host).to_lower()
 
 
+## True when [param origin] is one of the WASD website's (site_origins or app_origin).
+func is_site_origin(origin: String) -> bool:
+	var given := origin_of(origin)
+	return given != "" and (site_origins.has(given) or given == origin_of(app_origin))
+
+
 func _load_project_settings() -> void:
-	for key in ["mode", "max_players", "api_origin", "app_origin", "game_id", "version", "count_traffic",
-			"server_fps", "server_idle_fps"]:
+	for key in ["mode", "max_players", "api_origin", "app_origin", "site_origins", "game_id", "version",
+			"count_traffic", "server_fps", "server_idle_fps"]:
 		var setting: String = "wasd_multiplayer/config/" + key
 		if ProjectSettings.has_setting(setting):
 			_set_value(key, ProjectSettings.get_setting(setting))
@@ -104,6 +119,14 @@ func _set_value(key: String, value: Variant) -> void:
 			api_origin = str(value)
 		"app_origin":
 			app_origin = str(value)
+		"site_origins":
+			# A list, or one string of origins that commas or spaces separate.
+			site_origins = PackedStringArray()
+			if value is Array or value is PackedStringArray:
+				for item in value:
+					site_origins.append(str(item))
+			else:
+				site_origins = str(value).replace(",", " ").split(" ", false)
 		"game_id":
 			game_id = str(value).strip_edges().to_lower()
 		"version":
@@ -128,6 +151,18 @@ func _normalize() -> void:
 		api_origin = DEFAULT_ORIGIN
 	if app_origin == "":
 		app_origin = api_origin
+	if site_origins.is_empty():
+		site_origins = PackedStringArray(WASD_SITE_ORIGINS if WASD_SITE_ORIGINS.has(origin_of(app_origin)) else [])
+	var sites := PackedStringArray()
+	for site in site_origins:
+		var origin := origin_of(site.strip_edges())
+		if origin == "":
+			push_warning("WASD Multiplayer: site_origins entry \"%s\" is not an origin, so it is ignored." % site)
+		elif not sites.has(origin):
+			sites.append(origin)
+	if origin_of(app_origin) != "" and not sites.has(origin_of(app_origin)):
+		sites.append(origin_of(app_origin))
+	site_origins = sites
 	if game_id != "" and not is_uuid(game_id):
 		push_warning("WASD Multiplayer: game_id \"%s\" is not a WASD game id, so it is ignored." % game_id)
 		game_id = ""

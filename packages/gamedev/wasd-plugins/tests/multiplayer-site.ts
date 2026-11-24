@@ -2,9 +2,10 @@
  * An in-memory WASD Engine site for the multiplayer specs: the public server sizes, the owner's servers API, server
  * builds, and lobby statistics, as the backend answers them, with every call recorded.
  */
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { unzipSync } from 'fflate'
 
 /** The site's origin. */
@@ -215,6 +216,26 @@ export async function multiplayerProject(options: ProjectOptions = {}): Promise<
     await writeFile(join(dir, 'addons', 'wasd_multiplayer', 'wasd_multiplayer.gd'), 'extends Node\n')
   }
   return dir
+}
+
+/** The WASD Multiplayer add-on this package ships. */
+export const ADDON_SOURCE = fileURLToPath(new URL('../addon/wasd_multiplayer', import.meta.url))
+
+/** The plugin.cfg that add-on 1.2.0 shipped. */
+export const PLUGIN_1_2_0 = '[plugin]\n\nname="WASD Multiplayer"\ndescription="Player-hosted lobbies and WASD dedicated servers, with WASD sign-in for players."\nauthor="WASD Engine"\nversion="1.2.0"\nscript="plugin.gd"\n'
+
+/**
+ * Give a project an older copy of the add-on that WASD Engine shipped every file of: the shipped files under add-on
+ * 1.2.0's plugin.cfg, with the UID file Godot keeps beside the main script.
+ * @param dir - the project.
+ * @returns the project's add-on folder.
+ */
+export async function olderAddon(dir: string): Promise<string> {
+  const addon = join(dir, 'addons', 'wasd_multiplayer')
+  await cp(ADDON_SOURCE, addon, { recursive: true })
+  await writeFile(join(addon, 'plugin.cfg'), PLUGIN_1_2_0)
+  await writeFile(join(addon, 'wasd_multiplayer.gd.uid'), 'uid://bwasdmultiplayer\n')
+  return addon
 }
 
 /** Remove the folders {@link multiplayerProject} made. */

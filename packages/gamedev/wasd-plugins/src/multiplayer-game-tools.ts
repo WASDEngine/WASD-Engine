@@ -12,7 +12,7 @@ import {
   readPlans, releasedGameOf, sizeLine, SLEEP_FALLBACK, STRING, TEST_TIMEOUT_MS, text,
 } from './multiplayer-parts.ts'
 import {
-  ADDON_DIR, hasMultiplayerAddon, MULTIPLAYER_MODES, pluginVersion, readMultiplayerConfig, replaceFolder, withMultiplayerAddon,
+  ADDON_DIR, hasMultiplayerAddon, installMultiplayerAddon, MULTIPLAYER_MODES, pluginVersion, readMultiplayerConfig, withMultiplayerAddon,
   writeMultiplayerConfig,
 } from './multiplayer-project.ts'
 import {
@@ -109,7 +109,7 @@ export function gameTools(host: MultiplayerToolHost, surface: MultiplayerSurface
 
   const setup = defineTool({
     name: 'wasd_multiplayer_setup',
-    description: 'Set the Godot project up for online multiplayer in the mode the user chose: copy the WASD Multiplayer add-on into addons/wasd_multiplayer, turn on its WasdMultiplayer autoload and editor plugin, and write res://wasd_multiplayer.cfg. The add-on handles WASD sign-in, lobbies, connections, and dedicated server joins; the game uses Godot\'s own multiplayer API (@rpc, MultiplayerSpawner, MultiplayerSynchronizer). Calling it again updates the add-on or switches the mode.',
+    description: 'Set the Godot project up for online multiplayer in the mode the user chose: copy the WASD Multiplayer add-on into addons/wasd_multiplayer, turn on its WasdMultiplayer autoload and editor plugin, and write res://wasd_multiplayer.cfg. The add-on handles WASD sign-in, lobbies, connections, and dedicated server joins; the game uses Godot\'s own multiplayer API (@rpc, MultiplayerSpawner, MultiplayerSynchronizer). Calling it again updates the add-on, keeping the example files the game changed, or switches the mode.',
     parameters: {
       project: PROJECT,
       mode: { type: 'string', enum: MULTIPLAYER_MODES, required: true, description: 'player_hosted (free, a player hosts) or dedicated (a server WASD Engine runs).' },
@@ -125,12 +125,21 @@ export function gameTools(host: MultiplayerToolHost, surface: MultiplayerSurface
           max_players: INTEGER,
           addon_version: { type: 'string', description: 'Version the add-on\'s plugin.cfg names.' },
           addon_files: INTEGER,
+          addon_kept: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Files in the add-on folder that the game changed or added, such as an example it adapted, which the setup left as they were.',
+          },
           project_changed: BOOLEAN,
           next_steps: { type: 'array', required: true, items: { type: 'string' } },
           for_user: FOR_USER,
         },
       },
-      render: (_args, value) => text(value, ['Next steps:', ...value.next_steps.map(step => `- ${step}`)]),
+      render: (_args, value) => text(value, [
+        ...value.addon_kept === undefined ? [] : [`The add-on files the game changed or added stayed as they were: ${value.addon_kept.join(', ')}.`],
+        'Next steps:',
+        ...value.next_steps.map(step => `- ${step}`),
+      ]),
     },
     async execute(args, exec) {
       const projectDir = await host.project(args.project, exec)
@@ -141,7 +150,7 @@ export function gameTools(host: MultiplayerToolHost, surface: MultiplayerSurface
       if (!await isFile(join(host.addonSource, 'wasd_multiplayer.gd'))) throw new MultiplayerError('This WASD Engine has no WASD Multiplayer add-on to install; update WASD Engine.')
       const exclusive = host.exclusive ?? (<T>(_project: string, _signal: AbortSignal, change: () => Promise<T>) => change())
       return await exclusive(projectDir, exec.signal, async () => {
-        const files = await replaceFolder(host.addonSource, join(projectDir, ADDON_DIR))
+        const installed = await installMultiplayerAddon(projectDir, host.addonSource)
         const projectFile = join(projectDir, 'project.godot')
         const before = await readFile(projectFile, 'utf8')
         const after = withMultiplayerAddon(before)
@@ -190,7 +199,8 @@ export function gameTools(host: MultiplayerToolHost, surface: MultiplayerSurface
           mode,
           max_players: maxPlayers,
           ...version === undefined ? {} : { addon_version: version },
-          addon_files: files.length,
+          addon_files: installed.written.length,
+          ...installed.kept.length === 0 ? {} : { addon_kept: [...installed.kept] },
           project_changed: after !== before,
           next_steps: nextSteps,
           for_user: mode === 'player_hosted'

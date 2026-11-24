@@ -5,8 +5,10 @@
 # high-level multiplayer: @rpc, MultiplayerSpawner, and MultiplayerSynchronizer, with peer 1 as the authority.
 #
 # Coroutines (sign_in, host_lobby, join_lobby, list_lobbies, join_server, list_servers, serve) resolve to
-# {"ok": true, ...} or {"ok": false, "error": <code>, "message": <text>}; await them. Games should react to
-# player_joined and player_left, which report only players WASD signed in, rather than multiplayer.peer_connected.
+# {"ok": true, ...} or {"ok": false, "error": <code>, "message": <text>}; await them. A failure's message is written for
+# players, so a game can show it; the warning the add-on logs with it may add advice for the game's developer. Games
+# should react to player_joined and player_left, which report only players WASD signed in, rather than
+# multiplayer.peer_connected.
 #
 # Test mode (environment WASD_MULTIPLAYER_TEST = host, client, or server) runs over a loopback WebSocket on
 # WASD_TEST_PORT without WASD services, starts itself, prints WASD_TEST_EVENT lines as it goes, and after
@@ -40,7 +42,7 @@ signal server_waking()
 ## In a dedicated server: save now, the server quits on the next frames.
 signal server_stopping()
 
-const ADDON_VERSION := "1.2.0"
+const ADDON_VERSION := "1.3.0"
 const Tokens := preload("internal/tokens.gd")
 const Config := preload("internal/config.gd")
 const Api := preload("internal/api.gd")
@@ -81,6 +83,11 @@ const _REJOIN_DELAYS: Array[float] = [2.0, 4.0, 8.0, 15.0, 30.0]
 # (4401), a refused origin, host, or removed account (4403), a closed lobby (4404), and a locked or full one (4409).
 const _SIGNAL_REFUSALS: Array[int] = [4000, 4401, 4403, 4404, 4409]
 const _BUILD_PATH := "/games/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/versions/([0-9]+)/"
+# How long a sign-in waits for a framing page to answer its hello.
+const _HELLO_SECONDS := 1.5
+# Advice for the game's developer when the sign-in window can't open.
+const _PRESS_ADVICE := "Call sign_in(), host_lobby(), join_lobby(), or join_server() from a button press: browsers " \
+		+ "open the WASD Engine sign-in window only right after a click or key press."
 
 enum _Role { NONE, HOST, JOINER, SERVER, CLIENT }
 
@@ -100,6 +107,9 @@ var _me := {}
 var _game_id := ""
 var _version := 0
 var _parent_wasd := false
+# The origin of the WASD game page that frames the game, once it answered: the site's pages answer on each of its
+# hostnames, and messages to the page go to the one it is on.
+var _page_origin := ""
 var _token_reply := {}
 var _refresh_asked_at := -1.0e9
 var _renewing := false
@@ -166,7 +176,7 @@ func _ready() -> void:
 	if _web.available:
 		_web.message.connect(_on_web_message)
 		_read_build_path()
-		_web.post_parent({"type": "wasd:play:hello", "v": 1}, config.app_origin)
+		_say_hello()
 	else:
 		_read_desktop_token()
 	if _test != "":
@@ -236,10 +246,10 @@ func player_info(peer_id: int) -> Dictionary:
 	return (found as Dictionary).duplicate() if found is Dictionary else {}
 
 
-## Signs the player in to WASD. In a Web build on a WASD game page the page answers at once; elsewhere a WASD
-## sign-in window opens, which browsers allow only right after a click or key press, so call this from a button. A
-## desktop build signs in with the token WASD Engine started it with. Either way the sign-in then lasts while the game
-## runs, up to a week.
+## Signs the player in to WASD. In a Web build on a WASD game page, on any of the site's hostnames, the page answers at
+## once; elsewhere a WASD sign-in window opens, which browsers allow only right after a click or key press, so call
+## this from a button. A desktop build signs in with the token WASD Engine started it with. Either way the sign-in then
+## lasts while the game runs, up to a week.
 func sign_in() -> Dictionary:
 	if _test != "":
 		return {"ok": true, "player": _test_identity()}
@@ -251,23 +261,27 @@ func sign_in() -> Dictionary:
 			return {"ok": true, "player": _me.duplicate()}
 		if _token != "":
 			return _sign_in_failure("sign_in_expired", _expired_text())
-		return _sign_in_failure("sign_in_unavailable", "Online play needs a WASD sign-in: play the game's Web " \
-				+ "build on the WASD Engine website, or start the game from WASD Engine's game library. On this " \
-				+ "computer, use a multiplayer test run.")
-	var framed := _web.is_framed()
-	if framed:
-		framed = await _parent_is_wasd()
-	if framed:
+		return _sign_in_failure("sign_in_unavailable", "To play online, start this game from WASD Engine's game " \
+				+ "library, or play it on the WASD Engine website.", {}, "To test online play on this computer, use " \
+				+ "a multiplayer test run.")
+	if await _parent_is_wasd():
 		_token_reply = {}
-		_web.post_parent({"type": "wasd:play:token-request", "v": 1}, config.app_origin)
+		_post_page({"type": "wasd:play:token-request", "v": 1})
 		return _finish_sign_in(await _wait_token_reply(15.0, false))
+	if _site_frames():
+		# A WASD game page signs its game in itself and shows its own sign-in prompt, so the game never opens the
+		# sign-in window there: the window signs in on app_origin's hostname, which may not be the page's, and the
+		# site refuses it to games that share the games origin.
+		return _sign_in_failure("page_unavailable", "The WASD Engine page didn't answer the game. Reload the page, " \
+				+ "then try again.")
 	if _game_id == "":
-		return _sign_in_failure("no_game_id", "This build has no WASD game id. Release the game with WASD Engine first.")
+		return _sign_in_failure("no_game_id", "This copy of the game can't play online. Play it on the WASD Engine " \
+				+ "website.", {}, "It has no WASD game id: release the game with WASD Engine first.")
 	_token_reply = {}
 	var url := "%s/play/connect?game=%s&v=%d" % [config.app_origin, _game_id, _version]
 	if not _web.open_popup(url):
-		return _sign_in_failure("popup_blocked", "The browser blocked the WASD sign-in window. Call sign_in() from a " \
-				+ "button press.")
+		return _sign_in_failure("popup_blocked", "The browser blocked the WASD Engine sign-in window. Allow pop-ups " \
+				+ "for this page, then try again.", {}, _PRESS_ADVICE)
 	var reply := await _wait_token_reply(600.0, true)
 	_web.close_popup()
 	return _finish_sign_in(reply)
@@ -275,7 +289,8 @@ func sign_in() -> Dictionary:
 
 ## Hosts a player lobby: this game becomes peer 1 and the other players connect to it. [param options]: "name",
 ## "public" (listed in list_lobbies), "max_players" (2 to 16), and "data" (a small Dictionary shown to joiners).
-## Resolves to {"ok": true, "lobby", "code"}; share the code with friends.
+## Resolves to {"ok": true, "lobby", "code"}; share the code with friends. Signs the player in first when needed, as
+## sign_in() does, so call it from a button press.
 func host_lobby(options := {}) -> Dictionary:
 	var blocked := _start_session()
 	if not blocked.is_empty():
@@ -286,7 +301,7 @@ func host_lobby(options := {}) -> Dictionary:
 		return _done(_test_host_lobby(options))
 	if _test != "":
 		return _done(_failure("test_mode", "This test run's %s can't host a lobby." % _test))
-	var auth := await _ensure_token()
+	var auth := await _ensure_token(true)
 	if not auth.get("ok", false):
 		return _done(auth)
 	if not _webrtc_available():
@@ -327,7 +342,8 @@ func host_lobby(options := {}) -> Dictionary:
 	return _done({"ok": true, "lobby": _lobby.duplicate(true), "code": str(_lobby.get("code", ""))})
 
 
-## Joins a lobby by its code. Resolves once connected to the host, with {"ok": true, "lobby"}.
+## Joins a lobby by its code. Resolves once connected to the host, with {"ok": true, "lobby"}. Signs the player in
+## first when needed, as sign_in() does, so call it from a button press.
 func join_lobby(code: String) -> Dictionary:
 	var blocked := _start_session()
 	if not blocked.is_empty():
@@ -338,7 +354,7 @@ func join_lobby(code: String) -> Dictionary:
 		return _done(await _test_join_lobby())
 	if _test != "":
 		return _done(_failure("test_mode", "This test run's %s can't join a lobby." % _test))
-	var auth := await _ensure_token()
+	var auth := await _ensure_token(true)
 	if not auth.get("ok", false):
 		return _done(auth)
 	if not _webrtc_available():
@@ -429,7 +445,8 @@ func kick(peer_id: int) -> Dictionary:
 
 ## Joins this game's WASD dedicated server: the one named by [param server_id], or else the running server of this
 ## release with the fewest players, or a sleeping one, which the connection wakes (server_waking). Resolves once
-## connected, with {"ok": true, "server"}.
+## connected, with {"ok": true, "server"}. Signs the player in first when needed, as sign_in() does, so call it from a
+## button press.
 func join_server(server_id := "") -> Dictionary:
 	var blocked := _start_session()
 	if not blocked.is_empty():
@@ -440,7 +457,7 @@ func join_server(server_id := "") -> Dictionary:
 		return _done(await _test_join_server())
 	if _test != "":
 		return _done(_failure("test_mode", "This test run's %s can't join a server." % _test))
-	var auth := await _ensure_token()
+	var auth := await _ensure_token(true)
 	if not auth.get("ok", false):
 		return _done(auth)
 	var body := {"version": _version}
@@ -607,14 +624,47 @@ func _accept_token(token: String, reply: Dictionary) -> bool:
 	return true
 
 
+## Whether a WASD game page frames the game and answered it. While none has, says hello again and waits up to
+## _HELLO_SECONDS for the answer.
 func _parent_is_wasd() -> bool:
 	if _parent_wasd:
 		return true
-	_web.post_parent({"type": "wasd:play:hello", "v": 1}, config.app_origin)
-	var deadline := Time.get_ticks_msec() + 1500
+	if not _say_hello():
+		return false
+	var deadline := Time.get_ticks_msec() + int(_HELLO_SECONDS * 1000.0)
 	while not _parent_wasd and Time.get_ticks_msec() < deadline:
 		await get_tree().create_timer(0.1, true, false, true).timeout
 	return _parent_wasd
+
+
+## Asks the framing page which game it plays (wasd:play:hello), which a WASD game page answers (wasd:play:context).
+## Browsers deliver a message only to a page of the origin it is addressed to, so the hello goes to the framing page's
+## origin when that is one of the site's, to every origin of the site when the browser does not say which page frames
+## the game, and nowhere for a page of another site. Returns whether it went anywhere.
+func _say_hello() -> bool:
+	var targets := PackedStringArray()
+	if _page_origin != "":
+		targets.append(_page_origin)
+	elif _web.is_framed():
+		var parent := _web.parent_origin()
+		if parent == "":
+			targets = config.site_origins
+		elif config.is_site_origin(parent):
+			targets.append(Config.origin_of(parent))
+	for origin in targets:
+		_web.post_parent({"type": "wasd:play:hello", "v": 1}, origin)
+	return not targets.is_empty()
+
+
+## True when the browser says that a page of the WASD website frames the game.
+func _site_frames() -> bool:
+	return config.is_site_origin(_web.parent_origin())
+
+
+## Posts a message to the WASD game page that answered.
+func _post_page(data: Dictionary) -> void:
+	if _page_origin != "":
+		_web.post_parent(data, _page_origin)
 
 
 func _wait_token_reply(seconds: float, watch_popup: bool) -> Dictionary:
@@ -638,42 +688,58 @@ func _finish_sign_in(reply: Dictionary) -> Dictionary:
 			return {"ok": true, "player": _me.duplicate()}
 		if _accept_token(str(reply.get("token")), reply):
 			return {"ok": true, "player": _me.duplicate()}
-		return _sign_in_failure("invalid_token", "WASD sign-in returned a token this game can't use.")
+		# A fresh token lasts an hour, so on a device whose clock runs an hour or more ahead it has expired already.
+		return _sign_in_failure("invalid_token", "WASD Engine sign-in didn't work on this device. Check that its " \
+				+ "clock is right, then try again.", {}, "The sign-in sent a token that is not a player token or that " \
+				+ "expired by this device's clock.")
 	var code := str(reply.get("error", "signed_out"))
-	var text := "WASD sign-in failed (%s)." % code
+	# Error answers of the WASD game page carry the site's own message, written for the player.
+	var text := str(reply.get("message", "")).strip_edges()
+	var advice := "The sign-in answered %s." % code
 	match code:
 		"signed_out":
 			text = "Sign in to WASD Engine to play online."
+			advice = ""
 		"cancelled":
-			text = "The sign-in window closed before sign-in finished."
+			text = "The WASD Engine sign-in window closed before sign-in finished. Try again."
+			advice = ""
 		"timeout":
-			text = "WASD sign-in did not answer in time."
-	return _sign_in_failure(code, text, {"sign_in_url": str(reply.get("sign_in_url", ""))})
+			text = "WASD Engine sign-in didn't answer. Check the internet connection, then try again."
+			advice = ""
+	if text == "":
+		text = "WASD Engine sign-in didn't work. Try again in a moment."
+	return _sign_in_failure(code, text, {"sign_in_url": str(reply.get("sign_in_url", ""))}, advice)
 
 
-func _sign_in_failure(code: String, text: String, extra := {}) -> Dictionary:
+func _sign_in_failure(code: String, text: String, extra := {}, advice := "") -> Dictionary:
 	sign_in_failed.emit(code)
-	return _failure(code, text, extra)
+	return _failure(code, text, extra, advice)
 
 
-func _ensure_token() -> Dictionary:
+## A player token that stays valid for at least another minute, or the failure that says why there is none. A Web build
+## that a WASD game page frames asks the page. Otherwise a token that is still valid is renewed, a desktop build reads
+## the token WASD Engine started it with, and a Web build opens the WASD sign-in window when [param open_window] is
+## true, because the player just pressed a button.
+func _ensure_token(open_window := false) -> Dictionary:
 	if _test != "" or _token_valid(60.0):
 		return {"ok": true}
-	if _web.available and _parent_wasd:
+	if _web.available and (_parent_wasd or _site_frames()):
 		return await sign_in()
 	if _token_valid(0.0) and _renew_refused == "":
 		await _renew_token()
 		if _token_valid(60.0):
 			return {"ok": true}
+	if open_window or not _web.available:
+		return await sign_in()
 	if _token != "":
-		return _failure("sign_in_expired", _expired_text())
-	return _failure("signed_out", "Sign in first: call sign_in() from a button press.")
+		return _failure("sign_in_expired", _expired_text(), {}, _PRESS_ADVICE)
+	return _failure("signed_out", "Sign in to WASD Engine to play online.", {}, _PRESS_ADVICE)
 
 
 func _expired_text() -> String:
 	if not _web.available:
-		return "The WASD sign-in of this game ended. Start the game again from WASD Engine to play online."
-	return "The WASD sign-in expired. Call sign_in() again from a button press."
+		return "The WASD Engine sign-in of this game ended. Start the game again from WASD Engine to play online."
+	return "The WASD Engine sign-in ended. Sign in again to play online."
 
 
 func _maybe_refresh_token(now: float) -> void:
@@ -684,7 +750,7 @@ func _maybe_refresh_token(now: float) -> void:
 		if _token_exp - now > _REFRESH_MARGIN_SECONDS or now - _refresh_asked_at < 60.0:
 			return
 		_refresh_asked_at = now
-		_web.post_parent({"type": "wasd:play:token-request", "v": 1}, config.app_origin)
+		_post_page({"type": "wasd:play:token-request", "v": 1})
 		return
 	# No WASD page frames the game, as in a desktop build that WASD Engine's game library started: the add-on renews
 	# its token itself while it is still valid.
@@ -725,15 +791,19 @@ func _renew_token() -> void:
 func _on_web_message(from: String, origin: String, data: Dictionary) -> void:
 	if int(data.get("v", 1)) != 1:
 		return
-	# Only the WASD website signs players in: messages from a framing page or a window of another origin are ignored,
-	# so a page that frames the game elsewhere can't hand it a sign-in or claim to be its game page.
-	if Config.origin_of(origin) != Config.origin_of(config.app_origin):
+	# Only the WASD website signs players in: a framing page counts on any of the site's hostnames, and the sign-in
+	# window only on app_origin's, where the game opened it. Messages of any other origin are ignored, so a page that
+	# frames the game elsewhere can't hand it a sign-in or claim to be its game page.
+	var site := config.is_site_origin(origin) if from == "parent" \
+			else Config.origin_of(origin) == Config.origin_of(config.app_origin)
+	if not site:
 		return
 	var type := str(data.get("type", ""))
 	if type != "wasd:play:context" and type != "wasd:play:token":
 		return
 	if from == "parent":
 		_parent_wasd = true
+		_page_origin = Config.origin_of(origin)
 	var game := str(data.get("game_id", "")).to_lower()
 	if Config.is_uuid(game):
 		_game_id = game
@@ -759,8 +829,9 @@ func _webrtc_available() -> bool:
 
 
 func _webrtc_failure() -> Dictionary:
-	return _failure("webrtc_unavailable", "Player-hosted online play runs in the game's Web build. On the desktop, " \
-			+ "test with a multiplayer test run, or add the webrtc-native extension.")
+	return _failure("webrtc_unavailable", "This game's online lobbies run in its Web version. Play it on the WASD " \
+			+ "Engine website.", {}, "A native build hosts and joins lobbies only with the webrtc-native extension; " \
+			+ "on this computer, test with a multiplayer test run.")
 
 
 func _open_signal(base_url: String, ticket: String) -> Dictionary:
@@ -1031,7 +1102,7 @@ func _start_session() -> Dictionary:
 	if _busy:
 		return _failure("busy", "Another join or host call is still running.")
 	if _role != _Role.NONE:
-		return _failure("busy", "Leave the current lobby or server first: call leave().")
+		return _failure("busy", "Leave the current lobby or server first.")
 	_busy = true
 	return {}
 
@@ -1565,11 +1636,13 @@ func _print_test_stats() -> void:
 # Helpers ------------------------------------------------------------------------------------------------------------
 
 
-func _failure(code: String, text: String, extra := {}) -> Dictionary:
+## A failed result. [param text] is written for players; [param advice], for the game's developer, joins it only in the
+## warning the add-on logs.
+func _failure(code: String, text: String, extra := {}, advice := "") -> Dictionary:
 	var failure := {"ok": false, "error": code, "message": text}
 	failure.merge(extra)
 	if code != "busy":
-		push_warning("WASD Multiplayer: " + text)
+		push_warning("WASD Multiplayer: " + text + ("" if advice == "" else " " + advice))
 	return failure
 
 

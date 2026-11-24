@@ -87,7 +87,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 项目在 `.wasdengine/game.json` 中按网站记住每个账户的游戏，因此同一文件夹之后的发布会为同一个游戏添加版本。网站一创建游戏，发布就在上传之前写入该文件，因此上传失败的发布（例如网站因体积过大而拒绝的发布），或调用在网站仍在存储构建时就已结束的发布，都会让项目保持关联，下一次发布会为该游戏添加版本，而不会再创建一个游戏。登录同一网站的每个账户各有自己的游戏：网站只为已登录账户自己的游戏作答，因此发布会加入网站作答的第一个已关联游戏，并先尝试该账户自己的游戏。该文件用 `accountKey()`（账户 ID 的指纹）标明每个游戏所属的账户，还在 `games` 下保留该网站最近一次发布的游戏，供支持按账户关联之前的版本读取。当网站上已没有该账户的游戏时，发布会创建新游戏。`title` 会重命名已有的游戏，`new_game: true` 会发布一个新游戏的第 1 版，此后该文件夹都发布到这个新游戏。网站为版本连续编号，单人游戏的每个更早的版本都仍可游玩；联机版本只在它是最新版本时可以游玩，因为大厅和服务器只接受最新版本。发布会在上传的 `multiplayer` 查询参数中给出项目的多人联机模式，网站据此区分两者。每次修改都整体替换该文件，因此中途停止的写入会留下之前的关联。
 
-设置了多人联机的项目还会把发布所用的网站来源在每次导出之前写入 `res://wasd_multiplayer.cfg`，把游戏 id 在项目已关联时于导出之前写入、在首次发布时于发布之后写入，因此即使没有地址指明，它的构建也知道自己的游戏和网站；`dedicated` 项目首次发布时会在导出之前先创建游戏，使两种构建都写有它的 id，发布随后会存储游戏的服务器构建，详见[多人联机](#multiplayer)。
+设置了多人联机的项目还会把发布所用的网站来源在每次导出之前写入 `res://wasd_multiplayer.cfg`，把游戏 id 在项目已关联时于导出之前写入、在首次发布时于发布之后写入，因此即使没有地址指明，它的构建也知道自己的游戏和网站；`dedicated` 项目首次发布时会在导出之前先创建游戏，使两种构建都写有它的 id，发布随后会存储游戏的服务器构建，详见[多人联机](#multiplayer)。导出之前，如果项目的 WASD Multiplayer 插件比本包附带的旧，项目会换用本包附带的插件，除非游戏改动过插件自身的代码：副本中 `examples/` 之外的每个文件（Markdown 文件除外）都必须是 WASD Engine 发布过的文件，以 [`src/multiplayer-addon-files.ts`](src/multiplayer-addon-files.ts) 的记录为准，CRLF 换行按 LF 计。更新会保留游戏改动、新增或删除的示例文件，以及 Godot 放在插件文件旁的文件（`.uid`、`.import`）。结果的说明会讲明发生了什么：更新前后的版本；或者，对于游戏改动过的副本，列出改动的文件，并说明智能体应先询问用户，再调用 `wasd_multiplayer_setup`。
 
 复制的项目文件夹会带上原文件夹的 `game.json`。`<dataRoot>/release-folders/` 按真实路径和文件系统 ID 记录这台电脑上哪些文件夹发布过每个游戏；重命名或在同一卷内移动都会保留文件系统 ID。如果一个文件夹从未发布过它所关联的游戏，而另一个已记录的文件夹仍然存在并关联到该游戏，发布会在导出之前失败，并给出一条说明另一个文件夹、请智能体询问用户的消息；随后 `new_game: false` 会把版本加入该游戏并记录这个文件夹，`new_game: true` 会创建新游戏。已记录的文件夹都已不存在或关联到其他游戏时（例如移动之后），文件夹发布时不会询问；游戏在这台电脑上的第一次发布也不会询问。
 
@@ -105,7 +105,7 @@ Godot 游戏可以通过两种方式之一上线，两种方式中玩家都需�
 | 工具 | 作用 |
 |---|---|
 | `wasd_multiplayer_guide` | 用实时的规格和价格比较两种方式，并根据 `genre`、`players`、`persistent_world` 和 `competitive` 推荐其中一种；未登录时也能读取规格 |
-| `wasd_multiplayer_setup` | 把 WASD Multiplayer 插件从本包的 [`addon/wasd_multiplayer/`](addon/wasd_multiplayer/README.zh.md) 复制到 `res://addons/wasd_multiplayer/`，把它的 `WasdMultiplayer` 自动加载项和编辑器插件加入 `project.godot` 并保留其余每一行，再写入 `res://wasd_multiplayer.cfg`，其中包含用户选择的 `mode` 和 `max_players`（玩家主持默认 8，专用服务器默认 32） |
+| `wasd_multiplayer_setup` | 把 WASD Multiplayer 插件从本包的 [`addon/wasd_multiplayer/`](addon/wasd_multiplayer/README.zh.md) 复制到 `res://addons/wasd_multiplayer/`，替换插件自身的文件，保留游戏改动或删除的示例文件以及游戏新增的文件，把它的 `WasdMultiplayer` 自动加载项和编辑器插件加入 `project.godot` 并保留其余每一行，再写入 `res://wasd_multiplayer.cfg`，其中包含用户选择的 `mode` 和 `max_players`（玩家主持默认 8，专用服务器默认 32） |
 | `wasd_multiplayer_test` | 通过 `ctx.godot.runInstances()`，以插件的测试模式把主机（或专用服务器）和 1 到 3 个客户端作为项目的无窗口实例运行，经由回环网络通信，不使用 WASD Engine 的服务；专用服务器测试会像网站那样用随机密钥为每个客户端签发加入票据。它报告哪些客户端已连接，以及帧耗时、内存、处理器占用和每玩家小时的流量，把它们保存到 `.wasdengine/multiplayer-test.json`，并据此匹配规格 |
 | `wasd_lobby_stats` | 已发布游戏当前开放的大厅、其中的玩家，以及本月中继流量与合理使用上限的对比；超出上限后，该游戏的中继停用到下个月 |
 | `wasd_server_plans` | 各规格的价格、处理器、内存、带宽、存储和玩家人数，并与上一次测试相匹配，以及该账号的免费服务器 |
@@ -226,7 +226,8 @@ LiveShare 把每个方法都保留给所有者，因为发布是以所有者的�
 | [`src/multiplayer-game-tools.ts`](src/multiplayer-game-tools.ts)、[`src/server-tools.ts`](src/server-tools.ts) | 游戏自身多人联机与专用服务器的工具定义 |
 | [`src/multiplayer-parts.ts`](src/multiplayer-parts.ts) | 各工具组共用的部分：玩家上限、schema、登录与已发布的游戏，以及服务器、规格与套餐的文本 |
 | [`src/multiplayer-api.ts`](src/multiplayer-api.ts) | 网站的规格、服务器、服务器构建和大厅统计的客户端 |
-| [`src/multiplayer-project.ts`](src/multiplayer-project.ts) | 插件复制、`project.godot` 的修改和 `res://wasd_multiplayer.cfg` |
+| [`src/multiplayer-project.ts`](src/multiplayer-project.ts) | 插件的安装与更新、`project.godot` 的修改和 `res://wasd_multiplayer.cfg` |
+| [`src/multiplayer-addon-files.ts`](src/multiplayer-addon-files.ts) | 每个已发布插件版本的文件摘要，用来区分未改动的副本与游戏改动过的副本 |
 | [`src/multiplayer-test.ts`](src/multiplayer-test.ts) | 本地测试的实例、加入票据、统计数据和规格匹配 |
 | [`src/multiplayer-prompts.ts`](src/multiplayer-prompts.ts) | 八种语言的审批提示 |
 | [`src/links.ts`](src/links.ts)、[`src/client/links.ts`](src/client/links.ts) | 等待窗口的确认页面，以及打开它们的桌面窗口 |
@@ -407,6 +408,7 @@ Godot 插件加载期间，声明和段落都是静态的，因此保留在已�
 - **页面文本来自 DOM** — 页面文本不包含框架、画布绘图和图片中的文字，而且页面自己的脚本可以改变窗口脚本读到的内容；截图能显示文本遗漏的部分。
 - **共享浏览器存储** — 智能体的标签页使用该会话所属游戏项目的浏览器存储，因此在应用退出之前，它能看到用户在该项目的浏览器标签页中登录过的网站。
 - **首次构建提示按浏览器记录** — “暂不”保存在当前浏览器的 localStorage 中，因此在其他浏览器中或清除网站数据后，仍为空的游戏项目会再次显示提示。
+- **插件版本以记录为准** — 发布只依据项目插件的 `plugin.cfg` 版本和 `src/multiplayer-addon-files.ts` 中的文件摘要来更新它，因此 WASD Engine 的某次发布所附带的插件会永久记录在该版本下，此后插件文件的任何改动都要使用新版本；在已发布的文件记录到其版本之下之前，`tests/multiplayer-addon-files.spec.ts` 会失败。游戏改动过自身代码的副本会停留在原版本，直到有人合并这些改动或再次运行设置。
 - **估算来自本机** — 本地测试在用户的电脑上测量服务器，其处理器可能比服务器的更快，并以估算值计入插件有效载荷之外的头部；规格匹配的是测试中的玩法，而不是真实玩家的行为。
 - **确认页面依赖桌面窗口** — 只有桌面窗口会自行打开确认页面；在 Web UI 中，以及对客户端不支持 URL 模式征询的连接智能体，由用户打开工具返回的链接。
 - **Linux x86_64 服务器** — 专用服务器运行 Godot 4.7.2 发布模板的 Linux x86_64 导出，该模板由 Godot 插件固定；GDExtension 需要 Linux x86_64 的库。

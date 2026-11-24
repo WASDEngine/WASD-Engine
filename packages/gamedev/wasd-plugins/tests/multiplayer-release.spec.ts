@@ -1,12 +1,16 @@
-/** Releases point a multiplayer project's configuration at its game and store a dedicated game's server build. */
+/**
+ * Releases point a multiplayer project's configuration at its game, bring an older, unchanged WASD Multiplayer add-on
+ * up to date, and store a dedicated game's server build.
+ */
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { GodotServerExport, GodotWebExport } from '@deepseek-ai/dsh-godot'
 import { ReleaseFolders } from '../src/folders.ts'
+import { pluginVersion } from '../src/multiplayer-project.ts'
 import { releaseGame, type ReleaseDependencies } from '../src/release.ts'
-import { GAME, multiplayerProject, multiplayerSite, ORIGIN, removeProjects, TOKEN } from './multiplayer-site.ts'
+import { ADDON_SOURCE, GAME, multiplayerProject, multiplayerSite, olderAddon, ORIGIN, PLUGIN_1_2_0, removeProjects, TOKEN } from './multiplayer-site.ts'
 
 const scratch: string[] = []
 afterEach(async () => {
@@ -39,7 +43,8 @@ function releaseSite() {
 }
 
 async function dependencies(fetchSite: typeof fetch, options: { readonly server?: 'fail' | 'none' } = {}) {
-  const configs: { web: string | undefined; server: string | undefined } = { web: undefined, server: undefined }
+  // The configuration and the add-on's plugin.cfg each export saw.
+  const configs: Record<'web' | 'server' | 'plugin', string | undefined> = { web: undefined, server: undefined, plugin: undefined }
   // Release folders and temporary files of their own, as on a computer of their own.
   const own = await mkdtemp(join(tmpdir(), 'dsh-wasd-multiplayer-release-'))
   scratch.push(own)
@@ -47,6 +52,7 @@ async function dependencies(fetchSite: typeof fetch, options: { readonly server?
     access: () => Promise.resolve({ origin: ORIGIN, token: TOKEN }),
     async exportWeb(projectDir, outputDir): Promise<GodotWebExport> {
       configs.web = await readFile(join(projectDir, 'wasd_multiplayer.cfg'), 'utf8').catch(() => undefined)
+      configs.plugin = await readFile(join(projectDir, 'addons', 'wasd_multiplayer', 'plugin.cfg'), 'utf8').catch(() => undefined)
       await mkdir(outputDir, { recursive: true })
       for (const name of ['index.html', 'index.js', 'index.wasm', 'index.pck']) await writeFile(join(outputDir, name), name)
       return {
@@ -102,6 +108,36 @@ describe('releases of multiplayer games', () => {
     expect(configs.web).toContain(`api_origin="${ORIGIN}"\napp_origin="${ORIGIN}"\ngame_id=""\n`)
     expect(configs.web).not.toContain('setup.example')
     expect(await readFile(join(dir, 'wasd_multiplayer.cfg'), 'utf8')).toContain(`game_id="${GAME.id}"`)
+  })
+
+  it('bring an older, unchanged WASD Multiplayer add-on up to date before the export, and say so', async () => {
+    const dir = await multiplayerProject({ config: '[wasd]\nmode="player_hosted"\n' })
+    const addon = await olderAddon(dir)
+    await writeFile(join(addon, 'examples', 'lobby_menu.gd'), 'extends Control\n')
+    const site = releaseSite()
+    const { deps, configs } = await dependencies(site.fetch)
+    const released = await releaseGame({ projectDir: dir }, { ...deps, addonSource: ADDON_SOURCE }, signal)
+    const shipped = await readFile(join(ADDON_SOURCE, 'plugin.cfg'), 'utf8')
+    const version = pluginVersion(shipped) ?? ''
+    expect(configs.plugin).toBe(shipped)
+    expect(released.warnings).toContain(`This project's WASD Multiplayer add-on was 1.2.0; the release updated it to ${version} before the export. The add-on files the game changed or added stayed as they were: examples/lobby_menu.gd.`)
+    // A release of a project without the add-on's folder, from a computer of its own, leaves the project as it is.
+    const plain = await multiplayerProject({ config: '[wasd]\nmode="player_hosted"\n' })
+    const own = await dependencies(site.fetch)
+    expect((await releaseGame({ projectDir: plain }, { ...own.deps, addonSource: ADDON_SOURCE }, signal)).warnings).toEqual([])
+    expect(own.configs.plugin).toBeUndefined()
+  })
+
+  it('build with an older add-on whose own code the game changed, and say what to ask the user', async () => {
+    const dir = await multiplayerProject({ config: '[wasd]\nmode="player_hosted"\n' })
+    const addon = await olderAddon(dir)
+    await writeFile(join(addon, 'wasd_multiplayer.gd'), 'extends Node\n')
+    const site = releaseSite()
+    const { deps, configs } = await dependencies(site.fetch)
+    const released = await releaseGame({ projectDir: dir }, { ...deps, addonSource: ADDON_SOURCE }, signal)
+    const version = pluginVersion(await readFile(join(ADDON_SOURCE, 'plugin.cfg'), 'utf8')) ?? ''
+    expect(configs.plugin).toBe(PLUGIN_1_2_0)
+    expect(released.warnings).toContain(`This project's WASD Multiplayer add-on is 1.2.0, older than WASD Engine's ${version}, and the game changed the add-on's own code (wasd_multiplayer.gd), so the release built the game with it as it is. Ask the user whether to call wasd_multiplayer_setup, which replaces those files with ${version}'s and keeps the example files the game changed; then apply the game's changes again where ${version} still needs them.`)
   })
 
   it('release nothing when a dedicated game\'s server build fails, and store none for a player-hosted game', async () => {

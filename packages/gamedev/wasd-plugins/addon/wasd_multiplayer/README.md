@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-WASD Multiplayer is the Godot 4 add-on that connects a game to WASD Engine's online play: WASD sign-in for players, player-hosted lobbies, and WASD dedicated servers. WASD Engine's multiplayer setup copies this folder into a game as `res://addons/wasd_multiplayer/`, registers the `WasdMultiplayer` autoload, and writes `res://wasd_multiplayer.cfg`. The add-on is GDScript only, so Web builds keep working, and its files carry the CC0-1.0 license so that they can ship inside any game.
+WASD Multiplayer is the Godot 4 add-on that connects a game to WASD Engine's online play: WASD sign-in for players, player-hosted lobbies, and WASD dedicated servers. WASD Engine's multiplayer setup copies this folder into a game as `res://addons/wasd_multiplayer/`, registers the `WasdMultiplayer` autoload, and writes `res://wasd_multiplayer.cfg`. A release from WASD Engine replaces an older copy with its own unless the game changed the add-on's scripts, and neither the setup nor a release overwrites an example file the game changed, so adapt `examples/` freely and leave the other files as they are. The add-on is GDScript only, so Web builds keep working, and its files carry the CC0-1.0 license so that they can ship inside any game.
 
 ## Modes
 
@@ -38,11 +38,11 @@ React to `player_joined` and `player_left` rather than `multiplayer.peer_connect
 
 ## API
 
-Coroutines resolve to `{"ok": true, ...}` or to `{"ok": false, "error": <code>, "message": <text>}`.
+Coroutines resolve to `{"ok": true, ...}` or to `{"ok": false, "error": <code>, "message": <text>}`. A failure's `message` is written for players, so a game can show it as it is; the warning the add-on logs with it adds advice for the game's developer when there is some.
 
 | Member | What it does |
 |---|---|
-| `sign_in()` | Signs the player in. On a WASD game page the page answers at once; elsewhere a WASD sign-in window opens, and a desktop build that WASD Engine started signs in with the token it got. The sign-in then lasts while the game runs, up to a week. |
+| `sign_in()` | Signs the player in. On a WASD game page, under any of the site's hostnames, the page answers at once, and the game never opens the sign-in window there; elsewhere a WASD sign-in window opens, and a desktop build that WASD Engine started signs in with the token it got. The sign-in then lasts while the game runs, up to a week. |
 | `host_lobby(options)` | Hosts a lobby; `options` takes `name`, `public`, `max_players` (2 to 16), and `data`. Resolves with `lobby` and `code`. |
 | `join_lobby(code)` | Joins a lobby by its code and resolves once connected to the host. |
 | `list_lobbies()` | Lists the public lobbies of this release that have room, as `lobbies`. |
@@ -56,6 +56,8 @@ Coroutines resolve to `{"ok": true, ...}` or to `{"ok": false, "error": <code>, 
 | `is_server()`, `is_signed_in()`, `player()`, `role()`, `lobby()`, `players()`, `player_info(peer_id)` | Read the current state. |
 | `stats()` | Traffic in bytes and packets, connected peers, and time per frame. |
 
+`host_lobby()`, `join_lobby()`, and `join_server()` sign the player in first when needed, as `sign_in()` does, so call them from button presses; `list_lobbies()` and `list_servers()` never open the sign-in window and fail with `signed_out` instead.
+
 Signals: `signed_in(player)`, `sign_in_failed(reason)`, `lobby_joined(lobby)`, `lobby_updated(lobby)`, `lobby_closed(reason)`, `player_joined(peer_id, player)`, `player_left(peer_id)`, `connected()`, `connection_failed(reason)`, `server_warning(seconds, reason, message)`, `server_waking()`, and `server_stopping()`. A dedicated server receives `server_stopping()` before WASD stops it, also when it goes to sleep without players; save the world in that handler. A save that awaits, such as one that writes in a thread, calls `delay_stop()` first and `stop_ready()` once it has finished, and the server quits once every such save has, or after 15 seconds. `server_waking()` tells a joining player's game that the server is starting, so it can say so. `lobby_closed` names why the lobby ended: `host_left`, `closed`, `replaced`, `kicked` (the host removed this player), `dropped` (the host could not connect to this player in time; joining again is allowed), `left`, or `signal_lost`.
 
 A host that does not hear from a joining player within 30 seconds drops that player, who may join again; `kick()` instead keeps the player's account out of the lobby for good. When a player's network blocks a direct connection and the relay is off for the game, a join that times out says so in its `message`. Once connected, a player stays in the game while its connection to the WASD lobby service drops and comes back: the add-on reconnects on its own, first after 2 seconds and then less often, and the host keeps the player meanwhile. A host whose connection fails four tries in a row, about 20 seconds, ends the lobby with `signal_lost`, since WASD closes a lobby 30 seconds after its host goes.
@@ -68,7 +70,8 @@ A host that does not hear from a joining player within 30 seconds drops that pla
 |---|---|---|
 | `mode` | `"player_hosted"` | `"player_hosted"` or `"dedicated"`. |
 | `max_players` | `8` | The lobby size `host_lobby()` offers by default, 2 to 16; in `dedicated` mode, how many players the server admits at once, 2 to 500. |
-| `api_origin`, `app_origin` | `"https://app.wasdengine.com"` | The WASD play API and the website that signs players in. A Web build takes sign-in messages only from a framing page or a sign-in window of `app_origin`. |
+| `api_origin`, `app_origin` | `"https://app.wasdengine.com"` | The WASD play API, and the website whose sign-in window a game opens where no WASD game page frames it; a Web build takes that window's sign-in messages only from `app_origin`. |
+| `site_origins` | Every hostname of the site at `app_origin` | The origins of the WASD website's pages, as a list or as one string of origins that commas or spaces separate. A Web build that one of their pages frames signs in through that page and sends it every later request at that page's own origin; a page of any other origin can neither sign the game in nor pose as its game page. Unset, it is `https://wasdengine.com`, `https://app.wasdengine.com`, and `https://api.wasdengine.com` when `app_origin` is one of them, else `app_origin` alone; `app_origin` always counts. |
 | `game_id` | `""` | The released game's id, which Release writes. |
 | `version` | `0` | The release; a Web build on WASD reads it from its own address instead. |
 | `count_traffic` | `true` | Count multiplayer traffic for `stats()`. |
@@ -85,5 +88,4 @@ With `WASD_MULTIPLAYER_TEST` set to `host`, `client`, or `server`, the add-on ru
 - Player-hosted play in a native desktop build needs the webrtc-native extension; a desktop test run uses the loopback WebSocket instead.
 - Traffic counts cover multiplayer payloads only, not WebSocket, TLS, DTLS, or IP overhead.
 - A host's lobby cannot move to another player when the host leaves.
-- A Web build on a page whose origin is not `app_origin`, such as a WASD game page opened under another of the site's hostnames, signs in through the WASD sign-in window instead of the page.
 - A desktop build's sign-in ends a week after WASD Engine started the game, when that WASD Engine sign-in ends, or when the computer sleeps past the token's expiry; start the game again from WASD Engine to play online.

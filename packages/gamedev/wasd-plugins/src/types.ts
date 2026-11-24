@@ -75,8 +75,8 @@ export interface WasdRelease {
    */
   readonly serverBuild?: WasdServerBuild
   /**
-   * How the Web build differs from desktop runs, the export's warnings, and what happened to the preview, downloads,
-   * credits, and server build.
+   * How the Web build differs from desktop runs, the export's warnings, and what happened to the project's WASD
+   * Multiplayer add-on, the preview, downloads, credits, and server build.
    */
   readonly warnings: readonly string[]
   /** What the Web check saw in the released build; absent when the release skipped the check or it could not run. */
