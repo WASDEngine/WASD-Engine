@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-new-game-guidance",
   "description": "End the user's first prompt for a new game with the deployment's guidance, which the conversation leaves out",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "publishConfig": {
     "access": "public"
   },

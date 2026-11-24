@@ -1,18 +1,34 @@
 {
   "format": 1,
-  "release": "0.2.4",
+  "release": "0.2.5",
   "addons": {
+    "active-ragdoll": {
+      "version": "0.2.0",
+      "sha256": "fb2ebf0940c58615bdbbc02764ba45bdd08e72d309067360fa162c990c2fea8a"
+    },
     "beehave": {
-      "version": "2.9.3",
-      "sha256": "142eb562863729c0142403e5c017ddff1662dfc5cd42938f0e47f375bff7a68a"
+      "version": "2.9.3+wasd.1",
+      "sha256": "8a1a15ff0b1989f46b3829a7c9342fc0a9fb9d63ab497d3d0077a8acfec02528"
     },
     "better-terrain": {
       "version": "1.1",
       "sha256": "a67bab15d57b8f52ae64f6e6dcb59d2851d1d6c71e10ed7437cadda52a7e4fd9"
     },
+    "controller-icons": {
+      "version": "3.1.8",
+      "sha256": "91dff444a2469db3dbad3600b4b052c998f815a518ca9b9c569260a32bb9237e"
+    },
     "dialogue-manager": {
       "version": "4.2.0",
       "sha256": "bf476e7927806a17d1ffdb97018e157265a67b5f9c4be735fa287193c1a5df91"
+    },
+    "drop-in-ragdoll": {
+      "version": "1.0.2+c7b56c7",
+      "sha256": "3e115592a1da23b73e983d56ace9399acfd506b5b9f0c0c27be263da548767c9"
+    },
+    "easy-vehicle-physics": {
+      "version": "2025.08.17+c392257",
+      "sha256": "ac9325634546dcc79172ffda245eb4786dc9f862b74fecf5b4440075d6445724"
     },
     "extra-import-hints": {
       "version": "1.0",
@@ -46,17 +62,41 @@
       "version": "2.0.1",
       "sha256": "9b60dd8747677dfadccb276fd7e214f05b29a314eeeb5e6505dbd637f56ad104"
     },
+    "lite-terrain": {
+      "version": "2.0+ce0a29d",
+      "sha256": "a0a25be3bca75550886b22594d3ea8666c4350eece63d2dfeaf957c51e666c32"
+    },
+    "maaacks-menus-template": {
+      "version": "1.7.2",
+      "sha256": "bb0c39772a33668839d89f79bc5b128bb74bcf3b122f23fc118a347dad27b0a3"
+    },
+    "mirror3d": {
+      "version": "1.9",
+      "sha256": "e8704234f9df86e9ce16552b90a20d4d8dc23988f8e131ca091818f5a95100ac"
+    },
     "phantom-camera": {
-      "version": "0.11.0.4",
-      "sha256": "9a7c1a7008e3fb853ce99caaad580b146dbe18431e49f83330dc48e28280fb7a"
+      "version": "0.11.0.4+wasd.1",
+      "sha256": "1c75109fc44c65698cf6b80c56b3f53c49117f6845394663547f6986c3e27b84"
     },
     "protonscatter": {
-      "version": "4.2.0-dev+7198cc0",
-      "sha256": "bfa340b7730442d8db08de02562fdb1ab61fa832c7b29cdc4f6db3324e65cc23"
+      "version": "4.2.0-dev+7198cc0.wasd.1",
+      "sha256": "1581c11e027849edbb839047e5d58c01fb45e26f0477bb4bfbaf681cb368ea7e"
+    },
+    "road-generator": {
+      "version": "0.9.5",
+      "sha256": "8fd3b18ea374922c6d7d137f707a0909f479724fb8b1ac7ea9d75f9d5bbdb99a"
     },
     "shaker": {
       "version": "1.0.7",
       "sha256": "521b91744fa108674819b2932002aff65e415f4eda510a5c5c82abd82536a540"
+    },
+    "simple-dungeons": {
+      "version": "2025.04.02+15b3240",
+      "sha256": "321773f50669da7068258a266baa781c863ea9303ef2d0344d0087e677f37455"
+    },
+    "simple-grass-textured": {
+      "version": "2.1.1",
+      "sha256": "cf19367cfdd3d68a39e0679794b72522afdac1092449992c9dea219f826014e1"
     },
     "sky3d": {
       "version": "2.1.0",
@@ -66,21 +106,93 @@
       "version": "3.3.2",
       "sha256": "d4b5978030ca41917b39edbe4b000445be00b88b522bad25585506523bcd734a"
     },
+    "sofluffy": {
+      "version": "2024.02.13+09af7e6",
+      "sha256": "6dec1a99b77d2293c79f624dafbb6961414b5315eb857e6a06aba21da4a2ab16"
+    },
+    "starter-kit-3d-platformer": {
+      "version": "2026.03.12+3fa8a04",
+      "sha256": "26c017fa0f9b2a00ec9266857083b6e96e1c510036123dd8771f7c2672dfea03"
+    },
+    "starter-kit-fps": {
+      "version": "2026.03.12+185fd23",
+      "sha256": "eeddc3239952467b9688831f76d6b23ac3a8abce98f06e467789e3ee90588557"
+    },
+    "starter-kit-racing": {
+      "version": "2026.08.21+2f2e5f2",
+      "sha256": "8393585fd3b31ec73671bcb04f24484d40dddd90749f251bebaf5a8daa1b1091"
+    },
+    "trail-renderer": {
+      "version": "2026.01.30+b08e01e",
+      "sha256": "d3f6c366f013d1ed0c825187dcd61066ce2404715f7410da71092cb8dafc0195"
+    },
     "universal-animation-library": {
-      "version": "2025.03.25",
-      "sha256": "394ff2d8149705fc3e9274ba9f07abb6a460b12b995ccd9e21505933da00b965"
+      "version": "2025.03.25+wasd.1",
+      "sha256": "c86737c67ee4e766ef16879ac9d0562b9dd7b09d4f05b7ada2b7d5d6f04401bc"
     },
     "universal-animation-library-2": {
-      "version": "2026.01.22",
-      "sha256": "48653e41cf2b6278b0d78b690a8e21333aa686e178a6b085d6f1707458ffe0e6"
+      "version": "2026.01.22+wasd.1",
+      "sha256": "2a63c4a1a8cb25a131f00b450ae931bb1d1beab7cc254fe06e54e15ffb96d268"
+    },
+    "voronoi-shatter": {
+      "version": "0.3",
+      "sha256": "fee670c74fb0d22f0be307c4eeacfe3e76bef32d6997c1e08a695a75bdd26ac3"
+    },
+    "wasd-character": {
+      "version": "1.0.0",
+      "sha256": "f952f439364cc891fac14e7c022a6f4b53d85d22653f90697258673f02665936"
     },
     "wasd-cloth": {
-      "version": "1.0.2",
-      "sha256": "7163e148e4a9d2fc734cb1194afef87e09a115a6aaef4bfdb636124e9a7db5ba"
+      "version": "1.1.0",
+      "sha256": "263dca9ec902bc06808fe387c4b3aff138dbe43c5f3fc3ebe813d71fa465b264"
+    },
+    "wasd-crowd": {
+      "version": "1.0.0",
+      "sha256": "cc61a4c47418b64942111e145ad29041fd8270da5d3795382e0f25f56c6825ab"
+    },
+    "wasd-decals": {
+      "version": "1.0.0",
+      "sha256": "db59781d2b1cd28a99e24ce20fcf78bc0f11f0eb490700594a0b1b2502ecfc4d"
+    },
+    "wasd-face": {
+      "version": "1.0.0",
+      "sha256": "7623f4e1bce8c30e78702646f63d89862eaf914b6844cb91e8b2d803c35fb376"
+    },
+    "wasd-fx": {
+      "version": "1.0.0",
+      "sha256": "041481845b65145b18cef326846b5e15f3022edcc82708b8df531391ea9eb3f4"
+    },
+    "wasd-light": {
+      "version": "1.0.0",
+      "sha256": "ef1f5741c4c9aeaa7a8f55d4b57adfe34fa1ac1b54c773f0c747b7946cfe4c4f"
+    },
+    "wasd-loading": {
+      "version": "1.0.0",
+      "sha256": "030dc3b6b27506a1c0fcfc310a92e1aedb869222572f233486bce9082a2a8ae5"
+    },
+    "wasd-look": {
+      "version": "1.0.0",
+      "sha256": "d07634a4a67a7be58aa3a61fd50657a7ec2778b34e4f1e25747ed0abb1cda46b"
+    },
+    "wasd-materials": {
+      "version": "1.1.0",
+      "sha256": "0e0a403f2494341dbc8c3c297f6c5806cfb801416d249388e640a2e94bc323f0"
+    },
+    "wasd-post": {
+      "version": "1.0.0",
+      "sha256": "ada19e846ffe92b69fd8d9910f66c768151f7c34ffbeb4e1a86ccbc75f69a8b7"
+    },
+    "wasd-ui": {
+      "version": "1.0.0",
+      "sha256": "927fb9c14fe5eeda6689b94683450bc7bbea1b8338828ca8989818a6191ba205"
     },
     "wasd-water": {
       "version": "1.0.0",
       "sha256": "777f34096aa47d45d29894eca8a7580c034e64b53464ea9b81007bc2e3d2da42"
+    },
+    "wasd-weather": {
+      "version": "1.0.0",
+      "sha256": "c86c841b39b27518616a12d6010d227d270ac8d1116987f73dff5e71df629a74"
     },
     "yati": {
       "version": "2.2.9",

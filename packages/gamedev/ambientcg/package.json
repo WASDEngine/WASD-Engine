@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-ambientcg",
   "description": "ambientCG for the agent: search CC0 PBR materials, decals, atlases, and HDRIs and download their texture maps into the game project",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"
