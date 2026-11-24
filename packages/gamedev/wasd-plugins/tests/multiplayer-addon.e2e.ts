@@ -1,12 +1,14 @@
 /**
- * The WASD Multiplayer add-on in a real Godot: sign-in messages count only from the configured site, a player token
- * renews itself where no WASD game page frames the game and stops once the site refuses, a lobby host takes its ICE
- * servers from the lobby service's welcome and asks for fresh ones before they run out, a joiner that never connects
- * is dropped rather than kicked, a refused relay is named in a failed join, and a closed signal socket's code and
- * reason say why a join ended. Once players are connected, a dropped signal socket ends nothing: the host keeps a
- * connected joiner when the lobby service says it left, gets four tries again after each reconnect that opens, and a
- * joiner opens its socket again unless the close says no reconnect can help. The add-on talks to stand-ins of the WASD
- * play API and the signal socket, so no WASD service runs.
+ * The WASD Multiplayer add-on in a real Godot: sign-in messages count only from the configured site, on any of its
+ * origins, a Web build asks the WASD game page that frames it at that page's own origin and never opens the sign-in
+ * window there, sign-in failures read as players can act on them, a player token renews itself where no WASD game
+ * page frames the game and stops once the site refuses, a lobby host takes its ICE servers from the lobby service's
+ * welcome and asks for fresh ones before they run out, a joiner that never connects is dropped rather than kicked, a
+ * refused relay is named in a failed join, and a closed signal socket's code and reason say why a join ended. Once
+ * players are connected, a dropped signal socket ends nothing: the host keeps a connected joiner when the lobby service
+ * says it left, gets four tries again after each reconnect that opens, and a joiner opens its socket again unless the
+ * close says no reconnect can help. The add-on talks to stand-ins of the WASD play API, the signal socket, and the
+ * page that frames a Web build, so no WASD service or browser runs.
  *
  * Set WASD_LIBGODOT_DIR to a folder holding `godot_runner` and the LibGodot library under the name that
  * `wasdengine/libgodot/build.sh` installs: `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`.
@@ -39,13 +41,46 @@ const ADDON = fileURLToPath(new URL('../addon/wasd_multiplayer', import.meta.url
 
 const PROJECT = 'config_version=5\n\n[application]\n\nconfig/name="AddonTest"\nrun/main_scene="res://test.tscn"\nconfig/features=PackedStringArray("4.7")\n\n[autoload]\n\nWasdMultiplayer="*res://addons/wasd_multiplayer/wasd_multiplayer.gd"\n'
 const SCENE = '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://test.gd" id="1"]\n\n[node name="Test" type="Node"]\nscript = ExtResource("1")\n'
-const CONFIG = '[wasd]\n\napi_origin="https://site.test"\napp_origin="https://site.test"\n'
+// The site's pages answer on its app_origin and on pages.site.test; the entry without a scheme is not an origin.
+const CONFIG = '[wasd]\n\napi_origin="https://site.test"\napp_origin="https://site.test"\nsite_origins=PackedStringArray("https://Pages.Site.test/", "pages.site.test")\n'
 
 // Drives the autoload through its own methods and prints one ADDON_RESULT line of JSON.
 const TEST_SCRIPT = [
   'extends Node',
   '',
   'const Tokens := preload("res://addons/wasd_multiplayer/internal/tokens.gd")',
+  'const Config := preload("res://addons/wasd_multiplayer/internal/config.gd")',
+  '',
+  '',
+  '# A Web build\'s page bridge: the page that frames the game (parent, "" when the browser does not say) and what the',
+  '# add-on posts to it and opens.',
+  'class FakeWeb extends "res://addons/wasd_multiplayer/internal/web_bridge.gd":',
+  '\tvar framed := true',
+  '\tvar parent := ""',
+  '\tvar posts: Array = []',
+  '\tvar popups: Array = []',
+  '',
+  '\tfunc _init() -> void:',
+  '\t\tavailable = true',
+  '',
+  '\tfunc is_framed() -> bool:',
+  '\t\treturn framed',
+  '',
+  '\tfunc parent_origin() -> String:',
+  '\t\treturn parent if framed else ""',
+  '',
+  '\tfunc post_parent(data: Dictionary, target_origin: String) -> void:',
+  '\t\tposts.append(str(data.get("type", "")) + " " + target_origin)',
+  '',
+  '\tfunc open_popup(url: String) -> bool:',
+  '\t\tpopups.append(url)',
+  '\t\treturn false',
+  '',
+  '\tfunc popup_closed() -> bool:',
+  '\t\treturn true',
+  '',
+  '\tfunc close_popup() -> void:',
+  '\t\tpass',
   '',
   '',
   'class FakeApi extends "res://addons/wasd_multiplayer/internal/api.gd":',
@@ -93,6 +128,24 @@ const TEST_SCRIPT = [
   '',
   'func types(messages: Array) -> Array:',
   '\treturn messages.map(func(message: Dictionary) -> String: return str(message.get("type", "")))',
+  '',
+  '',
+  '# The framing page answers a moment later, as a page does.',
+  'func answer_later(mp: Node, origin: String, data: Dictionary) -> void:',
+  '\tawait get_tree().create_timer(0.3).timeout',
+  '\tmp._on_web_message("parent", origin, data)',
+  '',
+  '',
+  'func sign_out(mp: Node, web: FakeWeb, parent: String) -> void:',
+  '\tmp._token = ""',
+  '\tmp._token_exp = 0.0',
+  '\tmp._renew_refused = ""',
+  '\tmp._parent_wasd = false',
+  '\tmp._page_origin = ""',
+  '\tweb.framed = true',
+  '\tweb.parent = parent',
+  '\tweb.posts.clear()',
+  '\tweb.popups.clear()',
   '',
   '',
   'func _ready() -> void:',
@@ -205,6 +258,65 @@ const TEST_SCRIPT = [
   '\tresults["client_hears_full"] = str(mp._connect_result.get("error", "")) + ": " + str(mp._connect_result.get("message", ""))',
   '\tmp._connect_result = {}',
   '\tmp._role = 0',
+  '\tmp.config.max_players = 8',
+  '',
+  '\tresults["site_origins"] = Array(mp.config.site_origins)',
+  '\tvar production := Config.new()',
+  '\tproduction._normalize()',
+  '\tresults["production_site_origins"] = Array(production.site_origins)',
+  '\tvar local := Config.new()',
+  '\tlocal.app_origin = "http://127.0.0.1:8003/"',
+  '\tlocal._normalize()',
+  '\tresults["local_site_origins"] = Array(local.site_origins)',
+  '',
+  '\tvar web := FakeWeb.new()',
+  '\tmp._web = web',
+  '\tvar played := "66666666-7777-8888-9999-000000000000"',
+  '\tvar page_token := token({"g": played, "p": "player9", "n": "Pia", "s": "tag", "iat": int(now), "exp": int(now) + 3600})',
+  '\tsign_out(mp, web, "https://pages.site.test")',
+  '\tmp._say_hello()',
+  '\tmp._on_web_message("parent", "https://pages.site.test", {"type": "wasd:play:context", "v": 1, "game_id": played,',
+  '\t\t\t"version": 3})',
+  '\tanswer_later(mp, "https://pages.site.test", {"type": "wasd:play:token", "v": 1, "token": page_token})',
+  '\tvar page_sign_in: Dictionary = await mp.sign_in()',
+  '\tresults["page_sign_in"] = {"ok": page_sign_in.get("ok", false), "player": str(mp.player().get("name", "")),',
+  '\t\t\t"game": mp._game_id == played and mp._version == 3, "posts": web.posts.duplicate(), "popups": web.popups.size()}',
+  '\tweb.posts.clear()',
+  '\tmp._token_exp = now + 100.0',
+  '\tmp._refresh_asked_at = -1.0e9',
+  '\tawait frames(3)',
+  '\tresults["page_refresh"] = web.posts.duplicate()',
+  '',
+  '\tsign_out(mp, web, "https://site.test")',
+  '\tvar silent: Dictionary = await mp.sign_in()',
+  '\tresults["silent_page"] = {"error": str(silent.get("error", "")), "message": str(silent.get("message", "")),',
+  '\t\t\t"posts": web.posts.duplicate(), "popups": web.popups.size()}',
+  '\tsign_out(mp, web, "https://site.test")',
+  '\tvar calls_before: int = api.calls.size()',
+  '\tvar silent_host: Dictionary = await mp.host_lobby({})',
+  '\tresults["silent_page_host"] = [str(silent_host.get("error", "")), web.popups.size(), api.calls.size() - calls_before]',
+  '',
+  '\tsign_out(mp, web, "")',
+  '\tresults["unknown_parent_hello"] = [mp._say_hello(), web.posts.duplicate()]',
+  '\tsign_out(mp, web, "https://evil.test")',
+  '\tresults["foreign_parent_hello"] = [mp._say_hello(), web.posts.duplicate()]',
+  '\tmp._on_web_message("parent", "https://evil.test", {"type": "wasd:play:context", "v": 1, "game_id": played})',
+  '\tmp._on_web_message("parent", "https://site.test.evil.test", {"type": "wasd:play:context", "v": 1, "game_id": played})',
+  '\tresults["foreign_parent_ignored"] = not mp._parent_wasd and mp._page_origin == ""',
+  '\tvar foreign: Dictionary = await mp.sign_in()',
+  '\tresults["foreign_parent_window"] = [str(foreign.get("error", "")), str(foreign.get("message", "")), web.popups.duplicate()]',
+  '',
+  '\tsign_out(mp, web, "")',
+  '\tweb.framed = false',
+  '\tvar listed: Dictionary = await mp.list_lobbies()',
+  '\tvar hosted: Dictionary = await mp.host_lobby({})',
+  '\tresults["unframed_list_and_host"] = [str(listed.get("message", "")), web.popups.size() == 1, str(hosted.get("error", ""))]',
+  '\tresults["page_errors"] = [',
+  '\t\tstr(mp._finish_sign_in({"error": "permission_error", "message": "Confirm this account\'s email address."}).get("message")),',
+  '\t\tstr(mp._finish_sign_in({"error": "unavailable"}).get("message")),',
+  '\t\tstr(mp._finish_sign_in({"error": "signed_out", "sign_in_url": "https://site.test/login"}).get("message")),',
+  '\t\tstr(mp._finish_sign_in({"token": token({"g": played, "p": "p", "exp": int(now) - 10})}).get("message")),',
+  '\t]',
   '\tprint("ADDON_RESULT " + JSON.stringify(results))',
   '\tget_tree().quit()',
   '',
@@ -237,7 +349,7 @@ describe.skipIf(godot === undefined)('the WASD Multiplayer add-on on the real Li
   const folders: string[] = []
   afterAll(async () => { await Promise.all(folders.map(folder => rm(folder, { recursive: true, force: true }))) })
 
-  it('signs in, renews its token, takes ICE from the welcome, says why a join ended, and outlasts a dropped signal socket', async () => {
+  it('signs in on any of the site\'s pages, renews its token, takes ICE from the welcome, says why a join ended, and outlasts a dropped signal socket', async () => {
     if (godot === undefined) return
     const dir = await mkdtemp(join(tmpdir(), 'dsh-wasd-addon-'))
     folders.push(dir)
@@ -269,6 +381,43 @@ describe.skipIf(godot === undefined)('the WASD Multiplayer add-on on the real Li
       // One connection per ticket, max_players at a time, and a player who connects again replaces their connection.
       server_admissions: ['', 'ticket_used', '', 'server_full', ''],
       client_hears_full: 'server_full: The server is full. Try again when a player leaves.',
+      site_origins: ['https://pages.site.test', 'https://site.test'],
+      production_site_origins: ['https://wasdengine.com', 'https://app.wasdengine.com', 'https://api.wasdengine.com'],
+      local_site_origins: ['http://127.0.0.1:8003'],
+      // A game page on another of the site's hostnames gets the hello, answers, and is asked for the token, and later
+      // for a fresh one, at its own origin.
+      page_sign_in: {
+        ok: true,
+        player: 'Pia',
+        game: true,
+        posts: ['wasd:play:hello https://pages.site.test', 'wasd:play:token-request https://pages.site.test'],
+        popups: 0,
+      },
+      page_refresh: ['wasd:play:token-request https://pages.site.test'],
+      // A page of the site that does not answer never leads to the sign-in window, nor a lobby to the lobby service.
+      silent_page: {
+        error: 'page_unavailable',
+        message: 'The WASD Engine page didn\'t answer the game. Reload the page, then try again.',
+        posts: ['wasd:play:hello https://site.test'],
+        popups: 0,
+      },
+      silent_page_host: ['page_unavailable', 0, 0],
+      unknown_parent_hello: [true, ['wasd:play:hello https://pages.site.test', 'wasd:play:hello https://site.test']],
+      foreign_parent_hello: [false, []],
+      foreign_parent_ignored: true,
+      foreign_parent_window: [
+        'popup_blocked',
+        'The browser blocked the WASD Engine sign-in window. Allow pop-ups for this page, then try again.',
+        ['https://site.test/play/connect?game=66666666-7777-8888-9999-000000000000&v=3'],
+      ],
+      // Outside a WASD page a lobby list only asks the player to sign in, while hosting opens the sign-in window.
+      unframed_list_and_host: ['Sign in to WASD Engine to play online.', true, 'popup_blocked'],
+      page_errors: [
+        'Confirm this account\'s email address.',
+        'WASD Engine sign-in didn\'t work. Try again in a moment.',
+        'Sign in to WASD Engine to play online.',
+        'WASD Engine sign-in didn\'t work on this device. Check that its clock is right, then try again.',
+      ],
     })
   })
 })

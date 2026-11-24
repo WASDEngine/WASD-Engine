@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: CC0-1.0
 # The page side of WASD sign-in in a Web build: listens for "wasd:play:*" messages from the page that frames the game
-# (a WASD game page) or from the sign-in window this game opened, posts requests to the framing page, and opens that
-# window. Outside Web builds `available` is false and every method does nothing.
+# (a WASD game page) or from the sign-in window this game opened, says which page frames the game, posts requests to
+# that page, and opens that window. Outside Web builds `available` is false and every method does nothing.
 extends RefCounted
 
 ## Emitted for each "wasd:play:*" message. [param from] is "parent" or "popup"; [param origin] is the sender's origin.
@@ -32,6 +32,20 @@ const _SHIM := """
 })();
 """
 
+## The framing page's origin as the browser reports it: location.ancestorOrigins in Chromium and Safari, else the
+## origin of document.referrer, the page that loaded the frame, which Firefox reports.
+const _PARENT_ORIGIN := """
+(function () {
+	var origin = '';
+	try {
+		var ancestors = window.location.ancestorOrigins;
+		if (ancestors && ancestors.length > 0) { origin = String(ancestors[0]); }
+		else if (document.referrer) { origin = new URL(document.referrer).origin; }
+	} catch (error) { origin = ''; }
+	return origin === 'null' ? '' : origin;
+})()
+"""
+
 ## True in a Web build, where the page can be reached.
 var available := false
 
@@ -57,8 +71,17 @@ func is_framed() -> bool:
 	return available and bool(JavaScriptBridge.eval("window.parent !== window", true))
 
 
-## Posts a message to the framing page when its origin is [param target_origin], the WASD website's: the browser drops
-## it for a page of any other origin.
+## The origin of the page that frames the game, as the browser reports it, or "" when the game is not framed or the
+## browser does not say. It tells where to address messages; who sent a message comes with the message.
+func parent_origin() -> String:
+	if not is_framed():
+		return ""
+	var origin: Variant = JavaScriptBridge.eval(_PARENT_ORIGIN, true)
+	return origin if origin is String else ""
+
+
+## Posts a message to the framing page when its origin is [param target_origin], one of the WASD website's: the browser
+## drops it for a page of any other origin.
 func post_parent(data: Dictionary, target_origin: String) -> void:
 	if not is_framed():
 		return

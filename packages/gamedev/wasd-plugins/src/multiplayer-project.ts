@@ -3,11 +3,13 @@
  * package ships in its `addon/wasd_multiplayer/` folder, its `WasdMultiplayer` autoload and editor plugin in
  * `project.godot`, and the add-on's configuration `res://wasd_multiplayer.cfg`, whose `[wasd]` section names the
  * mode (`player_hosted` or `dedicated`), the most players, the site's origins, and the released game's id. Edits of
- * `project.godot` change only the two keys they own and keep every other line byte for byte.
+ * `project.godot` change only the two keys they own and keep every other line byte for byte. The setup installs the
+ * add-on and a release brings an older, unchanged copy up to date; neither overwrites an example file the game adapted.
  * @module @deepseek-ai/dsh-wasd-plugins/src/multiplayer-project
  */
-import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
+import { dirname, extname, join } from 'node:path'
+import { addonFileDigest, isShippedAddonFile, shippedAddonHas } from './multiplayer-addon-files.ts'
 import { writeWhole } from './state.ts'
 
 /** The add-on's folder inside a project. */
@@ -236,32 +238,183 @@ export function withMultiplayerAddon(text: string): string {
   return joined.endsWith(newline) ? joined : `${joined}${newline}`
 }
 
+/** Endings of the files Godot keeps beside a project's files: a script's UID, an asset's import settings. */
+const GODOT_SIDECARS = ['.uid', '.import'] as const
+
 /**
- * Copy a folder's files into another folder, replacing it, without hidden files and without the `.i18n.yaml`
- * translation records of this repository's documentation. Reads go through `node:fs/promises`, which Electron's
- * `app.asar` support resolves, so the source may sit inside a packaged Desktop app.
- * @param source - absolute folder to copy.
- * @param destination - absolute folder that is removed first, then filled.
- * @returns the copied files, as forward-slash paths relative to `destination`.
+ * The add-on's files in a folder, by forward-slash path, without hidden files, the `.i18n.yaml` translation records of
+ * this repository's documentation, and the files Godot keeps beside a project's files ({@link GODOT_SIDECARS}). Reads
+ * go through `node:fs/promises`, which Electron's `app.asar` support resolves, so the folder may sit inside a packaged
+ * Desktop app.
+ * @param folder - absolute folder.
+ * @returns each file's absolute path by its path in the folder; empty when the folder does not exist.
  */
-export async function replaceFolder(source: string, destination: string): Promise<string[]> {
-  const copied: string[] = []
-  await rm(destination, { recursive: true, force: true })
-  const walk = async (from: string, to: string, prefix: string): Promise<void> => {
-    await mkdir(to, { recursive: true })
-    for (const entry of (await readdir(from, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name))) {
-      // Godot's own files beside a source checkout's add-on, such as `.uid` and `.import` files, belong to a project.
+async function addonFiles(folder: string): Promise<Map<string, string>> {
+  const files = new Map<string, string>()
+  const walk = async (dir: string, prefix: string): Promise<void> => {
+    const entries = await readdir(dir, { withFileTypes: true }).catch((error: unknown) => {
+      // A project without the folder has none of the add-on's files.
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+      throw error
+    })
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       if (entry.name.startsWith('.') || entry.name.endsWith('.i18n.yaml')) continue
-      const name = `${prefix}${entry.name}`
-      if (entry.isDirectory()) await walk(join(from, entry.name), join(to, entry.name), `${name}/`)
-      else if (entry.isFile()) {
-        await writeFile(join(to, entry.name), await readFile(join(from, entry.name)))
-        copied.push(name)
-      }
+      if (GODOT_SIDECARS.some(ending => entry.name.endsWith(ending))) continue
+      if (entry.isDirectory()) await walk(join(dir, entry.name), `${prefix}${entry.name}/`)
+      else if (entry.isFile()) files.set(`${prefix}${entry.name}`, join(dir, entry.name))
     }
   }
-  await walk(source, destination, '')
-  return copied
+  await walk(folder, '')
+  return files
+}
+
+/**
+ * The {@link addonFileDigest} of each of the add-on's files in a folder.
+ * @param folder - absolute folder.
+ * @returns each file's digest by its path in the folder.
+ */
+async function addonDigests(folder: string): Promise<Map<string, string>> {
+  const digests = new Map<string, string>()
+  for (const [path, file] of await addonFiles(folder)) digests.set(path, addonFileDigest(path, await readFile(file)))
+  return digests
+}
+
+/**
+ * The version an add-on folder's `plugin.cfg` names.
+ * @param folder - absolute add-on folder.
+ * @returns the version, or undefined when the folder has no `plugin.cfg` or it names none.
+ */
+async function copyVersion(folder: string): Promise<string | undefined> {
+  try {
+    return pluginVersion(await readFile(join(folder, 'plugin.cfg'), 'utf8'))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw error
+  }
+}
+
+/**
+ * Whether add-on version `older` comes before `newer`, comparing their dot-separated whole numbers in order.
+ * @param older - a version, such as `1.2.0`.
+ * @param newer - another version.
+ * @returns true when `older` is the earlier version; false when either is not dot-separated whole numbers.
+ */
+export function olderAddonVersion(older: string, newer: string): boolean {
+  const parse = (version: string): number[] | undefined => /^\d+(?:\.\d+)*$/u.test(version) ? version.split('.').map(Number) : undefined
+  const left = parse(older)
+  const right = parse(newer)
+  if (left === undefined || right === undefined) return false
+  for (let index = 0; index < Math.max(left.length, right.length); index++) {
+    const difference = (left[index] ?? 0) - (right[index] ?? 0)
+    if (difference !== 0) return difference < 0
+  }
+  return false
+}
+
+/** Whether a path in the add-on folder is one of its examples, which a game may adapt where they are. */
+function isExample(path: string): boolean {
+  return path.startsWith('examples/')
+}
+
+/** What copying the shipped add-on into a project wrote and kept. */
+export interface AddonCopy {
+  /** The files written, as forward-slash paths in the add-on folder. */
+  readonly written: readonly string[]
+  /**
+   * The game's own files that stayed as they were: example files it changed or added, and files it added beside the
+   * add-on's own.
+   */
+  readonly kept: readonly string[]
+}
+
+/**
+ * Copy the shipped add-on's files over a project's add-on folder. Over an existing copy, an example file that the game
+ * changed stays, and so does one it removed from the version it had; a file of an earlier add-on that the shipped one
+ * leaves out goes, with the files Godot keeps beside it; files of the game's own stay. Each file is replaced whole, and
+ * `plugin.cfg` last, so a copy that stops part way still names the version it replaces and the next one finishes it.
+ * @param destination - the project's add-on folder.
+ * @param shipped - the shipped add-on's files ({@link addonFiles}).
+ * @param present - the existing copy: the digests of its files and the version it names, or undefined for a folder
+ *   without one.
+ * @returns what was written and kept.
+ */
+async function copyAddon(
+  destination: string, shipped: ReadonlyMap<string, string>,
+  present: { readonly digests: ReadonlyMap<string, string>; readonly version: string | undefined } | undefined,
+): Promise<AddonCopy> {
+  const written: string[] = []
+  const kept: string[] = []
+  const order = [...shipped].sort(([left], [right]) => Number(left === 'plugin.cfg') - Number(right === 'plugin.cfg') || left.localeCompare(right))
+  for (const [path, file] of order) {
+    const digest = present?.digests.get(path)
+    if (present !== undefined && isExample(path)) {
+      // An example the game adapted stays, and so does the removal of one that its version shipped.
+      const adapted = digest !== undefined && !isShippedAddonFile(path, digest)
+      const removed = digest === undefined && present.version !== undefined && shippedAddonHas(present.version, path)
+      if (adapted) kept.push(path)
+      if (adapted || removed) continue
+    }
+    const target = join(destination, ...path.split('/'))
+    await mkdir(dirname(target), { recursive: true })
+    await writeWhole(target, await readFile(file))
+    written.push(path)
+  }
+  for (const [path, digest] of present?.digests ?? []) {
+    if (shipped.has(path) || extname(path) === '.md') continue
+    if (isShippedAddonFile(path, digest)) {
+      for (const ending of ['', ...GODOT_SIDECARS]) await rm(join(destination, ...`${path}${ending}`.split('/')), { force: true })
+    } else kept.push(path)
+  }
+  return { written, kept: kept.sort() }
+}
+
+/**
+ * Install the shipped add-on into a project, over any copy it has: the setup's copy, which replaces the add-on's own
+ * files whatever their version and changes, and keeps the example files the game changed or removed.
+ * @param projectDir - absolute folder holding `project.godot`.
+ * @param source - absolute folder of the shipped add-on.
+ * @returns what was written and kept.
+ */
+export async function installMultiplayerAddon(projectDir: string, source: string): Promise<AddonCopy> {
+  const destination = join(projectDir, ADDON_DIR)
+  const present = await hasMultiplayerAddon(projectDir)
+    ? { digests: await addonDigests(destination), version: await copyVersion(destination) }
+    : undefined
+  return await copyAddon(destination, await addonFiles(source), present)
+}
+
+/** What a release's update of a project's older add-on did ({@link updateMultiplayerAddon}). */
+export type AddonUpdate =
+  /** The project has the shipped add-on now; `kept` names the game's own files that stayed ({@link AddonCopy.kept}). */
+  | { readonly outcome: 'updated'; readonly from?: string; readonly to: string; readonly kept: readonly string[] }
+  /** The project's copy stayed as it was, because the game changed or added the files `changed` of the add-on's own code. */
+  | { readonly outcome: 'changed'; readonly from?: string; readonly to: string; readonly changed: readonly string[] }
+
+/**
+ * Bring a project's add-on up to the shipped one when its `plugin.cfg` names an older version, or none, and every file
+ * of its own code is one WASD Engine shipped ({@link isShippedAddonFile}); the example files and the Markdown files do
+ * not count, and the copy keeps the example files the game changed or removed ({@link installMultiplayerAddon}).
+ * @param projectDir - absolute folder holding `project.godot`.
+ * @param source - absolute folder of the shipped add-on.
+ * @returns the update, or why the copy stayed; undefined when the project has no add-on or one as new as the shipped one.
+ * @throws {Error} when the shipped add-on's `plugin.cfg` names no version.
+ */
+export async function updateMultiplayerAddon(projectDir: string, source: string): Promise<AddonUpdate | undefined> {
+  if (!await hasMultiplayerAddon(projectDir)) return undefined
+  const to = pluginVersion(await readFile(join(source, 'plugin.cfg'), 'utf8'))
+  if (to === undefined) throw new Error(`${join(source, 'plugin.cfg')} names no version.`)
+  const destination = join(projectDir, ADDON_DIR)
+  const from = await copyVersion(destination)
+  if (from !== undefined && !olderAddonVersion(from, to)) return undefined
+  const named = from === undefined ? {} : { from }
+  const present = await addonDigests(destination)
+  const changed = [...present]
+    .filter(([path, digest]) => !isExample(path) && extname(path) !== '.md' && !isShippedAddonFile(path, digest))
+    .map(([path]) => path)
+    .sort()
+  if (changed.length > 0) return { outcome: 'changed', ...named, to, changed }
+  const { kept } = await copyAddon(destination, await addonFiles(source), { digests: present, version: from })
+  return { outcome: 'updated', ...named, to, kept }
 }
 
 /**

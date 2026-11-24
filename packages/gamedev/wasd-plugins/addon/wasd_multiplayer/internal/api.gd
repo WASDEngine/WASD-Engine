@@ -55,7 +55,7 @@ func request(method: int, path: String, body: Variant = null, token := "", timeo
 
 static func _failure(status: int, parsed: Variant) -> Dictionary:
 	var failure := {"ok": false, "status": status, "error": _default_code(status),
-			"message": "The WASD service answered %d." % status}
+			"message": "The WASD service answered %d. Try again in a moment." % status}
 	if not parsed is Dictionary:
 		return failure
 	var body: Dictionary = parsed

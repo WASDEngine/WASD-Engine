@@ -475,6 +475,7 @@ export default class WasdPlugins extends TypertRemoteService {
             fetch: (input, init) => fetch(input, init),
             folders: this.folders,
             tempDir: tmpdir(),
+            addonSource: ADDON_SOURCE,
             credits: async (projectDir) => {
               // A connected agent's release credited the agent already, and its Session runs the window's model.
               const credited = audience === 'session' && agent !== undefined ? await this.sessionModel(agent, exec.signal) : undefined

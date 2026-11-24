@@ -128,7 +128,7 @@ describe('wasd_multiplayer_setup', () => {
     const dir = await multiplayerProject()
     const definitions = multiplayerToolDefinitions(toolHost(site, dir).host, appSurface().surface)
     const { value, text } = await call(definitions, 'wasd_multiplayer_setup', { mode: 'dedicated' })
-    expect(value).toMatchObject({ project_dir: dir, mode: 'dedicated', max_players: 32, project_changed: true, addon_version: '1.2.0' })
+    expect(value).toMatchObject({ project_dir: dir, mode: 'dedicated', max_players: 32, project_changed: true, addon_version: '1.3.0' })
     expect(value.addon_files).toBeGreaterThan(5)
     expect(text).toContain('The game is set up for a dedicated server, up to 32 players.')
     expect(text).toContain('Next steps:\n- In the main scene: `if WasdMultiplayer.is_server(): WasdMultiplayer.serve()`')

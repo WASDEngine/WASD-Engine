@@ -21,7 +21,9 @@
  *
  * A project set up for multiplayer (`res://wasd_multiplayer.cfg`) gets its game's id and the site's origins written
  * into that file before the export once the project is linked, and after its first release, so builds know their game
- * and their site where no URL names them. In `dedicated` mode, the release then exports the Linux dedicated server
+ * and their site where no URL names them. Before the export, a project's WASD Multiplayer add-on older than this WASD
+ * Engine's becomes this one, unless the game changed the add-on's own code, and the result says which happened
+ * ({@link addonNote}). In `dedicated` mode, the release then exports the Linux dedicated server
  * build into `.wasdengine/server/`, zips `server.x86_64` with any GDExtension libraries the export wrote next to it,
  * and stores it on the site with the new version's number, which updates the game's servers; a server build that
  * fails leaves the version released and becomes a warning.
@@ -37,7 +39,7 @@ import { creditNames, type GameCredits } from './credits.ts'
 import { folderOf, type ReleaseFolders } from './folders.ts'
 import { accountGame, copyQuestion, linksTo, projectName, readLinks, rememberGame, siteGames, Visibility, type AccountGame } from './game-link.ts'
 import { MultiplayerApi } from './multiplayer-api.ts'
-import { readMultiplayerConfig, writeMultiplayerConfig, type MultiplayerConfig } from './multiplayer-project.ts'
+import { readMultiplayerConfig, updateMultiplayerAddon, writeMultiplayerConfig, type AddonUpdate, type MultiplayerConfig } from './multiplayer-project.ts'
 import { fileDigest, savedPreview, type PreviewFiles } from './preview.ts'
 import { STATE_DIR } from './state.ts'
 import type { WasdDownload, WasdMultiplayerMode, WasdRelease, WasdServerBuild, WasdVisibility } from './types.ts'
@@ -353,6 +355,27 @@ export interface ReleaseDependencies {
    * @returns the models, tools, and add-ons.
    */
   readonly credits?: (projectDir: string) => Promise<GameCredits>
+  /**
+   * Absolute folder of the WASD Multiplayer add-on that this WASD Engine ships, which a release puts in place of a
+   * project's older, unchanged copy ({@link updateMultiplayerAddon}); absent, releases leave the copy as it is.
+   */
+  readonly addonSource?: string
+}
+
+/**
+ * What a release's result says of the project's WASD Multiplayer add-on, once the release updated it or found it older
+ * and changed by the game.
+ * @param update - what the release did.
+ * @returns the note.
+ */
+export function addonNote(update: AddonUpdate): string {
+  if (update.outcome === 'updated') {
+    const was = update.from === undefined ? 'named no version' : `was ${update.from}`
+    const kept = update.kept.length === 0 ? '' : ` The add-on files the game changed or added stayed as they were: ${update.kept.join(', ')}.`
+    return `This project's WASD Multiplayer add-on ${was}; the release updated it to ${update.to} before the export.${kept}`
+  }
+  const is = update.from === undefined ? 'names no version' : `is ${update.from}`
+  return `This project's WASD Multiplayer add-on ${is}, older than WASD Engine's ${update.to}, and the game changed the add-on's own code (${update.changed.join(', ')}), so the release built the game with it as it is. Ask the user whether to call wasd_multiplayer_setup, which replaces those files with ${update.to}'s and keeps the example files the game changed; then apply the game's changes again where ${update.to} still needs them.`
 }
 
 async function isFile(path: string): Promise<boolean> {
@@ -579,6 +602,10 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
   if (multiplayer !== undefined) {
     multiplayer = await pointConfig(request.projectDir, multiplayer, game?.id ?? multiplayer.gameId, access.origin)
   }
+  // The builds get the fixes of this WASD Engine's add-on, unless the game changed the add-on's own code.
+  const addonSource = dependencies.addonSource
+  const addon = addonSource === undefined ? undefined : await updateMultiplayerAddon(request.projectDir, addonSource)
+  const addonNotes = addon === undefined ? [] : [addonNote(addon)]
   const remember = (linked: GameJson, version: number, digests: PreviewDigests = {}): Promise<void> => {
     return rememberGame(request.projectDir, access.origin, {
       ...access.account === undefined ? {} : { account: access.account },
@@ -637,7 +664,7 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     // A check that could not run stops nothing; one that found the game broken in browsers stops the release here.
     const checked = checking === undefined ? undefined : await checking
     if (checked !== undefined && 'webCheck' in checked && checked.webCheck.problems.length > 0) {
-      throw new WebCheckRefusal(checked.webCheck, exported.warnings)
+      throw new WebCheckRefusal(checked.webCheck, [...exported.warnings, ...addonNotes])
     }
     if (game !== undefined) {
       const changes: GameChanges = {
@@ -647,7 +674,7 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
       if (Object.keys(changes).length > 0) game = await api.update(game.id, changes)
     }
     game ??= await create()
-    const warnings = [...exported.warnings]
+    const warnings = [...exported.warnings, ...addonNotes]
     const saved = await savedPreview(request.projectDir)
     // The saved animation plays the saved GIF's recording; with a GIF of the caller's, the site plays that GIF instead.
     let files: PreviewFiles = {

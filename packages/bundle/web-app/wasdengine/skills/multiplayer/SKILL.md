@@ -23,7 +23,7 @@ The tradeoffs to explain:
 
 ## Set up
 
-Run `wasd_multiplayer_setup` with the chosen mode. It adds the WASD Multiplayer add-on (`res://addons/wasd_multiplayer/`, autoload `WasdMultiplayer`) and `res://wasd_multiplayer.cfg`. Release writes the game id into that file; do not edit it by hand. `addons/wasd_multiplayer/examples/lobby_menu.tscn` is a working menu to adapt.
+Run `wasd_multiplayer_setup` with the chosen mode. It adds the WASD Multiplayer add-on (`res://addons/wasd_multiplayer/`, autoload `WasdMultiplayer`) and `res://wasd_multiplayer.cfg`. Release writes the game id into that file; do not edit it by hand. `addons/wasd_multiplayer/examples/lobby_menu.tscn` is a working menu to adapt, in place if you like; leave the add-on's other files as they are, because a release updates an unchanged add-on to WASD Engine's newest version and keeps a changed one at its old version.
 
 ## Structure the game
 
