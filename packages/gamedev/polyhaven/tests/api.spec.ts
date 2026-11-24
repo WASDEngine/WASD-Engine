@@ -1,6 +1,7 @@
 /** The Poly Haven API client against a fake Poly Haven: the cached asset list, the search, file trees, and images. */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { PolyHavenApi, PolyHavenRequestError, type PolyHavenApiOptions } from '../src/api.ts'
+import { AssetLibraryRequestError } from '@deepseek-ai/dsh-game-mcp/kit'
+import { PolyHavenApi, type PolyHavenApiOptions } from '../src/api.ts'
 import { PREVIEW, startFakePolyHaven, type FakePolyHaven } from './fixtures.ts'
 
 const signal = new AbortController().signal
@@ -54,7 +55,7 @@ describe('PolyHavenApi', () => {
     fake.listStatus = 503
     expect((await client.assets(signal)).size).toBe(3)
     expect(fake.requests).toHaveLength(2)
-    await expect(api().assets(signal)).rejects.toThrow(new PolyHavenRequestError(503, 'Poly Haven answered HTTP 503 for the asset list.'))
+    await expect(api().assets(signal)).rejects.toThrow(new AssetLibraryRequestError(503, 'Poly Haven answered HTTP 503 for the asset list.'))
   })
 
   it('searches with the trimmed, lowercased query and the kind\'s filter, and leaves ranking to the caller when the API cannot', async () => {

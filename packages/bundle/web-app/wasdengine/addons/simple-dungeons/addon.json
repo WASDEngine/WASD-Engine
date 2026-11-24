@@ -1,0 +1,56 @@
+{
+  "id": "simple-dungeons",
+  "title": "SimpleDungeons",
+  "host": "godot",
+  "version": "2025.04.02+15b3240",
+  "category": "environment",
+  "cue": "3D dungeons from rooms: corridors, doorways, stairs, floors",
+  "summary": "Random 3D dungeons: rooms placed on a grid of one or more floors and joined by corridors and stairs, from the game's own room scenes or from box rooms built in code, with colliders, in milliseconds.",
+  "useWhen": "A 3D game needs a level of rooms and corridors that is different every run: a dungeon crawler, a roguelike, a horror maze, a space station, an office or a mansion with floors. A seed gives the same level again.",
+  "avoidWhen": "The level is designed by hand, lies outdoors, or is a 2D or tile map, which gaea generates.",
+  "tags": [
+    "dungeon",
+    "procedural",
+    "rooms",
+    "corridors",
+    "roguelike",
+    "level-generation",
+    "maze",
+    "interior",
+    "3d"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "MajikayoGames, dedicated to the public domain",
+  "homepage": "https://github.com/majikayogames/SimpleDungeons",
+  "archive": {
+    "url": "https://github.com/majikayogames/SimpleDungeons/archive/15b32406e2f10c55cdb864e18661137bacfead89.zip",
+    "sha256": "46f2e13d788a69a6208ebf7ffe11454007a249998895cc55e418a013fa5e0295",
+    "bytes": 3310845,
+    "root": "SimpleDungeons-15b32406e2f10c55cdb864e18661137bacfead89/addons/SimpleDungeons",
+    "exclude": [
+      "sample_dungeons",
+      "sample_assets",
+      "plugin.gd",
+      "plugin.cfg"
+    ]
+  },
+  "godot": {
+    "addonDir": "SimpleDungeons",
+    "overlay": [
+      "simple-dungeons/overlay"
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/majikayogames/SimpleDungeons/15b32406e2f10c55cdb864e18661137bacfead89/addons/SimpleDungeons/res/dungeongenerator3dicon.svg",
+    "license": "CC0-1.0"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

@@ -3,15 +3,16 @@
  * `SKILL.md`, its usage guide, beside folders without an entry that Godot add-ons name as overlays. An add-on that WASD
  * Engine wrote has no archive: a Godot one is its overlay folders, a Blender extension its `blender.files` folder.
  * Loading validates every entry, its archive pin, its setup script, overlay folders, and extension files, and its
- * guide's frontmatter, and rejects a catalog whose entries name unknown conflicts. Search ranks entries by query words against their ids,
- * titles, tags, and descriptions.
+ * guide's frontmatter, and rejects a catalog whose entries name unknown conflicts. Every entry has a category and a cue,
+ * the few words the catalog's index says of it. Search ranks entries by query words against their ids, titles, tags,
+ * cues, and descriptions.
  * @module @deepseek-ai/dsh-game-addons/src/catalog
  */
 import { access, readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
-import type { GameAddon, GameAddonHost, GameAddonStage } from './types.ts'
+import type { GameAddon, GameAddonCategory, GameAddonHost, GameAddonStage } from './types.ts'
 
 /** File name of an entry inside its folder. */
 export const ENTRY_FILE = 'addon.json'
@@ -31,6 +32,12 @@ const RES_PATH = /^res:\/\/[^\s"]+$/u
 const STAGES = ['prototype', 'content', 'polish', 'ship'] as const satisfies readonly GameAddonStage[]
 const HOSTS = ['godot', 'blender'] as const satisfies readonly GameAddonHost[]
 
+/** The catalog's categories, in the order the listings show them. */
+export const CATEGORIES = ['environment', 'rendering', 'characters', 'physics', 'gameplay', 'camera', 'interface', 'two-d', 'kits', 'assets', 'testing'] as const satisfies readonly GameAddonCategory[]
+
+/** Longest cue, in characters: the catalog's index carries one per add-on in every request. */
+export const CUE_LIMIT = 60
+
 const ArchivePath = z.string().regex(ARCHIVE_PATH).refine(path => !path.split('/').some(segment => segment === '.' || segment === '..'), 'must not contain . or .. segments')
 
 const Entry = z.strictObject({
@@ -38,6 +45,8 @@ const Entry = z.strictObject({
   title: z.string().min(1).max(80),
   host: z.enum(HOSTS),
   version: z.string().regex(/^[0-9A-Za-z][0-9A-Za-z.+-]*$/u),
+  category: z.enum(CATEGORIES),
+  cue: z.string().min(1).max(CUE_LIMIT).refine(cue => !cue.includes('\n'), 'must be one line'),
   summary: z.string().min(1).max(200),
   useWhen: z.string().min(1).max(300),
   avoidWhen: z.string().min(1).max(300).exactOptional(),
@@ -53,6 +62,8 @@ const Entry = z.strictObject({
     bytes: z.number().int().positive(),
     root: ArchivePath,
     license: ArchivePath.min(1).exactOptional(),
+    exclude: z.array(ArchivePath.min(1)).min(1).exactOptional(),
+    projectRoot: z.literal(true).exactOptional(),
   }).exactOptional(),
   godot: z.strictObject({
     addonDir: z.string().regex(GODOT_NAME).refine(name => name !== '..' && name !== '.', 'must name a folder'),
@@ -151,6 +162,9 @@ function checkEntry(entry: GameAddon, folder: string): void {
     if (entry.archive === undefined && entry.godot.overlay === undefined) throw new GameAddonCatalogError(`${where}: a Godot add-on needs an archive or overlay folders.`)
     if (entry.assets !== undefined) throw new GameAddonCatalogError(`${where}: only a Blender add-on has an asset pack.`)
     if (entry.verified.godot === undefined) throw new GameAddonCatalogError(`${where}: verified.godot is missing.`)
+    if (entry.archive?.projectRoot === true && entry.godot.plugin !== undefined) {
+      throw new GameAddonCatalogError(`${where}: a project archive has no editor plugin of its own, so godot.plugin must be absent.`)
+    }
     for (const autoload of entry.godot.autoloads ?? []) {
       if (!autoload.path.startsWith(`res://addons/${entry.godot.addonDir}/`)) {
         throw new GameAddonCatalogError(`${where}: autoload ${autoload.name} must point inside res://addons/${entry.godot.addonDir}/.`)
@@ -165,6 +179,9 @@ function checkEntry(entry: GameAddon, folder: string): void {
   }
   // Blender add-ons stay in the add-on store and never ship with the game, so no notice copies their license.
   if (entry.archive?.license !== undefined) throw new GameAddonCatalogError(`${where}: archive.license applies only to Godot add-ons.`)
+  if (entry.archive?.exclude !== undefined || entry.archive?.projectRoot !== undefined) {
+    throw new GameAddonCatalogError(`${where}: archive.exclude and archive.projectRoot apply only to Godot add-ons.`)
+  }
   if (entry.verified.bpy === undefined) throw new GameAddonCatalogError(`${where}: verified.bpy is missing.`)
 }
 
@@ -336,6 +353,8 @@ export interface CatalogQuery {
   readonly host?: GameAddonHost
   /** Only add-ons for this development stage. */
   readonly stage?: GameAddonStage
+  /** Only add-ons of this category. */
+  readonly category?: GameAddonCategory
 }
 
 /** Words too common to rank by. */
@@ -346,15 +365,19 @@ function words(text: string): string[] {
 }
 
 /**
- * Rank the entries that match a query: each query word scores by the best field it starts a word of, 3 for the id
- * or title, 2 for a tag, and 1 for the summary or use; entries without any matching word are left out.
+ * Rank the entries that match a query: a query that is one entry's id gives that entry alone; otherwise each query
+ * word scores by the best field it starts a word of, 3 for the id or title, 2 for a tag or the cue, and 1 for the
+ * summary or use; entries without any matching word are left out.
  * @param entries - catalog entries in catalog order.
  * @param query - words and filters.
  * @returns matching entries, best first, catalog order among equals; every filtered entry without words.
  */
 export function searchCatalog(entries: readonly GameAddon[], query: CatalogQuery): GameAddon[] {
   const filtered = entries.filter(entry => (query.host === undefined || entry.host === query.host)
-    && (query.stage === undefined || entry.stages.includes(query.stage)))
+    && (query.stage === undefined || entry.stages.includes(query.stage))
+    && (query.category === undefined || entry.category === query.category))
+  const named = filtered.find(entry => entry.id === (query.text ?? '').trim().toLowerCase())
+  if (named !== undefined) return [named]
   const wanted = words(query.text ?? '').filter(word => !STOPWORDS.has(word))
   if (wanted.length === 0) return filtered
   // A query word matches a catalog word it starts, or, from five letters on, one of four letters or more that it starts with.
@@ -363,7 +386,7 @@ export function searchCatalog(entries: readonly GameAddon[], query: CatalogQuery
   const scored = filtered.map((entry, index) => {
     const fields: ReadonlyArray<readonly [readonly string[], number]> = [
       [[...words(entry.id), ...words(entry.title)], 3],
-      [entry.tags.flatMap(words), 2],
+      [[...entry.tags.flatMap(words), ...words(entry.cue)], 2],
       [[...words(entry.summary), ...words(entry.useWhen)], 1],
     ]
     let score = 0

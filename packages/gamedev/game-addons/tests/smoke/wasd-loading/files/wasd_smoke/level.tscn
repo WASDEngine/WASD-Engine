@@ -1,0 +1,43 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://wasd_smoke/level.gd" id="script"]
+[ext_resource type="Shader" path="res://wasd_smoke/level.gdshader" id="shader"]
+
+[sub_resource type="ShaderMaterial" id="paint"]
+shader = ExtResource("shader")
+
+[sub_resource type="BoxMesh" id="box"]
+
+[sub_resource type="PlaneMesh" id="floor"]
+size = Vector2(40, 40)
+
+[sub_resource type="Environment" id="air"]
+background_mode = 1
+background_color = Color(0.3, 0.4, 0.5, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.5, 0.5, 0.5, 1)
+
+[node name="Level" type="Node3D"]
+script = ExtResource("script")
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 6)
+
+[node name="Air" type="WorldEnvironment" parent="."]
+environment = SubResource("air")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.6, 0.8, 0, -0.8, 0.6, 0, 5, 0)
+
+[node name="Floor" type="MeshInstance3D" parent="."]
+mesh = SubResource("floor")
+
+[node name="Box" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+mesh = SubResource("box")
+surface_material_override/0 = SubResource("paint")
+
+[node name="FarBox" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 30)
+mesh = SubResource("box")
+surface_material_override/0 = SubResource("paint")

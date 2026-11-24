@@ -1,6 +1,6 @@
 ---
 name: wasd-cloth
-description: WASD Cloth is installed in this project. Godot nodes for cloth in 3D games (WasdClothSheet3D soft-body sheets with fabric presets, WasdClothChains3D spring-bone capes and skirts, WasdClothWind3D wind zones), flag_wind.gdshader for flags without physics, and check_cloth.gd, which measures the cloth of a scene. Load before adding cloth to this game.
+description: WASD Cloth is installed in this project. Godot nodes for cloth and ropes in 3D games (WasdClothSheet3D soft-body sheets with fabric presets, WasdClothChains3D spring-bone capes and skirts, WasdRope3D ropes, cables, and vines that hang and swing, WasdClothWind3D wind zones), flag_wind.gdshader for flags without physics, and check_cloth.gd, which measures the cloth of a scene. Load before adding cloth, a rope, or a hanging cable to this game.
 ---
 
 # WASD Cloth
@@ -11,7 +11,8 @@ description: WASD Cloth is installed in this project. Godot nodes for cloth in 3
 |---|---|
 | `cloth_sheet_3d.gd`, `WasdClothSheet3D` | cloth the physics engine moves |
 | `cloth_chains_3d.gd`, `WasdClothChains3D` | capes, skirts, coat tails, scarves, hair, tails on bone chains |
-| `cloth_wind_3d.gd`, `WasdClothWind3D` | wind with gusts for both |
+| `rope_3d.gd`, `WasdRope3D` | ropes, cables, wire ropes, vines that hang and swing |
+| `cloth_wind_3d.gd`, `WasdClothWind3D` | wind with gusts for all three |
 | `flag_wind.gdshader` | flags and banners that wave without physics |
 | `check_cloth.gd` | measures the cloth of a scene |
 
@@ -62,7 +63,7 @@ These break cloth without an error:
 
 ## WasdClothWind3D
 
-An Area3D that blows on every soft body in its `box_size` box (100 by 40 by 100 m around it); WasdClothChains3D follows it too. Set `direction`, `speed` in m/s (2 is a breeze, 6 stiff, 12 a gale), `gustiness` (0 to 1), `turbulence` (degrees the direction swings), and `cloth_pressure` (scales the push on sheets). `direction` is a world direction: turning the zone, or a ship that carries it, turns only its box. Wind along a sheet's surface does not push it: aim it across. `WasdClothWind3D.velocity_at(get_tree(), position)` returns the wind for your own code.
+An Area3D that blows on every soft body in its `box_size` box (100 by 40 by 100 m around it); WasdClothChains3D follows it too. Set `direction`, `speed` in m/s (2 is a breeze, 6 stiff, 12 a gale), `gustiness` (0 to 1), `turbulence` (degrees the direction swings), and `cloth_pressure` (scales the push on sheets). `direction` is a world direction: turning the zone, or a ship that carries it, turns only its box. Wind along a sheet's surface does not push it: aim it across. `WasdClothWind3D.velocity_at(get_tree(), position)` returns the wind for your own code. With the `wasd-weather` add-on, `zone.add_to_group("wasd_wind")` hands the zone the weather's wind, so cloth flies harder in a storm.
 
 ## WasdClothChains3D
 
@@ -76,6 +77,19 @@ func _ready() -> void:
 ```
 
 Call `reset()` on it after teleporting the character, and `configure()` after changing the skeleton. Chains do not hold each other, so a skirt's chains can part in fast moves.
+
+## WasdRope3D
+
+One draw call, no physics body, no texture:
+
+```gdscript
+var rope := WasdRope3D.new()
+rope.length = 4.3               # longer than the gap, so it sags
+rope.end_target = $PostB/Top    # none: a free end
+$PostA/Top.add_child(rope)      # starts at the node
+```
+
+`look` is rope, cable, steel, or vine and sets `color`; `thickness` (0.04 m); `segments` (16, at most 31). `hanging` is a node that swings on the free end, such as a lamp. `ground_mask` lets the rope lie on those physics layers; a free rope starts coiled there. `knots = false` suits a cable into a wall. Wind zones move it (`wind_response`). Code may change `length`, `push(speed, part)` it, and read `get_position_at(part)` (0 to 1) to hang things on it; call `reset()` after teleporting an end. It passes through walls and bodies.
 
 ## flag_wind.gdshader
 

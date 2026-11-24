@@ -3,6 +3,8 @@
   "title": "Rigify",
   "host": "blender",
   "version": "0.6.10",
+  "category": "characters",
+  "cue": "control rigs for humans and animals",
   "summary": "Auto-rigging that ships with Blender: add a human or animal meta-rig, generate a control rig with DEF- deform bones, skin meshes to it.",
   "useWhen": "A humanoid or animal mesh needs a skeleton, weights and animation in Blender before it goes to Godot as a skinned .glb, and a hand-built armature would take too long.",
   "avoidWhen": "A prop with one or two moving parts, or a character that already has a rig: a plain bpy armature is simpler.",

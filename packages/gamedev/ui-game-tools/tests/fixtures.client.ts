@@ -16,6 +16,16 @@ export const BLENDER_ICON = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzYiIGhla
 /** The icon data URL the Host would send for GIMP. */
 export const GIMP_ICON = 'data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMzYgMzYiLz4='
 
+/** ambientCG running, switchable through its patch row, with a package that declares no icon. */
+export const AMBIENTCG: PluginInfo = {
+  entryId: entryId('ambientcg'),
+  moduleName: '@deepseek-ai/dsh-ambientcg',
+  enabled: true,
+  fiberPhase: 'active',
+  patchId: 'ambientcg',
+  meta: { title: 'ambientCG', description: 'Find CC0 materials.' },
+}
+
 /** Blender as the plugin manager lists it: running, switchable through its patch row. */
 export const BLENDER: PluginInfo = {
   entryId: entryId('blender'),
@@ -109,6 +119,11 @@ export const OTHER: PluginInfo = {
   patchId: 'tool-web',
 }
 
+/** The Loader entries both answers hold unless a test names others: the unrelated one, then every game tool. */
+const ENTRIES: readonly PluginInfo[] = [
+  OTHER, AMBIENTCG, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, POLY_HAVEN, SUPERCOLLIDER,
+]
+
 /**
  * The inventory answer for these entries.
  * @param entries - the Loader entries.
@@ -116,7 +131,7 @@ export const OTHER: PluginInfo = {
  * @returns the successful answer.
  */
 export function inventory(
-  entries: readonly PluginInfo[] = [OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, POLY_HAVEN, SUPERCOLLIDER],
+  entries: readonly PluginInfo[] = ENTRIES,
   managementAvailable = true,
 ): RemoteResult<PluginInventorySnapshot> {
   return { ok: true, value: { managementAvailable, entries } }
@@ -127,9 +142,7 @@ export function inventory(
  * @param entries - the Loader entries.
  * @returns the successful answer.
  */
-export function plugins(
-  entries: readonly PluginInfo[] = [OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, POLY_HAVEN, SUPERCOLLIDER],
-): RemoteResult<PluginInfo[]> {
+export function plugins(entries: readonly PluginInfo[] = ENTRIES): RemoteResult<PluginInfo[]> {
   return { ok: true, value: [...entries] }
 }
 

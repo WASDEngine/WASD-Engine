@@ -671,7 +671,7 @@ export function withTextureImports(projectText: string, values: Partial<Record<T
 export const LARGE_PACK_BYTES = 100 * 1024 * 1024
 
 /** The note of a project whose desktop renderer is not the Compatibility renderer that Web builds use. */
-export const WEB_RENDERER_NOTE = 'The Web build renders with the Compatibility renderer (WebGL 2), not the project\'s desktop renderer: SSAO, SSR, SDFGI, volumetric fog, TAA, and FSR are missing or different there, shaders read `source_color` textures as sRGB values and scene depth in another range, and instance uniforms fit far fewer objects. godot_run with web set to true shows the game as the Web build draws it.'
+export const WEB_RENDERER_NOTE = 'The Web build renders with the Compatibility renderer (WebGL 2), not the project\'s desktop renderer: SSR, SSIL, SDFGI, volumetric fog, depth of field, Decal nodes, TAA, and FSR are missing there, SSAO draws only thin contact shading, shaders read `source_color` textures as sRGB values and scene depth in another range, and instance uniforms fit far fewer objects. godot_run with web set to true shows the game as the Web build draws it.'
 
 /**
  * Notes about how the Web build of a project differs from its desktop runs.
@@ -709,13 +709,30 @@ const WEB_FEATURES: readonly { readonly match: RegExp; readonly note: (files: st
     match: /^\s*shader_type\s+fog\s*;|\btype="FogVolume"|\bvolumetric_fog_enabled\s*=\s*true\b/mu,
     note: files => `Web builds draw no FogVolume shaders, FogVolume nodes, or volumetric fog, which these files use: ${files}. The Environment's depth and height fog work there.`,
   },
+  {
+    match: new RegExp([
+      String.raw`\b(?:ssr|ssil|sdfgi)_enabled\s*=\s*true\b`, String.raw`\bdof_blur_(?:far|near)_enabled\s*=\s*true\b`,
+      String.raw`\bsubsurf_scatter_enabled\s*=\s*true\b`, String.raw`\bSSS_STRENGTH\b`, String.raw`\bhint_normal_roughness_texture\b`,
+    ].join('|'), 'u'),
+    note: files => `Web builds draw no screen-space reflections, SSIL, SDFGI, depth of field, or subsurface scattering, and a shader that reads the normal-roughness texture fails to compile there; these files use one of them: ${files}. There, ReflectionProbes and planar mirrors reflect, ambient light and baked textures stand in for bounced light, and a rim or wrapped-light term in the shader stands in for scattering.`,
+  },
+  {
+    match: /\btype="Decal"|\bDecal\.new\s*\(|^\s*extends\s+Decal\b|\blight_projector\s*=\s*(?!null\b)\S/mu,
+    note: files => `Web builds draw no Decal nodes and no light projector textures, which these files use: ${files}. There, draw a mark as a flat mesh with a transparent material just above the surface, and a projected pattern as a transparent card or cone in the light's path.`,
+  },
+  {
+    match: /\btrail_enabled\s*=\s*true\b|\bsub_emitter\s*=|\bsub_emitter_mode\s*=\s*[1-3]\b|\bemit_particle\s*\(/u,
+    note: files => `Web builds draw no particle trails and run no particle sub-emitters, which these files turn on: ${files}. There, draw a trail as a ribbon mesh that follows the object, and start a second particle node from code where a sub-emitter would fire.`,
+  },
 ]
 
 /**
  * Notes that name the project files using features of desktop renderers that Web builds lack: the RenderingDevice,
- * with its compute shaders, and FogVolumes or volumetric fog. The scan reads scripts, shaders, scenes, and resources of
- * at most {@link FEATURE_SCAN_BYTES}, at most {@link FEATURE_SCAN_FILES} of them, and skips folders whose names start
- * with a dot, such as `.godot`, and `node_modules`.
+ * with its compute shaders; FogVolumes or volumetric fog; screen-space reflections, SSIL, SDFGI, depth of field,
+ * subsurface scattering, or the normal-roughness texture; Decal nodes or light projector textures; and particle trails
+ * or sub-emitters. The scan reads scripts, shaders, scenes, and resources of at most {@link FEATURE_SCAN_BYTES}, at most
+ * {@link FEATURE_SCAN_FILES} of them, and skips folders whose names start with a dot, such as `.godot`, and
+ * `node_modules`.
  * @param projectDir - absolute folder holding `project.godot`.
  * @param signal - cancellation.
  * @returns one note per feature that some file uses.

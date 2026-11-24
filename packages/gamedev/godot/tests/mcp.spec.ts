@@ -124,8 +124,10 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     // Connected agents build games that WASD Engine releases to browsers, so they hear what browsers lack while they build.
     expect(MCP_INSTRUCTIONS.split('\n').at(-1)).toBe('Released games play in browsers, where Godot draws with its Compatibility renderer (WebGL 2) whatever renderer the project uses, without a RenderingDevice: compute shaders, FogVolumes, volumetric fog, SDFGI, SSR, TAA, and FSR do nothing there. '
       + 'Start new games on it, with renderer/rendering_method="gl_compatibility" under [rendering] in project.godot, so they look the same everywhere. '
-      + 'Give desktop-only work a path for browsers, such as SoftBody3D sheets on Jolt in place of compute-shader cloth, and stand in for the effects browsers lack: '
-      + 'depth and height fog with soft particle cards for fog banks, additive cone meshes for light shafts, emission with glow, MSAA for edges, and ambient occlusion baked into textures. '
+      + 'Give desktop-only work a path for browsers, such as SoftBody3D sheets on Jolt in place of compute-shader cloth, and stand in for the effects browsers lack '
+      + 'with the game_addons add-ons that draw there: wasd-look for a sky, sun, and fog that show the same in both renderers, '
+      + 'wasd-light for fog banks, light shafts, and lamp halos, wasd-decals for marks in place of Decal nodes, and mirror3d for flat reflections; MSAA smooths edges, '
+      + 'and ambient occlusion can be baked into textures. '
       + 'The same light and fog values look different there, so tune the browser\'s look from godot_run web: true, which draws the game as browsers do. '
       + 'wasd_export_web ends with a Web check that opens the build in a browser and reports its freezes, errors, and a screenshot: fix what it finds while you build.')
     expect(godot.filter(tool => tool.annotations?.readOnlyHint === true).map(tool => tool.name)).toEqual(['godot_scene_tree', 'godot_performance', 'godot_logs'])

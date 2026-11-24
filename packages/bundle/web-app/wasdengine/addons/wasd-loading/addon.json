@@ -1,0 +1,54 @@
+{
+  "id": "wasd-loading",
+  "title": "WASD Loading",
+  "host": "godot",
+  "version": "1.0.0",
+  "category": "interface",
+  "cue": "loading screen and shader warm-up that work in browsers",
+  "summary": "Scene changes behind a loading screen with a bar that moves, in Web builds too, and every shader compiled before play, so the first explosion or enemy does not stall the game.",
+  "useWhen": "The game has more than one scene, a level that takes over a second to load, or stalls the first time an effect, an enemy, or a new material shows: a Web build above all, where Godot's background loading freezes the page and each shader compiles the moment it is first drawn.",
+  "avoidWhen": "The whole game is one small scene that starts at once and shows everything from the first frame.",
+  "tags": [
+    "loading",
+    "loading-screen",
+    "scene-change",
+    "shader",
+    "warm-up",
+    "stutter",
+    "freeze",
+    "web",
+    "progress",
+    "preload",
+    "interface"
+  ],
+  "stages": [
+    "content",
+    "polish",
+    "ship"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "WASD Engine contributors, dedicated to the public domain",
+  "homepage": "https://github.com/WASDEngine/WASD-Engine/tree/main/packages/bundle/web-app/wasdengine/addons/wasd-loading",
+  "godot": {
+    "addonDir": "wasd_loading",
+    "overlay": [
+      "wasd-loading/addon"
+    ],
+    "autoloads": [
+      {
+        "name": "WasdLoader",
+        "path": "res://addons/wasd_loading/loader.gd"
+      }
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/loader-circle.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

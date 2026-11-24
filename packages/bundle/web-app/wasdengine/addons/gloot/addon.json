@@ -3,6 +3,8 @@
   "title": "GLoot",
   "host": "godot",
   "version": "3.0.2",
+  "category": "gameplay",
+  "cue": "inventories with grids, weight, and stacks",
   "summary": "Inventory system: Inventory nodes with grid, weight, and stack-count limits, stackable items defined in a JSON prototree, item slots, and basic inventory UI.",
   "useWhen": "The game needs an inventory: picking up, stacking, splitting, and moving items between containers, a grid bag where items take several cells, a weight limit, equipment slots, or saving items to a file.",
   "avoidWhen": "A few fixed counters such as coins, keys, or ammo are enough; plain variables or a Dictionary are simpler.",

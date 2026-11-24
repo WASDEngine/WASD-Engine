@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ambientCG",
+    "description": "Let the agent find free CC0 PBR materials, decals, and HDRI skies on ambientCG and download their texture maps into the game project."
+  }
+}

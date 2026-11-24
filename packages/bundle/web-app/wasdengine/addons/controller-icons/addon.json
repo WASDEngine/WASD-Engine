@@ -1,0 +1,71 @@
+{
+  "id": "controller-icons",
+  "title": "Controller Icons",
+  "host": "godot",
+  "version": "3.1.8",
+  "category": "interface",
+  "cue": "key and gamepad button pictures that follow the device",
+  "summary": "Pictures of keys, mouse buttons, and gamepad buttons for every input action, which switch by themselves between keyboard and Xbox, PlayStation, Switch, and Steam Deck art as the player changes device.",
+  "useWhen": "The game shows which button does what: tutorial hints, interaction prompts, a controls screen, or a rebinding menu, and should show the Cross on a PlayStation pad and the E key on a keyboard without the game knowing which is in use.",
+  "avoidWhen": "The game is played with one device only and a letter in a key cap is enough, as wasd-ui's prompt draws.",
+  "tags": [
+    "input",
+    "gamepad",
+    "controller",
+    "keyboard",
+    "button-prompts",
+    "icons",
+    "hud",
+    "tutorial",
+    "ui",
+    "2d",
+    "3d"
+  ],
+  "stages": [
+    "polish",
+    "ship"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2023 Ricardo Subtil",
+  "credit": "Button art: Xelu's FREE Controllers & Keyboard PROMPTS by Nicolae (XELU) Berbece, CC0.",
+  "homepage": "https://github.com/rsubtil/controller_icons",
+  "archive": {
+    "url": "https://github.com/rsubtil/controller_icons/archive/refs/tags/v3.1.8.zip",
+    "sha256": "3b83964c4c8f5dffd9f4a42589ef748aea06142cdad48bb475e5baab94fb0324",
+    "bytes": 2250060,
+    "root": "controller_icons-3.1.8/addons/controller_icons",
+    "exclude": [
+      "ControllerIcons.gd",
+      "plugin.gd",
+      "plugin.cfg",
+      "objects/ControllerIconEditorInspector.gd",
+      "objects/ControllerIconPathEditorProperty.gd",
+      "objects/ControllerIconPathSelector.gd",
+      "objects/ControllerIconPathSelector.tscn",
+      "objects/ControllerIconPathSelectorPopup.gd",
+      "objects/ControllerIconPathSelectorPopup.tscn",
+      "objects/path_selection"
+    ]
+  },
+  "godot": {
+    "addonDir": "controller_icons",
+    "autoloads": [
+      {
+        "name": "ControllerIcons",
+        "path": "res://addons/controller_icons/ControllerIcons.gd"
+      }
+    ],
+    "overlay": [
+      "controller-icons/overlay"
+    ]
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/rsubtil/controller_icons/v3.1.8/addons/controller_icons/assets/positional/south.png",
+    "license": "CC0-1.0"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

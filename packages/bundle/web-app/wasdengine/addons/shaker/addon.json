@@ -3,6 +3,8 @@
   "title": "Shaker",
   "host": "godot",
   "version": "1.0.7",
+  "category": "camera",
+  "cue": "shake for cameras, nodes, and properties",
   "summary": "Shake effects for 2D and 3D: shaker nodes and presets that shake a node's position, rotation, and scale or any numeric property, with fades, plus area emitters.",
   "useWhen": "The game needs screen shake or object shake for juice: hits, explosions, landings, earthquakes, a trembling camera or UI element, or shake that grows near an explosion.",
   "avoidWhen": "A single short camera jolt is enough: a Tween on Camera2D.offset does it without an add-on.",

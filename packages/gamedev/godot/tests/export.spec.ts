@@ -188,6 +188,21 @@ function fogNote(files: string): string {
   return `Web builds draw no FogVolume shaders, FogVolume nodes, or volumetric fog, which these files use: ${files}. The Environment's depth and height fog work there.`
 }
 
+/** The note on screen-space effects, subsurface scattering, and the normal-roughness texture, naming files. */
+function screenNote(files: string): string {
+  return `Web builds draw no screen-space reflections, SSIL, SDFGI, depth of field, or subsurface scattering, and a shader that reads the normal-roughness texture fails to compile there; these files use one of them: ${files}. There, ReflectionProbes and planar mirrors reflect, ambient light and baked textures stand in for bounced light, and a rim or wrapped-light term in the shader stands in for scattering.`
+}
+
+/** The note on Decal nodes and light projectors, naming files. */
+function decalNote(files: string): string {
+  return `Web builds draw no Decal nodes and no light projector textures, which these files use: ${files}. There, draw a mark as a flat mesh with a transparent material just above the surface, and a projected pattern as a transparent card or cone in the light's path.`
+}
+
+/** The note on particle trails and sub-emitters, naming files. */
+function trailNote(files: string): string {
+  return `Web builds draw no particle trails and run no particle sub-emitters, which these files turn on: ${files}. There, draw a trail as a ribbon mesh that follows the object, and start a second particle node from code where a sub-emitter would fire.`
+}
+
 describe('webFeatureNotes', () => {
   /** Write a project's files under a scratch folder. */
   const project = async (files: Readonly<Record<string, string>>): Promise<string> => {
@@ -218,6 +233,31 @@ describe('webFeatureNotes', () => {
     expect(await webFeatureNotes(root, signal)).toEqual([
       deviceNote('scenes/pier.tscn, scripts/cloth.gd, shaders/solver.glsl'),
       fogNote('scenes/night.tres, scenes/pier.tscn, shaders/mist.gdshader'),
+    ])
+  })
+
+  it('names the files that turn on screen-space effects, subsurface scattering, decals, light projectors, particle trails, or sub-emitters', async () => {
+    const root = await project({
+      'project.godot': '[application]\nconfig/name="Alley"\n',
+      'scenes/alley.tscn': '[gd_scene format=3]\n[node name="Puddle" type="Decal" parent="."]\n[node name="Lamp" type="SpotLight3D" parent="."]\nlight_projector = ExtResource("2_cookie")\n',
+      'scenes/night.tres': '[gd_resource type="Environment" format=3]\n[resource]\nssr_enabled = true\nssao_enabled = true\nglow_enabled = true\n',
+      'scenes/lens.tres': '[gd_resource type="CameraAttributesPractical" format=3]\n[resource]\ndof_blur_far_enabled = true\n',
+      'scenes/sparks.tscn': '[gd_scene format=3]\n[node name="Sparks" type="GPUParticles3D" parent="."]\ntrail_enabled = true\n',
+      'scenes/fire.tscn': '[gd_scene format=3]\n[node name="Fire" type="GPUParticles3D" parent="."]\nsub_emitter = NodePath("../Smoke")\n',
+      'materials/skin.tres': '[gd_resource type="StandardMaterial3D" format=3]\n[resource]\nsubsurf_scatter_enabled = true\n',
+      'shaders/outline.gdshader': 'shader_type spatial;\nuniform sampler2D normals : hint_normal_roughness_texture;\n',
+      'scripts/bullet_hole.gd': 'extends Node3D\nfunc mark() -> void:\n\tadd_child(Decal.new())\n',
+      'scripts/burst.gd': 'extends GPUParticles3D\nfunc pop() -> void:\n\temit_particle(Transform3D(), Vector3.ZERO, Color.WHITE, Color.WHITE, 0)\n',
+      // What draws on the Web names no file: SSAO, glow, a light without a projector, and a sub-emitter mode of none.
+      'scenes/day.tres': '[gd_resource type="Environment" format=3]\n[resource]\nssao_enabled = true\nssr_enabled = false\n',
+      'scenes/lamp.tscn': '[gd_scene format=3]\n[node name="Lamp" type="SpotLight3D" parent="."]\nlight_projector = null\n',
+      'materials/smoke.tres': '[gd_resource type="ParticleProcessMaterial" format=3]\n[resource]\nsub_emitter_mode = 0\n',
+      'scripts/decal_pool.gd': 'extends Node3D\n## Pools flat mark meshes, which stand in for Decal nodes.\nvar decals: Array[MeshInstance3D] = []\n',
+    })
+    expect(await webFeatureNotes(root, signal)).toEqual([
+      screenNote('materials/skin.tres, scenes/lens.tres, scenes/night.tres, shaders/outline.gdshader'),
+      decalNote('scenes/alley.tscn, scripts/bullet_hole.gd'),
+      trailNote('scenes/fire.tscn, scenes/sparks.tscn, scripts/burst.gd'),
     ])
   })
 

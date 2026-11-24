@@ -40,7 +40,7 @@ export const MAX_ADDON_CREDITS = 24
 const MAX_ADDON_TITLE = 80
 
 /** Game tools a game can credit, in the order its page lists them. */
-export const TOOL_CREDITS = ['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'nano-banana', 'polyhaven'] as const
+export const TOOL_CREDITS = ['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'nano-banana', 'polyhaven', 'ambientcg'] as const
 
 /** A game tool a game can credit. */
 export type ToolCredit = typeof TOOL_CREDITS[number]
@@ -102,6 +102,7 @@ const TOOL_NAMES: Readonly<Record<ToolCredit, string>> = {
   elevenlabs: 'ElevenLabs',
   'nano-banana': 'Nano Banana',
   polyhaven: 'Poly Haven',
+  ambientcg: 'ambientCG',
 }
 
 /**
@@ -116,6 +117,7 @@ const SESSION_TOOL_PREFIXES: ReadonlyArray<readonly [string, ToolCredit]> = [
   ['elevenlabs_', 'elevenlabs'],
   ['image_', 'nano-banana'],
   ['polyhaven_', 'polyhaven'],
+  ['ambientcg_', 'ambientcg'],
 ]
 
 /** Name prefix of this plugin's own tools, whose calls work on a game project too. */

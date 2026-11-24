@@ -3,6 +3,8 @@
   "title": "Extra Import Hints",
   "host": "godot",
   "version": "1.0",
+  "category": "assets",
+  "cue": "glTF name hints that make physics colliders",
   "summary": "Adds glTF/.glb import name hints: -rigidonly and -convrigidonly turn a mesh into a RigidBody3D collider, -trueconvcolonly into a bare convex CollisionShape3D.",
   "useWhen": "Physics props are modeled in Blender and should import as RigidBody3D with their own convex colliders and a separate visual mesh, without building bodies and shapes by hand in Godot.",
   "avoidWhen": "Godot's own hints (-col, -convcol, -colonly, -convcolonly, -rigid) already give the node setup you need.",

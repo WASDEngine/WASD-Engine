@@ -3,6 +3,8 @@
   "title": "Phantom Camera",
   "host": "godot",
   "version": "0.11.0.4",
+  "category": "camera",
+  "cue": "virtual cameras: follow, look at, framing, switches",
   "summary": "Virtual 2D and 3D cameras that drive the real camera: follow modes, damping, level limits, look-at, third person, shake, and tweened switches by priority.",
   "useWhen": "The game needs a camera that smoothly follows a player or a group, stays inside level bounds, shakes on impacts, orbits in third person, or cuts and blends between shots such as rooms, shops, cutscenes or boss intros.",
   "avoidWhen": "One Camera2D or Camera3D on the player, with Godot's built-in limits and position smoothing, already frames the game well.",
@@ -23,7 +25,10 @@
     "url": "https://github.com/ramokz/phantom-camera/archive/refs/tags/v0.11.0.4.zip",
     "sha256": "5c95b858a9e96fcc475986f8e5ba0b865d296e4e7efe5dc915293d33854ccfea",
     "bytes": 833480,
-    "root": "phantom-camera-0.11.0.4/addons/phantom_camera"
+    "root": "phantom-camera-0.11.0.4/addons/phantom_camera",
+    "exclude": [
+      "examples"
+    ]
   },
   "godot": {
     "addonDir": "phantom_camera",

@@ -1,8 +1,9 @@
-# WASDEngine fork: the Blender, ElevenLabs, GIMP, Godot, Nano Banana image generation, Poly Haven, and SuperCollider
-# game tools and the game add-ons, on in every Web and Desktop profile, the Game tools tabs of Settings and the Plugins
-# page that list them, and the MCP server through which other agents on this computer use them (wasdengine/FORK.md).
-# Each application row starts without its application installed and reports setup steps through its tools; `polyhaven`
-# needs no installation and makes no request until its first tool call, and `elevenlabs` and `image-generation` make
+# WASDEngine fork: the ambientCG, Blender, ElevenLabs, GIMP, Godot, Nano Banana image generation, Poly Haven, and
+# SuperCollider game tools and the game add-ons, on in every Web and Desktop profile, the Game tools tabs of Settings
+# and the Plugins page that list them, and the MCP server through which other agents on this computer use them
+# (wasdengine/FORK.md). Each application row starts without its application installed and reports setup steps through
+# its tools; `ambientcg` and `polyhaven` need no installation and make no request until their first tool call, and
+# `elevenlabs` and `image-generation` make
 # their audio and images through the WASDEngine API origin (the same expression as deepseek-account's inferenceOrigin in
 # packages/bundle/base/wasdengine/gateway.cordis.patch.yml), which charges them to the signed-in account.
 # `game-addons` reads the add-on catalog shipped beside this file in `addons/`,
@@ -33,6 +34,8 @@
 # `godot` reads its `webCheckCommand` from `WASD_WEB_CHECK_COMMAND`, which the Desktop app sets for its Host to the
 # command that starts the app's Web check mode; without it, as in the Web profile, Web checks are off.
 - insert:
+    - id: ambientcg
+      name: '@deepseek-ai/dsh-ambientcg'
     - id: blender
       name: '@deepseek-ai/dsh-blender'
       config:

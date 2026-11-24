@@ -49,6 +49,7 @@ const FORK_PATCHES: Readonly<Record<string, readonly string[]>> = {
 
 /** The game tool rows the fork inserts into every Web and Desktop profile, by row id, with the package each mounts. */
 const GAME_TOOLS: Readonly<Record<string, string>> = {
+  ambientcg: '@deepseek-ai/dsh-ambientcg',
   blender: '@deepseek-ai/dsh-blender',
   elevenlabs: '@deepseek-ai/dsh-elevenlabs',
   'game-addons': '@deepseek-ai/dsh-game-addons',
@@ -59,8 +60,8 @@ const GAME_TOOLS: Readonly<Record<string, string>> = {
   supercollider: '@deepseek-ai/dsh-supercollider',
 }
 
-/** The game tool row without config: Poly Haven, which keeps no files under the harness home and runs with its defaults. */
-const POLY_HAVEN = 'polyhaven'
+/** The game tool rows without config: ambientCG and Poly Haven, which keep no files under the harness home and run with their defaults. */
+const ASSET_LIBRARIES: readonly string[] = ['ambientcg', 'polyhaven']
 
 /** The game tool row whose only config is the WASDEngine API origin: ElevenLabs, whose audio the API makes and charges. */
 const ELEVENLABS = 'elevenlabs'
@@ -102,7 +103,7 @@ const WASD_PLUGINS = { id: 'wasd-plugins', name: '@deepseek-ai/dsh-wasd-plugins'
 const AGENT_FEEDBACK = { id: 'agent-feedback', name: '@deepseek-ai/dsh-agent-feedback' } as const
 
 /** Bundled skills shipped under `wasdengine/skills`. */
-const SKILLS = ['game-design-doc', 'godot-project', 'godot-web', 'multiplayer'] as const
+const SKILLS = ['game-design-doc', 'game-look', 'godot-project', 'godot-web', 'multiplayer'] as const
 
 /**
  * The bundled skill root inside the macOS app installed in `/Applications`. A `skill` tool result names the skill's
@@ -424,7 +425,7 @@ describe('WASDEngine overlay', () => {
       expect(entry.name, `${id} package`).toBe(GAME_TOOLS[id])
       expect(entry.disabled, `${id} is on`).toBeUndefined()
       expect(dependencies[entry.name], `${id} is a web-app dependency`).toBe('workspace:*')
-      if (id === POLY_HAVEN) {
+      if (ASSET_LIBRARIES.includes(id)) {
         expect(entry.config, `${id} config`).toBeUndefined()
         continue
       }
@@ -452,7 +453,7 @@ describe('WASDEngine overlay', () => {
       }
       expect(expression(configOf(entry).dataRoot, `${id}.dataRoot`), `${id}.dataRoot`).toBe(`dshHomePath('${id}')`)
     }
-    expect(PROTECTED_PLUGINS.has(GAME_TOOLS[POLY_HAVEN] ?? ''), 'the Plugins page can switch Poly Haven off').toBe(false)
+    for (const id of ASSET_LIBRARIES) expect(PROTECTED_PLUGINS.has(GAME_TOOLS[id] ?? ''), `the Plugins page can switch ${id} off`).toBe(false)
     expect(PROTECTED_PLUGINS.has(GAME_TOOLS[GAME_ADDONS] ?? ''), 'the Plugins page can switch the game add-ons off').toBe(false)
     expect(PROTECTED_PLUGINS.has(GAME_TOOLS[ELEVENLABS] ?? ''), 'the Plugins page can switch ElevenLabs off').toBe(false)
     expect(PROTECTED_PLUGINS.has(GAME_TOOLS[IMAGE_GENERATION] ?? ''), 'the Plugins page can switch image generation off').toBe(false)
@@ -869,13 +870,13 @@ describe('gamedev preset', () => {
 
   it('has the persona and godot-project get each asset from a fitting download first, then from image_generate and ElevenLabs', () => {
     const persona = String(configOf(gameRow('persona')).prefix)
-    expect(persona).toContain('The tested add-ons of game_addons and the CC0 assets of polyhaven_* are the exception: add them yourself when the game needs them.')
-    expect(persona).toContain('For each asset, first look for one to download from Poly Haven or a catalog add-on, and use it when it suits the game\'s art style. '
+    expect(persona).toContain('The tested add-ons of game_addons and the CC0 assets of polyhaven_* and ambientcg_* are the exception: add them yourself when the game needs them.')
+    expect(persona).toContain('For each asset, first look for one to download from Poly Haven, ambientCG, or a catalog add-on, and use it when it suits the game\'s art style. '
       + 'Otherwise generate 2D art with image_generate instead of drawing it yourself in GIMP or code, and voices, sound effects, and music with the '
       + 'elevenlabs_* tools instead of SuperCollider.')
     const skill = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-project', 'SKILL.md'), 'utf8')
     expect(skill).toContain('Get each asset from the first source that suits the game\'s art style: download skies, textures, and models with `polyhaven_*` '
-      + 'or an add-on\'s assets with `game_addons`; otherwise generate 2D art, UI pieces, and tiling textures with `image_generate` instead of drawing '
+      + 'or `ambientcg_*`, or an add-on\'s assets with `game_addons`; otherwise generate 2D art, UI pieces, and tiling textures with `image_generate` instead of drawing '
       + 'them yourself, and voices, effects, and music with `elevenlabs_*` instead of SuperCollider.')
     expect(skill).toContain('Use the `mcp__wasd_supercollider__` tools only when the user asks for them or ElevenLabs cannot make a sound')
   })
@@ -891,15 +892,50 @@ describe('gamedev preset', () => {
     expect(web).toContain('There is no RenderingDevice: `RenderingServer.get_rendering_device()` and `create_local_rendering_device()` return null')
   })
 
-  it('has godot-web stand in for what browsers lack, with the light shaft shader that their renderer draws', () => {
+  it('has godot-web stand in for what browsers lack with the add-ons that draw there, and say how light adds up there', () => {
     const web = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-web', 'SKILL.md'), 'utf8')
     const section = web.indexOf('## Stand in for desktop-only effects')
     expect(section).toBeGreaterThan(web.indexOf('## Write for the Compatibility renderer'))
     for (const stand of ['- Fog: the Environment\'s depth and height fog work.', '- Light shafts,', '- Glow:', '- Edges: MSAA', '- Ambient occlusion:', '- Cloth: `SoftBody3D` sheets on Jolt']) {
       expect(web.indexOf(stand, section), stand).toBeGreaterThan(section)
     }
-    expect(web).toContain('render_mode blend_add, unshaded, cull_disabled, depth_draw_never, shadows_disabled;')
+    // A hand-written additive shader comes out several times too bright over lit surfaces there, so the skill names
+    // the add-ons whose shaders hand that renderer its layers, and says why.
+    expect(web).not.toContain('blend_add')
+    for (const piece of ['the `wasd-light` add-on\'s fog bank', 'the `wasd-light` add-on\'s shaft and dust', 'the `wasd-light` add-on\'s halo', 'the `wasd-light` add-on\'s shadow card']) {
+      expect(web.indexOf(piece, section), piece).toBeGreaterThan(section)
+    }
+    const adding = web.indexOf('- Light adds up differently there.')
+    expect(adding).toBeGreaterThan(web.indexOf('## Write for the Compatibility renderer'))
+    expect(adding).toBeLessThan(section)
+    expect(web.slice(adding, section)).toContain('The `wasd-look` add-on sets a scene\'s sky, sun, and lamps')
     expect(web).toContain('tune the browser\'s look from what `godot_run` with `web: true` and the Web check\'s screenshot show, never from the numbers alone.')
+  })
+
+  it('has game-look order the work on a 3D game\'s look, name the add-on of each step from the shipped catalog, and end with checks', () => {
+    const text = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'game-look', 'SKILL.md'), 'utf8')
+    const sections = [
+      '## 1. Write the look down first', '## 2. Light: `wasd-look`', '## 3. Surfaces: `wasd-materials`', '## 4. Fill the world', '## 5. Characters',
+      '## 6. Motion', '## 7. Feedback', '## 8. Interface', '## 9. One screen look, last: `wasd-post`', '## Check', '## When it looks wrong',
+    ]
+    let at = 0
+    for (const section of sections) {
+      const next = text.indexOf(section, at)
+      expect(next, section).toBeGreaterThan(at)
+      at = next
+    }
+    // A step that named an add-on the catalog no longer ships would send the agent to a search without a match.
+    const skills = new Set<string>(SKILLS)
+    const named = [...new Set([...text.matchAll(/`([a-z0-9]+(?:-[a-z0-9]+)+)`/gu)].map(match => match[1] ?? ''))].filter(name => !skills.has(name))
+    expect(named.length).toBeGreaterThan(15)
+    for (const id of named) expect(existsSync(join(webAppDir, 'wasdengine', 'addons', id, 'addon.json')), `${id} in the catalog`).toBe(true)
+    for (const id of ['mpfb', 'protonscatter', 'sofluffy', 'shaker']) {
+      expect(text).toContain(`\`${id}\``)
+      expect(existsSync(join(webAppDir, 'wasdengine', 'addons', id, 'addon.json')), `${id} in the catalog`).toBe(true)
+    }
+    // The two skills an agent loads for every Godot game send it here.
+    expect(readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-project', 'SKILL.md'), 'utf8')).toContain('for a 3D game\'s look, load `game-look` first')
+    expect(readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-web', 'SKILL.md'), 'utf8')).toContain('`game-look` has the order in which to build a 3D game\'s look')
   })
 
   it('has godot-project export for the Web, Windows, macOS, Android, and iOS with the built-in Godot before the editor command line', () => {

@@ -3,6 +3,8 @@
   "title": "Importality",
   "host": "godot",
   "version": "0.4.0",
+  "category": "two-d",
+  "cue": "imports Pixelorama and Piskel animations",
   "summary": "Imports Pixelorama (.pxo) and Piskel (.piskel) animations as SpriteFrames, AnimatedSprite2D/3D, or Sprite2D/3D + AnimationPlayer scenes.",
   "useWhen": "The user draws animated sprites in Pixelorama or Piskel and wants the saved .pxo or .piskel files in the project to become SpriteFrames or animated sprite scenes that update each time the user saves again.",
   "avoidWhen": "The art arrives as PNG sprite sheets, which Godot slices itself, or from Aseprite, Krita, or Pencil2D, whose importers need that app's command line set in editor settings.",

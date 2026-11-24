@@ -2,10 +2,10 @@
  * Pins shared client-bundle preset rules: build modes, module-edge purity,
  * source-map chaining, and physical watch dependencies hidden behind virtual CSS Modules.
  */
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build, type Rolldown, type TsdownBundle, type UserConfig } from 'tsdown'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { clientBundle, requestedExternals, staticLinked } from '../packages/client/tsdown.client.ts'
@@ -106,6 +106,28 @@ describe('client bundle build faces', () => {
 
     expect(development?.entry).toEqual({ client: 'src/client/index.ts' })
     expect(artifact?.entry).toEqual({ client: 'lib/types/client/index.js' })
+  })
+
+  // WASDEngine fork: the Client bundles of the namespaces the fork words differently resolve the locale's `./brand`
+  // through its manifest, and tsdown builds the packages of one pass at the same time (wasdengine/FORK.md).
+  it('builds the locale brand bundle in the Host pass, before the Client bundles that inline it', async () => {
+    const dir = packageDir('client/locale')
+    const { default: localeBuild } = await import(pathToFileURL(join(dir, 'tsdown.config.ts')).href) as {
+      default: (inline: Pick<UserConfig, 'env'>) => UserConfig[]
+    }
+    const brandBundles = (face: 'host' | 'client') => localeBuild({ env: { DSH_BUILD_FACE: face } })
+      .filter(config => typeof config.entry === 'object' && !Array.isArray(config.entry) && 'brand' in config.entry)
+    expect(brandBundles('host')).toEqual([expect.objectContaining({
+      entry: { brand: 'lib/types/client/wasdengine-brand.js' }, outDir: 'lib', format: ['esm'], fixedExtension: false,
+    })])
+    expect(brandBundles('client')).toEqual([])
+    const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { exports: Record<string, unknown> }
+    expect(manifest.exports['./brand']).toEqual({
+      types: './lib/types/client/wasdengine-brand.d.ts',
+      default: './lib/brand.js',
+    })
+    const hostProgram = JSON.parse(readFileSync(join(dir, 'tsconfig.host.json'), 'utf8')) as { files: string[] }
+    expect(hostProgram.files).toContain('src/client/wasdengine-brand.ts')
   })
 })
 

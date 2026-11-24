@@ -7489,11 +7489,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameAddon',
-    declaration: 'export interface GameAddon {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly summary: string;\n    readonly useWhen: string;\n    readonly avoidWhen?: string;\n    readonly tags: readonly string[];\n    readonly stages: readonly GameAddonStage[];\n    readonly license: string;\n    readonly copyright: string;\n    readonly credit?: string;\n    readonly homepage: string;\n    readonly archive?: GameAddonArchive;\n    readonly assets?: GameAddonAssets;\n    readonly bundled?: true;\n    readonly icon?: GameAddonIcon;\n    readonly godot?: GodotAddonSpec;\n    readonly blender?: BlenderAddonSpec;\n    readonly conflicts?: readonly string[];\n    readonly verified: GameAddonVerification;\n}',
+    declaration: 'export interface GameAddon {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly category: GameAddonCategory;\n    readonly cue: string;\n    readonly summary: string;\n    readonly useWhen: string;\n    readonly avoidWhen?: string;\n    readonly tags: readonly string[];\n    readonly stages: readonly GameAddonStage[];\n    readonly license: string;\n    readonly copyright: string;\n    readonly credit?: string;\n    readonly homepage: string;\n    readonly archive?: GameAddonArchive;\n    readonly assets?: GameAddonAssets;\n    readonly bundled?: true;\n    readonly icon?: GameAddonIcon;\n    readonly godot?: GodotAddonSpec;\n    readonly blender?: BlenderAddonSpec;\n    readonly conflicts?: readonly string[];\n    readonly verified: GameAddonVerification;\n}',
   },
   {
     name: 'GameAddonArchive',
-    declaration: 'export interface GameAddonArchive {\n    readonly url: string;\n    readonly sha256: string;\n    readonly bytes: number;\n    readonly root: string;\n    readonly license?: string;\n}',
+    declaration: 'export interface GameAddonArchive {\n    readonly url: string;\n    readonly sha256: string;\n    readonly bytes: number;\n    readonly root: string;\n    readonly license?: string;\n    readonly exclude?: readonly string[];\n    readonly projectRoot?: true;\n}',
   },
   {
     name: 'GameAddonAssets',
@@ -7502,6 +7502,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GameAddonAssetsView',
     declaration: 'export interface GameAddonAssetsView {\n    readonly license: string;\n    readonly bytes: number;\n    readonly homepage: string;\n}',
+  },
+  {
+    name: 'GameAddonCategory',
+    declaration: 'export type GameAddonCategory = \'environment\' | \'rendering\' | \'characters\' | \'physics\' | \'gameplay\' | \'camera\' | \'interface\' | \'two-d\' | \'kits\' | \'assets\' | \'testing\';',
   },
   {
     name: 'GameAddonHost',
@@ -7529,7 +7533,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameAddonView',
-    declaration: 'export interface GameAddonView {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly summary: string;\n    readonly useWhen: string;\n    readonly avoidWhen?: string;\n    readonly tags: readonly string[];\n    readonly stages: readonly GameAddonStage[];\n    readonly license: string;\n    readonly credit?: string;\n    readonly homepage: string;\n    readonly bytes?: number;\n    readonly assets?: GameAddonAssetsView;\n    readonly conflicts: readonly string[];\n    readonly allowed: boolean;\n    readonly presence?: GameAddonPresence;\n}',
+    declaration: 'export interface GameAddonView {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly category: GameAddonCategory;\n    readonly cue: string;\n    readonly summary: string;\n    readonly useWhen: string;\n    readonly avoidWhen?: string;\n    readonly tags: readonly string[];\n    readonly stages: readonly GameAddonStage[];\n    readonly license: string;\n    readonly credit?: string;\n    readonly homepage: string;\n    readonly bytes?: number;\n    readonly shipsWith?: \'blender\' | \'app\';\n    readonly assets?: GameAddonAssetsView;\n    readonly conflicts: readonly string[];\n    readonly allowed: boolean;\n    readonly presence?: GameAddonPresence;\n}',
   },
   {
     name: 'GameMcpCall',

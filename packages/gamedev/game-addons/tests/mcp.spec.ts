@@ -44,20 +44,20 @@ describe('gameAddonMcpProvider', () => {
     const provider = gameAddonMcpProvider(toolHost)
     expect(provider.instructions).toBe(mcpInstructions())
     expect(provider.instructions).toContain('wasd_addons.enable')
-    expect(provider.instructions).toContain('Read the whole catalog with action search before you plan a game')
+    expect(provider.instructions).toContain('Read the catalog\'s index with action search and no query before you plan a game')
     expect(provider.instructions).not.toContain('test-camera')
   })
 
-  it('says what the add-ons add, asks for the whole catalog before a game is planned, and the install once project.godot exists', async () => {
+  it('says what the add-ons add, asks for the catalog\'s index before a game is planned, and the install once project.godot exists', async () => {
     const provider = gameAddonMcpProvider((await host()).host)
     expect(provider.description).toBe(MCP_DESCRIPTION)
     // An installation needs the project.godot that a new game project's folder does not have yet.
-    expect(MCP_DESCRIPTION).toBe('Curated add-ons, tested with WASD Engine\'s Godot and Blender, that do common game jobs better than new code: '
-      + 'cameras, sky, scattering, terrain, dialogue, inventories, AI, trees, humans, rigs, cloth, and animations. Before you plan a game, '
-      + 'read the whole catalog with game_addons action search; install what fits once project.godot exists.')
+    expect(MCP_DESCRIPTION).toBe('Curated, tested add-ons that do common game jobs better than new code: '
+      + 'lighting, materials, effects, terrain, water, roads, characters, physics, AI, cameras, menus, and HUD. Before you plan a game, '
+      + 'read the catalog\'s index with game_addons action search; install what fits once project.godot exists.')
     // Every provider's description shares the overview's 4,096 characters, so this one grew no longer.
-    expect(MCP_DESCRIPTION.length).toBeLessThanOrEqual(341)
+    expect(MCP_DESCRIPTION.length).toBeLessThanOrEqual(304)
     const [tool] = provider.tools()
-    expect(tool?.description).toBe(`${tool?.definition.description ?? ''} Before you plan a game, read the whole catalog with action search and no query.`)
+    expect(tool?.description).toBe(`${tool?.definition.description ?? ''} Before you plan a game, read the catalog's index with action search and no query.`)
   })
 })

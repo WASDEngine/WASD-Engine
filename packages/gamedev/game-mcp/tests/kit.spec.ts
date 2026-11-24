@@ -36,7 +36,7 @@ describe('the kit entry', () => {
       }
     }
     await visit(resolve(SOURCE, 'kit.ts'))
-    expect([...seen].map(file => file.slice(SOURCE.length + 1)).sort()).toEqual(['kit.ts', 'plugin-kit.ts', 'project-tools.ts'])
+    expect([...seen].map(file => file.slice(SOURCE.length + 1)).sort()).toEqual(['asset-library.ts', 'kit.ts', 'plugin-kit.ts', 'project-tools.ts'])
     expect([...outside].filter(specifier => !specifier.startsWith('node:'))).toEqual([])
   })
 })

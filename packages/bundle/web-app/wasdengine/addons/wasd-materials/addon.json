@@ -1,0 +1,57 @@
+{
+  "id": "wasd-materials",
+  "title": "WASD Materials",
+  "host": "godot",
+  "version": "1.1.0",
+  "category": "rendering",
+  "cue": "materials by name, no textures or UVs: bricks, wood, metal",
+  "summary": "Materials by name with no texture files and no UV maps: concrete, bricks, planks, metal, rock, and more; right materials and cut-outs from downloaded textures; toon with outlines, glass, glow, skin.",
+  "useWhen": "Meshes, CSG shapes, or generated geometry would otherwise wear flat colors: a gray-box level, buildings, props, terrain. Also to turn a Poly Haven or ambientCG texture folder or one picture into a correct material, for leaf and decal cut-outs, a toon look, glass, glow, and human skin, eyes, hair.",
+  "avoidWhen": "Every model already comes textured from Blender or a download and nothing else needs a surface; or the game is 2D.",
+  "tags": [
+    "material",
+    "texture",
+    "surface",
+    "pbr",
+    "procedural",
+    "triplanar",
+    "bricks",
+    "wood",
+    "metal",
+    "concrete",
+    "rock",
+    "toon",
+    "cel-shading",
+    "outline",
+    "glass",
+    "glow",
+    "skin",
+    "cutout",
+    "alpha",
+    "3d"
+  ],
+  "stages": [
+    "prototype",
+    "content",
+    "polish"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "WASD Engine contributors, dedicated to the public domain",
+  "homepage": "https://github.com/WASDEngine/WASD-Engine/tree/main/packages/bundle/web-app/wasdengine/addons/wasd-materials",
+  "godot": {
+    "addonDir": "wasd_materials",
+    "overlay": [
+      "wasd-materials/addon"
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/brick-wall.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-22"
+  }
+}

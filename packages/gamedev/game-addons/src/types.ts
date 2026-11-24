@@ -20,6 +20,17 @@ export type GameAddonHost = 'godot' | 'blender'
 /** A point in a game's development at which an add-on usually helps. */
 export type GameAddonStage = 'prototype' | 'content' | 'polish' | 'ship'
 
+/**
+ * The game job an add-on does. The listings that agents read and the Add-ons dialog group the catalog by it:
+ * `environment` is lighting, sky, weather, terrain, water, plants, roads, dungeons, and level layout; `rendering` is
+ * materials, effects, light shafts, reflections, fur, surface marks, and screen looks; `characters` is humans, rigs,
+ * animation, movement, and crowds; `physics` is cloth, ropes, ragdolls, vehicles, and destruction; `gameplay` is game
+ * systems such as AI, state, dialogue, and items; `camera` is cameras and game feel; `interface` is menus, HUD,
+ * loading screens, and button prompts; `two-d` is 2D levels and sprites; `kits` is starter games; `assets` is
+ * preparing models and textures; `testing` is test frameworks.
+ */
+export type GameAddonCategory = 'environment' | 'rendering' | 'characters' | 'physics' | 'gameplay' | 'camera' | 'interface' | 'two-d' | 'kits' | 'assets' | 'testing'
+
 /** The pinned archive an add-on installs from. */
 export interface GameAddonArchive {
   /** HTTPS URL of the zip archive. */
@@ -32,6 +43,17 @@ export interface GameAddonArchive {
   readonly root: string
   /** License file inside the archive, with `/` separators, copied beside the installed files when it lies outside `root`. */
   readonly license?: string
+  /**
+   * Files and folders below `root`, with `/` separators, that the installation leaves out, such as demos and
+   * screenshots, which a Web release would otherwise pack. Each names a file or a whole folder and must match one.
+   */
+  readonly exclude?: readonly string[]
+  /**
+   * Whether `root` is the root of a whole Godot project, as a starter kit is: the installation then leaves out its
+   * `project.godot`, `.godot` folder, and export presets, and rewrites the `res://` paths of its scenes, resources,
+   * scripts, and shaders to the add-on folder, where the project's files now are.
+   */
+  readonly projectRoot?: true
 }
 
 /** A data pack that a Blender add-on reads, such as character assets, installed with it beside the add-on store. */
@@ -140,6 +162,10 @@ export interface GameAddon {
   readonly host: GameAddonHost
   /** Version of the add-on: the upstream version its archive holds, or the version of an add-on WASD Engine wrote. */
   readonly version: string
+  /** The game job it does, which groups it in the listings. */
+  readonly category: GameAddonCategory
+  /** What it is for, in a few words: all that the catalog's index says of it, after its id. */
+  readonly cue: string
   /** What it gives the game, in one sentence. */
   readonly summary: string
   /** When the agent should suggest it. */
@@ -220,6 +246,10 @@ export interface GameAddonView {
   readonly host: GameAddonHost
   /** Version the catalog installs. */
   readonly version: string
+  /** The game job it does. */
+  readonly category: GameAddonCategory
+  /** What it is for, in a few words. */
+  readonly cue: string
   /** What it gives the game. */
   readonly summary: string
   /** When to use it. */
@@ -238,6 +268,11 @@ export interface GameAddonView {
   readonly homepage: string
   /** Download size in bytes, its asset pack included; absent when nothing is downloaded. */
   readonly bytes?: number
+  /**
+   * Where an add-on that nothing is downloaded for comes from: `blender` ships inside Blender, and `app` is one that
+   * WASD Engine wrote and ships itself. Absent for an add-on with a download.
+   */
+  readonly shipsWith?: 'blender' | 'app'
   /** The asset pack installed with it, if any. */
   readonly assets?: GameAddonAssetsView
   /** Ids of add-ons that do the same job. */

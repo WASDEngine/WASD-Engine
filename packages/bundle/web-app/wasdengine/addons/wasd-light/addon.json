@@ -1,0 +1,61 @@
+{
+  "id": "wasd-light",
+  "title": "WASD Light",
+  "host": "godot",
+  "version": "1.0.0",
+  "category": "rendering",
+  "cue": "light shafts, lamp halos, fog banks, dust, flicker",
+  "summary": "Light you can see in the air, on every renderer: shafts and beams, halos round lamps, fog that fills a box, drifting dust, embers, and snow, flames and lamps that flicker, shade from leaves or bars.",
+  "useWhen": "A 3D scene should have air and mood: beams from spotlights, windows, or between trees, glowing lamps, candles, and headlights, mist in a valley, haze in a hall, smoke in a room, fireflies, falling snow, a torch that flickers, or light dappled by leaves. It stands in for volumetric fog in Web builds.",
+  "avoidWhen": "A 2D game, or weather over a whole map: these are placed pieces, each a box, a cone, or a card. For the scene's sky, sun, and fog by distance use WASD Look.",
+  "tags": [
+    "lighting",
+    "volumetric",
+    "god-rays",
+    "light-shaft",
+    "fog",
+    "mist",
+    "halo",
+    "glow",
+    "lens-flare",
+    "dust",
+    "particles",
+    "snow",
+    "fireflies",
+    "flicker",
+    "candle",
+    "gobo",
+    "shadow",
+    "atmosphere",
+    "3d",
+    "bloom",
+    "lamp",
+    "torch",
+    "smoke",
+    "haze",
+    "beam"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "WASD Engine contributors, dedicated to the public domain",
+  "homepage": "https://github.com/WASDEngine/WASD-Engine/tree/main/packages/bundle/web-app/wasdengine/addons/wasd-light",
+  "godot": {
+    "addonDir": "wasd_light",
+    "overlay": [
+      "wasd-light/addon"
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/spotlight.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

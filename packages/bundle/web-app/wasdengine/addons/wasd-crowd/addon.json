@@ -1,0 +1,51 @@
+{
+  "id": "wasd-crowd",
+  "title": "WASD Crowd",
+  "host": "godot",
+  "version": "1.0.0",
+  "category": "characters",
+  "cue": "crowds in one draw call; birds, fish, butterflies",
+  "summary": "Crowds of one animated model, its clips baked once into textures, so hundreds of copies play them with no skeleton, each in its own clip, pace, and tint; and flocks of birds, fish, and butterflies.",
+  "useWhen": "Many copies of one animated character are on screen at once: an army, a horde, spectators, townsfolk, a herd. Or a world needs life in the background: birds overhead, fish under water, butterflies over a meadow. A hundred skinned characters stall a Web build; a thousand crowd members do not.",
+  "avoidWhen": "A handful of characters, or ones the player fights or talks to up close, which need skeletons for ragdolls, attachments, and blending: use wasd-character there.",
+  "tags": [
+    "crowd",
+    "army",
+    "horde",
+    "instancing",
+    "vertex-animation",
+    "multimesh",
+    "npc",
+    "performance",
+    "birds",
+    "fish",
+    "butterflies",
+    "flock",
+    "wildlife",
+    "ambient-life",
+    "3d"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "WASD Engine contributors, dedicated to the public domain",
+  "homepage": "https://github.com/WASDEngine/WASD-Engine/tree/main/packages/bundle/web-app/wasdengine/addons/wasd-crowd",
+  "godot": {
+    "addonDir": "wasd_crowd",
+    "overlay": [
+      "wasd-crowd/addon"
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/users.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

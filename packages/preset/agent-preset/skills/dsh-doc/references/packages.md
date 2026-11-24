@@ -269,6 +269,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | Package | Config | Description |
 |---|---|---|
 | `@deepseek-ai/dsh-agent-feedback` | yes | What agents tell the WASD Engine team: the feedback_send tool of every Session and of WASD Engine's MCP server, and reports of how often agents call WASD Engine's tools, sent for the signed-in account |
+| `@deepseek-ai/dsh-ambientcg` | yes | ambientCG for the agent: search CC0 PBR materials, decals, atlases, and HDRIs and download their texture maps into the game project |
 | `@deepseek-ai/dsh-art-references` | yes | Art references for the agent: reference images, animations, and video posters found on the web for art it is about to make, numbered on one contact sheet, and the chosen ones saved with their sources into the game project's references folder |
 | `@deepseek-ai/dsh-blender` | yes | Headless Blender for the agent: an MCP server backed by the bpy module |
 | `@deepseek-ai/dsh-client-ui-game-assets` | no | Assets tab of the right Sidebar: search a game project's 2D and 3D art or browse it by folder, and view images and models |

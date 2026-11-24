@@ -1,0 +1,49 @@
+{
+  "id": "voronoi-shatter",
+  "title": "VoronoiShatter",
+  "host": "godot",
+  "version": "0.3",
+  "category": "physics",
+  "cue": "break any mesh into chunks that fall apart",
+  "summary": "Voronoi fracture in GDScript: cuts any closed mesh into chunks with inner faces, at load or at the moment of impact, ready to become rigid bodies.",
+  "useWhen": "Walls, crates, statues, pots, ice, or rocks must break into pieces of their own shape when hit or blown up, and the game should not ship a hand-made broken version of each model.",
+  "avoidWhen": "The object only vanishes in a puff of particles, the broken version is modelled in Blender, or many objects break in the same frame of a Web game: each cut takes tens of milliseconds.",
+  "tags": [
+    "destruction",
+    "fracture",
+    "shatter",
+    "voronoi",
+    "break",
+    "debris",
+    "physics",
+    "3d"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2025 Robert Varadan",
+  "homepage": "https://github.com/robertvaradan/voronoishatter",
+  "archive": {
+    "url": "https://github.com/robertvaradan/voronoishatter/archive/refs/tags/v0.3.zip",
+    "sha256": "d1d73a02f8b09e2d5ff57b9cf9b647c281a04b9a0b7c3e322d6321b75c41dc72",
+    "bytes": 13231858,
+    "root": "voronoishatter-0.3/addons/voronoishatter",
+    "license": "voronoishatter-0.3/LICENSE.md",
+    "exclude": [
+      "CSVoronoiAdapter",
+      "tools",
+      "voronoishatterplugin.gd",
+      "voronoishatterplugin.gd.uid",
+      "plugin.cfg"
+    ]
+  },
+  "godot": {
+    "addonDir": "voronoishatter"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

@@ -1,23 +1,12 @@
 /**
  * Client of the Poly Haven API: the asset list, which stays in memory for `catalogMaxAgeMs`, the ranked search, one
  * asset's file tree, preview images, and file downloads. Every request names the software in `User-Agent`, as the
- * API terms require, and every response is validated before use.
+ * API terms require, goes only to Poly Haven's hosts, and has its response validated before use.
  * @module @deepseek-ai/dsh-polyhaven/src/api
  */
 import { z } from 'zod'
+import { AssetLibraryClient, AssetLibraryRequestError } from '@deepseek-ai/dsh-game-mcp/kit'
 import type { PolyHavenAsset, PolyHavenAssetKind, PolyHavenFile, PolyHavenFileEntry, PolyHavenFileTree } from './types.ts'
-
-/** Most bytes of one JSON response; the full asset list is about 2.5 MB. */
-const MAX_JSON_BYTES = 64 * 1024 * 1024
-
-/** Most bytes of one preview image. */
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024
-
-/** Media types a preview image may have. */
-const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const
-
-/** Media type of a preview image. */
-export type PreviewMediaType = typeof IMAGE_TYPES[number]
 
 /** Pattern of an asset id. */
 export const ASSET_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/u
@@ -47,27 +36,6 @@ const SearchJson = z.object({ results: z.array(z.object({ slug: z.string() })) }
 
 const FileJson = z.object({ url: z.string().min(1), size: z.number().int().min(0), md5: z.string().regex(/^[0-9a-fA-F]{32}$/u) })
 
-/** A failed request: the HTTP status, or 0 when Poly Haven could not be reached. */
-export class PolyHavenRequestError extends Error {
-  /**
-   * @param status - HTTP status of the response, or 0 without one.
-   * @param message - model-facing explanation.
-   * @param options - the underlying failure.
-   */
-  constructor(readonly status: number, message: string, options?: ErrorOptions) {
-    super(message, options)
-    this.name = 'PolyHavenRequestError'
-  }
-}
-
-/** A preview image's bytes. */
-export interface PreviewImage {
-  /** Encoded image. */
-  readonly data: Buffer
-  /** Media type from the response. */
-  readonly mediaType: PreviewMediaType
-}
-
 /** How the client reaches the API. */
 export interface PolyHavenApiOptions {
   /** Base URL of the API, such as `https://api.polyhaven.com`. */
@@ -82,29 +50,8 @@ export interface PolyHavenApiOptions {
   readonly now: () => number
 }
 
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 /** The domains whose hosts serve Poly Haven's files, besides the configured API's own host. */
 const POLY_HAVEN_DOMAINS = ['polyhaven.com', 'polyhaven.org'] as const
-
-/** Most redirects one request follows, each to a host that {@link servesPolyHaven} accepts. */
-const MAX_REDIRECTS = 5
-
-/**
- * Whether a URL is one the client fetches: the configured API's host, over its own protocol, or a host of Poly Haven's
- * domains over HTTPS. An asset's file tree names its files' URLs, and a redirect names another, so neither may send a
- * request elsewhere.
- * @param url - the URL to fetch.
- * @param api - the configured API's URL.
- * @returns whether the client fetches it.
- */
-function servesPolyHaven(url: URL, api: URL): boolean {
-  if (url.host === api.host && url.protocol === api.protocol) return true
-  const host = url.hostname.toLowerCase()
-  return url.protocol === 'https:' && POLY_HAVEN_DOMAINS.some(domain => host === domain || host.endsWith(`.${domain}`))
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -184,41 +131,22 @@ export function parseFileTree(json: unknown): PolyHavenFileTree {
   return tree
 }
 
-/**
- * Read a response body, at most `limit` bytes.
- * @param response - the response.
- * @param limit - most bytes.
- * @param what - what the body is, for the error.
- * @returns the bytes.
- * @throws PolyHavenRequestError when the body is longer than the limit.
- */
-async function readBounded(response: Response, limit: number, what: string): Promise<Buffer> {
-  const declared = Number(response.headers.get('content-length') ?? Number.NaN)
-  if (Number.isFinite(declared) && declared > limit) {
-    await response.body?.cancel()
-    throw new PolyHavenRequestError(response.status, `Poly Haven sent ${what} larger than ${limit} bytes.`)
-  }
-  const chunks: Buffer[] = []
-  let total = 0
-  for await (const chunk of response.body ?? []) {
-    total += chunk.byteLength
-    // Leaving the loop cancels the body.
-    if (total > limit) throw new PolyHavenRequestError(response.status, `Poly Haven sent ${what} larger than ${limit} bytes.`)
-    chunks.push(Buffer.from(chunk))
-  }
-  return Buffer.concat(chunks)
-}
-
-/** The Poly Haven API, with the asset list cached in memory. */
-export class PolyHavenApi {
-  private readonly base: URL
+/** The Poly Haven API, with the asset list cached in memory. Preview images and file downloads are the shared client's. */
+export class PolyHavenApi extends AssetLibraryClient {
   private cached: { readonly assets: ReadonlyMap<string, PolyHavenAsset>; readonly fetchedAt: number } | undefined
 
   /**
    * @param options - the API's URL, the user agent, the cache lifetime, and the fetch implementation.
    */
   constructor(private readonly options: PolyHavenApiOptions) {
-    this.base = new URL(options.apiUrl.endsWith('/') ? options.apiUrl : `${options.apiUrl}/`)
+    super({
+      library: 'Poly Haven',
+      apiUrl: options.apiUrl,
+      domains: POLY_HAVEN_DOMAINS,
+      userAgent: options.userAgent,
+      fetch: options.fetch,
+      downloads: 'the file',
+    })
   }
 
   /**
@@ -226,20 +154,20 @@ export class PolyHavenApi {
    * answers instead, so a Poly Haven outage leaves search on the list it last read.
    * @param signal - cancellation.
    * @returns every asset by id.
-   * @throws PolyHavenRequestError when the list cannot be read and none is cached.
+   * @throws AssetLibraryRequestError when the list cannot be read and none is cached.
    */
   async assets(signal: AbortSignal): Promise<ReadonlyMap<string, PolyHavenAsset>> {
     const cached = this.cached
     if (cached !== undefined && this.options.now() - cached.fetchedAt < this.options.catalogMaxAgeMs) return cached.assets
     try {
-      const json = await this.json(new URL('assets?type=all', this.base), 'the asset list', signal)
-      if (!isRecord(json)) throw new PolyHavenRequestError(200, 'Poly Haven sent an asset list in an unknown format.')
+      const json = await this.http.json(new URL('assets?type=all', this.base), 'the asset list', signal)
+      if (!isRecord(json)) throw new AssetLibraryRequestError(200, 'Poly Haven sent an asset list in an unknown format.')
       const assets = new Map<string, PolyHavenAsset>()
       for (const [id, value] of Object.entries(json)) {
         const asset = parseAsset(id, value)
         if (asset !== undefined) assets.set(id, asset)
       }
-      if (assets.size === 0 && Object.keys(json).length > 0) throw new PolyHavenRequestError(200, 'Poly Haven sent an asset list in an unknown format.')
+      if (assets.size === 0 && Object.keys(json).length > 0) throw new AssetLibraryRequestError(200, 'Poly Haven sent an asset list in an unknown format.')
       this.cached = { assets, fetchedAt: this.options.now() }
       return assets
     } catch (error) {
@@ -255,18 +183,18 @@ export class PolyHavenApi {
    * @param signal - cancellation.
    * @returns the ids of every matching asset, most relevant first; undefined when the API cannot rank this query now
    * (HTTP 503), in which case the caller ranks by keywords itself.
-   * @throws PolyHavenRequestError for every other failure.
+   * @throws AssetLibraryRequestError for every other failure.
    */
   async search(query: string, kind: PolyHavenAssetKind | undefined, signal: AbortSignal): Promise<readonly string[] | undefined> {
     const url = new URL('search', this.base)
     url.searchParams.set('q', query.trim().toLowerCase())
     url.searchParams.set('t', kind === undefined ? 'all' : TYPE_FILTER[kind])
     try {
-      const parsed = SearchJson.safeParse(await this.json(url, 'search results', signal))
-      if (!parsed.success) throw new PolyHavenRequestError(200, 'Poly Haven sent search results in an unknown format.')
+      const parsed = SearchJson.safeParse(await this.http.json(url, 'search results', signal))
+      if (!parsed.success) throw new AssetLibraryRequestError(200, 'Poly Haven sent search results in an unknown format.')
       return parsed.data.results.map(result => result.slug)
     } catch (error) {
-      if (error instanceof PolyHavenRequestError && error.status === 503) return undefined
+      if (error instanceof AssetLibraryRequestError && error.status === 503) return undefined
       throw error
     }
   }
@@ -276,77 +204,9 @@ export class PolyHavenApi {
    * @param id - asset id.
    * @param signal - cancellation.
    * @returns the asset's files.
-   * @throws PolyHavenRequestError when the request fails; status 404 when Poly Haven has no such asset.
+   * @throws AssetLibraryRequestError when the request fails; status 404 when Poly Haven has no such asset.
    */
   async files(id: string, signal: AbortSignal): Promise<PolyHavenFileTree> {
-    return parseFileTree(await this.json(new URL(`files/${encodeURIComponent(id)}`, this.base), `the files of ${id}`, signal))
-  }
-
-  /**
-   * Download a preview image.
-   * @param url - image URL.
-   * @param signal - cancellation.
-   * @returns the image.
-   * @throws PolyHavenRequestError when the request fails or the response is not an image of a supported type.
-   */
-  async image(url: string, signal: AbortSignal): Promise<PreviewImage> {
-    const response = await this.request(new URL(url), 'image/*', 'the preview image', signal)
-    const type = (response.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? ''
-    const mediaType = IMAGE_TYPES.find(candidate => candidate === type)
-    if (mediaType === undefined) {
-      await response.body?.cancel()
-      throw new PolyHavenRequestError(response.status, `Poly Haven sent the preview image as ${type === '' ? 'an unknown type' : type}.`)
-    }
-    return { data: await readBounded(response, MAX_IMAGE_BYTES, 'a preview image'), mediaType }
-  }
-
-  /**
-   * Start downloading one file.
-   * @param url - file URL from a file tree.
-   * @param signal - cancellation of the request and of reading its body.
-   * @returns the successful response, whose body the caller reads.
-   * @throws PolyHavenRequestError when the request fails.
-   */
-  async download(url: string, signal: AbortSignal): Promise<Response> {
-    return await this.request(new URL(url), '*/*', `the file ${url}`, signal)
-  }
-
-  private async json(url: URL, what: string, signal: AbortSignal): Promise<unknown> {
-    const response = await this.request(url, 'application/json', what, signal)
-    const text = (await readBounded(response, MAX_JSON_BYTES, what)).toString('utf8')
-    try {
-      const value: unknown = JSON.parse(text)
-      return value
-    } catch (error) {
-      throw new PolyHavenRequestError(response.status, `Poly Haven sent ${what} that is not JSON.`, { cause: error })
-    }
-  }
-
-  private async request(url: URL, accept: string, what: string, signal: AbortSignal): Promise<Response> {
-    let response: Response
-    for (let target = url, redirects = 0; ; redirects += 1) {
-      if (!servesPolyHaven(target, this.base)) {
-        throw new PolyHavenRequestError(0, `Poly Haven named ${what} at ${target.href}, which is not a Poly Haven address, so nothing was downloaded from it.`)
-      }
-      try {
-        response = await this.options.fetch(target, { headers: { 'user-agent': this.options.userAgent, accept }, signal, redirect: 'manual' })
-      } catch (error) {
-        signal.throwIfAborted()
-        throw new PolyHavenRequestError(0, `Could not reach Poly Haven at ${target.host} for ${what}: ${message(error)}`, { cause: error })
-      }
-      const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null
-      if (location === null) break
-      await response.body?.cancel()
-      if (redirects >= MAX_REDIRECTS) throw new PolyHavenRequestError(response.status, `Poly Haven redirected ${what} more than ${String(MAX_REDIRECTS)} times.`)
-      target = new URL(location, target)
-    }
-    if (response.ok) return response
-    await response.body?.cancel()
-    if (response.status === 429) {
-      const wait = Number(response.headers.get('retry-after') ?? Number.NaN)
-      const after = Number.isFinite(wait) && wait > 0 ? `in ${Math.ceil(wait)} seconds` : 'later'
-      throw new PolyHavenRequestError(429, `Poly Haven is limiting requests from this computer; try again ${after}.`)
-    }
-    throw new PolyHavenRequestError(response.status, `Poly Haven answered HTTP ${response.status} for ${what}.`)
+    return parseFileTree(await this.http.json(new URL(`files/${encodeURIComponent(id)}`, this.base), `the files of ${id}`, signal))
   }
 }

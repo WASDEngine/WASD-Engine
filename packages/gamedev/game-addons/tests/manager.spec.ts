@@ -674,6 +674,13 @@ describe('GameAddonManager for Blender', () => {
       bytes: TREES_ARCHIVE.byteLength + TREE_ASSETS_ARCHIVE.byteLength,
       assets: { license: 'CC0-1.0', bytes: TREE_ASSETS_ARCHIVE.byteLength, homepage: 'https://assets.example.test/' },
     })
+    expect(addonView(manager.catalog.get('test-trees')!, true).shipsWith).toBeUndefined()
+    // Nothing is downloaded for an add-on inside Blender, nor for one that WASD Engine wrote: the view says which.
+    const rig = manager.catalog.get('test-rig')!
+    expect(addonView(rig, true)).toMatchObject({ shipsWith: 'blender' })
+    expect(addonView(rig, true).bytes).toBeUndefined()
+    const { archive: _archive, ...own } = manager.catalog.get('test-camera')!
+    expect(addonView(own, true)).toMatchObject({ shipsWith: 'app' })
   })
 
   it('indexes a copy of each setup script in the store, which workers read without the catalog, copied again only when it changes', async () => {

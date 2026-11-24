@@ -2,9 +2,11 @@
   "id": "wasd-cloth",
   "title": "WASD Cloth",
   "host": "godot",
-  "version": "1.0.2",
-  "summary": "Cloth for 3D games: soft-body sheets with fabric presets, spring-bone chains for capes and skirts, wind zones, a flag shader, and a checker that measures cloth.",
-  "useWhen": "A 3D game has cloth that moves: flags, banners, sails, curtains, capes, skirts, coat tails, hair, or cloth that the player pushes. Its sheets use SoftBody3D, which Jolt supports in Godot 4.7.",
+  "version": "1.1.0",
+  "category": "physics",
+  "cue": "cloth and ropes: flags, capes, curtains, cables, wind",
+  "summary": "Cloth and ropes for 3D games: soft-body sheets with fabric presets, spring-bone chains for capes and skirts, ropes and cables that hang and swing, wind zones, a flag shader, and a cloth checker.",
+  "useWhen": "A 3D game has cloth or rope that moves: flags, banners, sails, curtains, capes, skirts, coat tails, hair, cloth that the player pushes, or ropes, cables, hanging lamps, and vines. Its sheets use SoftBody3D, which Jolt supports in Godot 4.7.",
   "avoidWhen": "2D games, or cloth that never moves: drape it in Blender with wasd-cloth-blender.",
   "tags": [
     "cloth",
@@ -13,6 +15,10 @@
     "flag",
     "cape",
     "wind",
+    "rope",
+    "cable",
+    "vine",
+    "chain",
     "3d"
   ],
   "stages": [
@@ -28,8 +34,14 @@
       "wasd-cloth/addon"
     ]
   },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/flag.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
+  },
   "verified": {
     "godot": "4.7.2",
-    "date": "2026-11-14"
+    "date": "2026-11-21"
   }
 }

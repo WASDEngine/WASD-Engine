@@ -27,9 +27,10 @@
                 Godot, otherwise with the project's own check or build. Ask before adding
                 dependencies, downloading engines, or adding third-party assets, and record
                 the source and license of every asset. The tested add-ons of game_addons and
-                the CC0 assets of polyhaven_* are the exception: add them yourself when the
-                game needs them. For each asset, first look for one to download from Poly
-                Haven or a catalog add-on, and use it when it suits the game's art style.
+                the CC0 assets of polyhaven_* and ambientcg_* are the exception: add them
+                yourself when the game needs them. For each asset, first look for one to
+                download from Poly Haven, ambientCG, or a catalog add-on, and use it when it
+                suits the game's art style.
                 Otherwise generate 2D art with image_generate instead of drawing it yourself
                 in GIMP or code, and voices, sound effects, and music with the elevenlabs_*
                 tools instead of SuperCollider.

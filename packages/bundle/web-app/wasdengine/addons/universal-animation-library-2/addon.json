@@ -3,6 +3,8 @@
   "title": "Universal Animation Library 2",
   "host": "godot",
   "version": "2026.01.22",
+  "category": "characters",
+  "cue": "42 more clips: sword and shield, climb, farm, zombie",
   "summary": "42 more humanoid clips by Quaternius: sword and shield combos, climbing, sliding, ninja jumps, throwing, farming, chopping, carrying, zombie moves; retargeted like universal-animation-library.",
   "useWhen": "Humanoid 3D characters need actions beyond walking and running: melee combos, shield blocks, parkour (climb, slide, jumps), work animations such as farming and chopping, carrying, or zombie movement.",
   "avoidWhen": "The game needs only idle, walk, run, and jump clips, which universal-animation-library has, or its characters are not humanoid.",

@@ -1,0 +1,119 @@
+{
+  "id": "starter-kit-3d-platformer",
+  "title": "Starter Kit 3D Platformer",
+  "host": "godot",
+  "version": "2026.03.12+3fa8a04",
+  "category": "kits",
+  "cue": "3D platformer: character, double jump, coins, camera",
+  "summary": "Kenney's 3D platformer kit: a character with double jump and squash and stretch, an orbiting camera rig, coins with a counter, falling platforms, breakable bricks, sounds, and a level.",
+  "useWhen": "A new 3D game is a third-person platformer or collect-and-explore game, and should start from a character, camera, pickups, and platforms that already work instead of from an empty scene.",
+  "avoidWhen": "The game is first-person, which starter-kit-fps covers, it needs a realistic humanoid with animation blending, or it already has a character controller.",
+  "tags": [
+    "platformer",
+    "third-person",
+    "character",
+    "starter",
+    "kit",
+    "coins",
+    "camera",
+    "kenney",
+    "3d"
+  ],
+  "stages": [
+    "prototype"
+  ],
+  "license": "MIT AND CC0-1.0 AND OFL-1.1",
+  "copyright": "Copyright (c) 2023 Kenney; Lilita One font Copyright (c) 2011 Juan Montoreano",
+  "homepage": "https://github.com/KenneyNL/Starter-Kit-3D-Platformer",
+  "archive": {
+    "url": "https://github.com/KenneyNL/Starter-Kit-3D-Platformer/archive/3fa8a04b1c01ab23db43123d4ce814a34c3fc7f0.zip",
+    "sha256": "aae74237d4fe047aa6074e209c7bb7eec2ddfbfc110547818230a2da4cb924b9",
+    "bytes": 4565232,
+    "root": "Starter-Kit-3D-Platformer-3fa8a04b1c01ab23db43123d4ce814a34c3fc7f0",
+    "exclude": [
+      ".gitattributes",
+      ".gitignore",
+      "README.md",
+      "icon.png",
+      "icon.png.import",
+      "screenshots",
+      "splash-screen.png",
+      "splash-screen.png.import",
+      "vector"
+    ],
+    "projectRoot": true
+  },
+  "godot": {
+    "addonDir": "starter_kit_3d_platformer",
+    "autoloads": [
+      {
+        "name": "Audio",
+        "path": "res://addons/starter_kit_3d_platformer/scripts/audio.gd"
+      }
+    ],
+    "settings": [
+      {
+        "section": "input",
+        "key": "move_right",
+        "value": "{\"deadzone\": 0.25, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":68,\"key_label\":0,\"unicode\":100,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":0,\"axis_value\":1.0,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "move_left",
+        "value": "{\"deadzone\": 0.25, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":65,\"key_label\":0,\"unicode\":97,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":0,\"axis_value\":-1.0,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "move_forward",
+        "value": "{\"deadzone\": 0.25, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":87,\"key_label\":0,\"unicode\":119,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":1,\"axis_value\":-1.0,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "move_back",
+        "value": "{\"deadzone\": 0.25, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":83,\"key_label\":0,\"unicode\":115,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":1,\"axis_value\":1.0,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "jump",
+        "value": "{\"deadzone\": 0.5, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":32,\"key_label\":0,\"unicode\":32,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadButton,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"button_index\":1,\"pressure\":0.0,\"pressed\":true,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "camera_left",
+        "value": "{\"deadzone\": 0.5, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":4194319,\"key_label\":0,\"unicode\":0,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":2,\"axis_value\":-1.0,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "camera_right",
+        "value": "{\"deadzone\": 0.5, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":4194321,\"key_label\":0,\"unicode\":0,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":2,\"axis_value\":1.0,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "camera_up",
+        "value": "{\"deadzone\": 0.5, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":4194320,\"key_label\":0,\"unicode\":0,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":3,\"axis_value\":-1.0,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "camera_down",
+        "value": "{\"deadzone\": 0.5, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":4194322,\"key_label\":0,\"unicode\":0,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":3,\"axis_value\":1.0,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "zoom_in",
+        "value": "{\"deadzone\": 0.5, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":4194437,\"key_label\":0,\"unicode\":43,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":5,\"axis_value\":1.0,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "zoom_out",
+        "value": "{\"deadzone\": 0.5, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":4194435,\"key_label\":0,\"unicode\":45,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":4,\"axis_value\":1.0,\"script\":null)]}"
+      }
+    ]
+  },
+  "conflicts": [
+    "starter-kit-fps"
+  ],
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

@@ -199,8 +199,10 @@ export async function compose(config: Partial<GraphicsReview.Config> = {}, optio
   if (options.addons !== false) {
     ctx.provide('gameAddons', {
       allowedEntries: () => [
-        { id: 'sky3d', host: 'godot', useWhen: 'A 3D game needs a sky that changes with the time of day.' },
-        { id: 'sapling-tree-gen', host: 'blender', useWhen: 'A level needs trees in several variations.' },
+        { id: 'sky3d', host: 'godot', category: 'environment', cue: 'day and night sky' },
+        { id: 'sapling-tree-gen', host: 'blender', category: 'environment', cue: 'parametric trees and bushes' },
+        // An add-on that changes nothing an image shows, which the reviewer does not read.
+        { id: 'beehave', host: 'godot', category: 'gameplay', cue: 'behavior trees for NPC and enemy AI' },
       ],
     } as never)
   }

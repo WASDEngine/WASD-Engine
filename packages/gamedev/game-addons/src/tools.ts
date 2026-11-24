@@ -1,6 +1,8 @@
 /**
  * The model-facing `game_addons` tool: search the curated catalog of Godot and Blender add-ons, read an add-on's
- * usage guide, install or remove one in the game project, and list what the project has. One set of definitions
+ * usage guide, install or remove one in the game project, and list what the project has. A search without words or
+ * filters returns the catalog's index, a few words on every add-on by category; one with an id, a category, or words
+ * describes the best matches in full, so no result grows with the catalog. One set of definitions
  * serves the Session's own agent, whose project paths are relative to its working directory, and agents connected
  * through WASD Engine's MCP server, which name projects by absolute path. The agent decides when to install or remove
  * an add-on: neither action asks the user. An add-on that the user turned off in the Add-ons dialog is missing from
@@ -11,15 +13,22 @@ import { join } from 'node:path'
 import { readFile } from 'node:fs/promises'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
-import { GUIDE_FILE, parseGuide } from './catalog.ts'
+import { CATEGORIES, GUIDE_FILE, parseGuide } from './catalog.ts'
 import type { GameAddonManager } from './manager.ts'
-import type { GameAddonPresence, GameAddonStage, GameAddonView } from './types.ts'
+import { CATEGORY_TITLES, catalogIndex } from './prompt.ts'
+import type { GameAddonCategory, GameAddonPresence, GameAddonStage, GameAddonView } from './types.ts'
 
 /** Name of the tool. */
 export const TOOL_NAME = 'game_addons'
 
 /** Actions of the tool. */
 export const ACTIONS = ['search', 'guide', 'install', 'remove', 'list'] as const
+
+/**
+ * Most add-ons that one search describes in full. A search without words or filters gives the catalog's index instead,
+ * which says a few words of every add-on, so that no result grows with the catalog.
+ */
+export const SEARCH_LIMIT = 8
 
 /** Time limit of an installation or removal: a download, unpacking, and an import of the project. */
 const CHANGE_TIMEOUT_MS = 15 * 60_000
@@ -71,6 +80,8 @@ const VIEW_SCHEMA = {
     title: STRING,
     host: { type: 'string', enum: ['godot', 'blender'], required: true },
     version: STRING,
+    category: { type: 'string', enum: CATEGORIES, required: true },
+    cue: STRING,
     summary: STRING,
     useWhen: STRING,
     avoidWhen: { type: 'string' },
@@ -80,6 +91,7 @@ const VIEW_SCHEMA = {
     credit: { type: 'string' },
     homepage: STRING,
     bytes: { type: 'integer', description: 'Download size, the asset pack included.' },
+    shipsWith: { type: 'string', enum: ['blender', 'app'], description: 'For an add-on without a download: blender ships inside Blender, app inside WASD Engine.' },
     assets: {
       type: 'object',
       description: 'The asset pack installed with the add-on.',
@@ -101,6 +113,28 @@ const OUTPUT_SCHEMA = {
     projectDir: { type: 'string' },
     addons: { type: 'array', items: VIEW_SCHEMA },
     total: { type: 'integer' },
+    matched: { type: 'integer', description: 'How many add-ons a search with words or filters matched; addons holds the best of them.' },
+    index: {
+      type: 'array',
+      description: 'The catalog by category, from a search without words or filters.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          category: { type: 'string', enum: CATEGORIES, required: true },
+          title: STRING,
+          addons: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: { id: STRING, host: { type: 'string', enum: ['godot', 'blender'], required: true }, cue: STRING, presence: { type: 'string', enum: ['installed', 'found', 'absent'] } },
+            },
+          },
+        },
+      },
+    },
     guide: { type: 'object', additionalProperties: false, properties: { id: STRING, title: STRING, presence: { type: 'string', enum: ['installed', 'found', 'absent'] }, text: STRING } },
     install: {
       type: 'object',
@@ -139,6 +173,8 @@ function viewValue(view: GameAddonView): ViewValue {
     title: view.title,
     host: view.host,
     version: view.version,
+    category: view.category,
+    cue: view.cue,
     summary: view.summary,
     useWhen: view.useWhen,
     ...view.avoidWhen === undefined ? {} : { avoidWhen: view.avoidWhen },
@@ -148,6 +184,7 @@ function viewValue(view: GameAddonView): ViewValue {
     ...view.credit === undefined ? {} : { credit: view.credit },
     homepage: view.homepage,
     ...view.bytes === undefined ? {} : { bytes: view.bytes },
+    ...view.shipsWith === undefined ? {} : { shipsWith: view.shipsWith },
     ...view.assets === undefined ? {} : { assets: { ...view.assets } },
     conflicts: [...view.conflicts],
     ...view.allowed ? {} : { allowed: false },
@@ -155,8 +192,10 @@ function viewValue(view: GameAddonView): ViewValue {
   }
 }
 
-function sizeText(bytes: number | undefined): string {
-  if (bytes === undefined) return 'ships inside Blender'
+function sizeText(view: ViewValue): string {
+  const bytes = view.bytes
+  // Nothing is downloaded for an add-on inside Blender, or for one that WASD Engine wrote and ships.
+  if (bytes === undefined) return view.shipsWith === 'blender' ? 'ships inside Blender' : 'ships with WASD Engine'
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
@@ -178,7 +217,7 @@ const NONE_ALLOWED = 'The user turned off every catalog add-on in WASD Engine\'s
 function renderView(view: ViewValue): string {
   const state = [presenceText(view), ...view.allowed === false ? ['turned off by the user'] : []].filter(part => part !== '').join(', ')
   return [
-    `- ${view.id}: ${view.title} ${view.version} (${view.host === 'godot' ? 'Godot' : 'Blender'}, ${view.license}, ${sizeText(view.bytes)}${assetsText(view)})${state === '' ? '' : ` [${state}]`}`,
+    `- ${view.id}: ${view.title} ${view.version} (${view.host === 'godot' ? 'Godot' : 'Blender'}, ${view.license}, ${sizeText(view)}${assetsText(view)})${state === '' ? '' : ` [${state}]`}`,
     `  ${view.summary}`,
     `  Use when: ${view.useWhen}`,
     ...view.avoidWhen === undefined ? [] : [`  Skip when: ${view.avoidWhen}`],
@@ -190,10 +229,25 @@ function renderView(view: ViewValue): string {
 function render(value: ToolValue, wording: GameAddonToolWording): string {
   switch (value.action) {
     case 'search': {
-      const addons = value.addons ?? []
       if (value.total === 0) return NONE_ALLOWED
-      if (addons.length === 0) return 'No catalog add-on matches. Search with other words, or without a query to list the whole catalog; Godot and Blender may already do this without an add-on.'
-      const head = `${addons.length} of ${value.total ?? addons.length} catalog add-ons${value.projectDir === undefined ? '' : ` for ${value.projectDir}`}:`
+      const where = value.projectDir === undefined ? '' : ` for ${value.projectDir}`
+      if (value.index !== undefined) {
+        const groups = value.index.map(group => [
+          `${group.title} (${group.category})`,
+          ...group.addons.map((addon) => {
+            const state = addon.presence === 'installed' ? ' [installed]' : addon.presence === 'found' ? ' [in addons/ without a WASD Engine record]' : ''
+            return `- ${addon.id}${addon.host === 'blender' ? ' (Blender)' : ''}: ${addon.cue}${state}`
+          }),
+        ].join('\n'))
+        return `The catalog's ${value.total ?? 0} add-ons${where}, under their categories, with what each is for:\n${groups.join('\n')}\n`
+          + 'Search with an add-on\'s id, a category, or words for when it helps, when to skip it, its size, license, and conflicts; read its guide with action guide, or install it with action install.'
+      }
+      const addons = value.addons ?? []
+      if (addons.length === 0) return 'No catalog add-on matches. Search with other words, or without a query for the catalog\'s index; Godot and Blender may already do this without an add-on.'
+      const matched = value.matched ?? addons.length
+      const head = matched > addons.length
+        ? `The best ${addons.length} of ${matched} matching add-ons${where}; narrow the search with more words or a category to see the others:`
+        : `${addons.length} matching add-on${addons.length === 1 ? '' : 's'}${where}:`
       return `${head}\n${addons.map(renderView).join('\n')}\nRead one with action guide, or install it with action install.`
     }
     case 'list': {
@@ -237,6 +291,10 @@ function stageOf(value: string | undefined): GameAddonStage | undefined {
   return value === 'prototype' || value === 'content' || value === 'polish' || value === 'ship' ? value : undefined
 }
 
+function categoryOf(value: string | undefined): GameAddonCategory | undefined {
+  return CATEGORIES.find(category => category === value)
+}
+
 function requireId(id: string | undefined, action: string): string {
   if (id === undefined || id === '') throw new Error(`action ${action} needs id, a catalog add-on id from action search.`)
   return id
@@ -251,12 +309,13 @@ function requireId(id: string | undefined, action: string): string {
 export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAddonToolWording): ToolDefinition {
   return defineTool({
     name: TOOL_NAME,
-    description: 'Curated third-party add-ons for the game, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: cameras, dialogue, behavior trees, state charts, inventories, unit tests, tile terrain, procedural maps, importers for Tiled, LDtk, and sprite editors, screen shake, sky, scattering, and for Blender rigging, humans, trees, landscapes, and VRM. '
-      + 'action search finds add-ons for a need and says when each helps, when to skip it, and whether the project has it; guide shows an add-on\'s usage guide; install adds one to the project; remove takes one out of the project; list shows the project\'s add-ons. '
+    description: 'Curated third-party add-ons for the game, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: lighting, sky, weather, terrain, water, grass, scattering, roads, and dungeons; materials, effects, light shafts, mirrors, trails, fur, surface marks, and screen looks; humans, rigs, animations, a character controller, and crowds; cloth, ropes, ragdolls, vehicles, and destruction; AI, state charts, dialogue, and inventories; cameras and shake; menus, HUD, loading screens, and button prompts; 2D levels; starter kits; texture baking; and tests. '
+      + 'action search without words gives the catalog\'s index, a few words on every add-on by category; with an add-on\'s id, a category, or words it says when each match helps, when to skip it, and whether the project has it. guide shows an add-on\'s usage guide; install adds one to the project; remove takes one out of the project; list shows the project\'s add-ons. '
       + 'Install an add-on yourself, without asking the user first, when the game needs what it does and Godot or Blender alone would take much longer; then tell the user what you added and its license.',
     parameters: {
       action: { type: 'string', enum: ACTIONS, required: true, description: 'search, guide, install, remove, or list.' },
-      query: { type: 'string', description: 'For search: what the game needs, such as "camera follow" or "dialogue". Default: the whole catalog.' },
+      query: { type: 'string', description: 'For search: an add-on id, or what the game needs, such as "camera follow" or "dialogue". Default: the catalog\'s index.' },
+      category: { type: 'string', enum: CATEGORIES, description: 'For search: only add-ons of this category, as the index names it.' },
       host: { type: 'string', enum: ['godot', 'blender'], description: 'For search: only Godot or only Blender add-ons.' },
       stage: { type: 'string', enum: ['prototype', 'content', 'polish', 'ship'], description: 'For search: only add-ons for this stage of the game.' },
       id: { type: 'string', description: 'For guide, install, and remove: the add-on id from search.' },
@@ -275,12 +334,28 @@ export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAd
         case 'search': {
           const projectDir = await host.project(args.project, exec).catch(() => undefined)
           const stage = stageOf(args.stage)
+          const category = categoryOf(args.category)
+          const total = manager.allowedEntries().length
+          const narrowed = (args.query ?? '').trim() !== '' || args.host !== undefined || stage !== undefined || category !== undefined
+          if (!narrowed) {
+            const presence = projectDir === undefined ? undefined : await manager.presence(projectDir)
+            const index = catalogIndex(manager.allowedEntries()).map(group => ({
+              category: group.category,
+              title: CATEGORY_TITLES[group.category],
+              addons: group.entries.map((addon) => {
+                const state = presence?.get(addon.id)?.state
+                return { id: addon.id, host: addon.host, cue: addon.cue, ...state === undefined || state === 'absent' ? {} : { presence: state } }
+              }),
+            }))
+            return { action: 'search', ...projectDir === undefined ? {} : { projectDir }, total, index }
+          }
           const matches = await manager.search({
             ...args.query === undefined ? {} : { text: args.query },
             ...args.host === undefined ? {} : { host: args.host },
             ...stage === undefined ? {} : { stage },
+            ...category === undefined ? {} : { category },
           }, projectDir)
-          return { action: 'search', ...projectDir === undefined ? {} : { projectDir }, total: manager.allowedEntries().length, addons: matches.map(viewValue) }
+          return { action: 'search', ...projectDir === undefined ? {} : { projectDir }, total, matched: matches.length, addons: matches.slice(0, SEARCH_LIMIT).map(viewValue) }
         }
         case 'list': {
           const projectDir = await host.project(args.project, exec)

@@ -140,6 +140,7 @@ async function runTurn(script: readonly ScriptedCall[], allowed?: Readonly<Recor
   await writeFile(join(catalogDir, 'test-camera', 'SKILL.md'), GUIDE)
   await writeFile(join(catalogDir, 'test-camera', 'addon.json'), JSON.stringify({
     id: 'test-camera', title: 'Test Camera', host: 'godot', version: '1.2.0',
+    category: 'camera', cue: 'cameras that follow and frame targets',
     summary: 'Virtual cameras that follow and frame targets.', useWhen: 'The camera must follow a moving target.',
     tags: ['camera'], stages: ['prototype'], license: 'MIT', copyright: 'Copyright (c) 2026 Test Author',
     homepage: 'https://addons.example.test/camera',
@@ -198,7 +199,7 @@ it('tells the model the catalog and lists an add-on guide only after an installa
   // The system prompt lists the catalog from the first request on, and the installation asked the user nothing.
   const prompt = systemPrompt(adapter.requests[0] as GenerateOptions)
   expect(prompt).toContain('# Game add-ons\n\ngame_addons installs tested third-party add-ons into the game project')
-  expect(prompt).toContain('\n- test-camera (Godot; prototype): The camera must follow a moving target.')
+  expect(prompt).toContain('\nCamera and game feel (camera)\n- test-camera: cameras that follow and frame targets')
   expect(questions).toEqual([])
   const skillResult = (adapter.requests[3] as GenerateOptions).messages.filter(message => message.role === 'tool').at(-1)?.content
     .flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')

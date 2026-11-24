@@ -112,7 +112,7 @@ describe('GameToolCatalog.instructions', () => {
     + 'the reason must convince.'
 
   const WORKING = 'For a new game, create its project with create_game_project and make the game in the folder it returns. '
-    + 'Before you first use a plugin\'s tools, read its guide on getting good results from them: below, or, if your client cut these '
+    + 'Before you first use a plugin\'s tools, read its guide: below, or, if your client cut these '
     + 'instructions short, from search_game_tools with plugin set to its id and no query. '
     + 'call_game_tool calls a tool your tool list lacks. '
     + 'Every tool runs on this computer with the user\'s permissions. Some guides name their own plugin\'s tools without its prefix: add it, '

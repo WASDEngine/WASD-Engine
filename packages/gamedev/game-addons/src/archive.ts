@@ -197,28 +197,55 @@ function entryStream(zipfile: ZipFile, entry: Entry): Promise<Readable> {
   })
 }
 
+/** Files and folders below an unpacked root that stay out of the written folder, as paths with `/` separators. */
+export interface UnpackOmissions {
+  /** Paths that the archive must have and that are not written; each names a file or a whole folder. */
+  readonly exclude?: readonly string[]
+  /** Paths that are not written when the archive has them. */
+  readonly skip?: readonly string[]
+}
+
+/** Whether a path is `at` or lies below the folder `at`. */
+function under(path: string, at: string): boolean {
+  return path === at || path.startsWith(`${at}/`)
+}
+
 /**
  * Unpack the files below one folder of an archive into a new folder, one file at a time.
  * @param archivePath - absolute path of a checked archive.
  * @param root - folder inside the archive, with `/` separators; empty for the whole archive.
  * @param destination - absolute folder that must not exist yet; created with the files.
  * @param signal - cancellation between and during files.
+ * @param omit - files and folders below the root to leave out.
  * @returns the written paths relative to `destination`, with `/` separators, sorted.
- * @throws {GameAddonArchiveError} for a damaged archive, an entry that would leave the folder, or a root without files.
+ * @throws {GameAddonArchiveError} for a damaged archive, an entry that would leave the folder, a root without files, or
+ *   an `exclude` path that the archive does not have, which means the list no longer fits the archive.
  */
-export async function unpackFolder(archivePath: string, root: string, destination: string, signal: AbortSignal): Promise<string[]> {
+export async function unpackFolder(
+  archivePath: string, root: string, destination: string, signal: AbortSignal, omit: UnpackOmissions = {},
+): Promise<string[]> {
   const zipfile = await openArchive(archivePath)
   try {
     const prefix = root === '' ? '' : `${root}/`
+    const where = root === '' ? 'its root' : root
     const selected: { readonly entry: Entry; readonly relative: string }[] = []
+    const excluded = new Set<string>()
     for await (const entry of entries(zipfile)) {
       const name = entry.fileName
       if (name.endsWith('/') || isMetadata(name) || !name.startsWith(prefix)) continue
       const relative = safeRelative(name.slice(prefix.length))
       if (relative === undefined || relative === '') throw new GameAddonArchiveError(`The archive entry ${name} would leave the add-on folder; nothing was installed.`)
+      const left = omit.exclude?.find(path => under(relative, path))
+      if (left !== undefined) {
+        excluded.add(left)
+        continue
+      }
+      if (omit.skip?.some(path => under(relative, path)) === true) continue
       selected.push({ entry, relative })
     }
-    if (selected.length === 0) throw new GameAddonArchiveError(`The archive has no files under ${root === '' ? 'its root' : root}.`)
+    const unmatched = (omit.exclude ?? []).filter(path => !excluded.has(path))
+    if (unmatched.length > 0) throw new GameAddonArchiveError(`The archive has nothing at ${unmatched.join(', ')} under ${where}, which its catalog entry leaves out; the entry no longer fits the archive.`)
+    if (selected.length === 0) throw new GameAddonArchiveError(`The archive has no files under ${where}.`)
     await mkdir(destination, { recursive: false })
     for (const { entry, relative } of selected) {
       signal.throwIfAborted()

@@ -1,0 +1,12 @@
+schema_version = "1.0.0"
+
+id = "wasd_bake"
+version = "1.0.0"
+name = "WASD Bake"
+tagline = "Bake textures for Godot games: color, roughness, normals, and ambient occlusion in one call"
+maintainer = "WASD Engine"
+type = "add-on"
+tags = ["Bake", "Material", "Game Engine"]
+blender_version_min = "5.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+copyright = ["2026 WASD Engine contributors"]

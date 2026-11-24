@@ -38,7 +38,7 @@ describe('SettingsGameToolsTab', () => {
     const list = await screen.findByRole('list', { name: en.tab })
     expect([...list.querySelectorAll('li')].map(item => item.getAttribute('data-game-tool')))
       .toEqual([
-        '@deepseek-ai/dsh-blender', '@deepseek-ai/dsh-elevenlabs', '@deepseek-ai/dsh-game-addons', '@deepseek-ai/dsh-gimp',
+        '@deepseek-ai/dsh-ambientcg', '@deepseek-ai/dsh-blender', '@deepseek-ai/dsh-elevenlabs', '@deepseek-ai/dsh-game-addons', '@deepseek-ai/dsh-gimp',
         '@deepseek-ai/dsh-godot', '@deepseek-ai/dsh-image-generation', '@deepseek-ai/dsh-polyhaven', '@deepseek-ai/dsh-supercollider',
       ])
     expect(screen.queryByRole('switch')).toBeNull()

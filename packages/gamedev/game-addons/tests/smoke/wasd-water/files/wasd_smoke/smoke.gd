@@ -143,10 +143,13 @@ func run() -> void:
 	lagoon.preset = "ocean"
 	var lowest := INF
 	var highest := -INF
-	for index in 400:
-		var height := lagoon.height_at(Vector3(index * 1.7 - 300.0, 0, index * 0.9))
-		lowest = minf(lowest, height)
-		highest = maxf(highest, height)
+	# A grid over the stretch of sea, so that the extremes do not depend on the moment the test reaches this line:
+	# the water's time follows the frames drawn so far.
+	for across in 50:
+		for along in 50:
+			var height := lagoon.height_at(Vector3(across * 13.6 - 300.0, 0, along * 7.2))
+			lowest = minf(lowest, height)
+			highest = maxf(highest, height)
 	# The larger waves are `wave_height` from trough to crest, so the surface strays about a quarter of it and
 	# its highest points reach three times that.
 	var tall := lagoon.wave_height

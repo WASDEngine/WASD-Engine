@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[node name="Flat" type="Node2D"]
+
+[node name="Label" type="Label" parent="."]
+text = "A 2D scene"

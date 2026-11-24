@@ -20,7 +20,8 @@ import { PluginsGameToolsTab, type PluginsGameToolsTabInjected } from '../src/cl
 import { SettingsGameToolsTab, type SettingsGameToolsTabInjected } from '../src/client/SettingsGameToolsTab.tsx'
 import { apply as hostApply } from '../src/index.ts'
 import {
-  BLENDER, change, ELEVENLABS, failed, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, inventory, plugins, POLY_HAVEN, SUPERCOLLIDER,
+  AMBIENTCG, BLENDER, change, ELEVENLABS, failed, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, inventory, plugins, POLY_HAVEN,
+  SUPERCOLLIDER,
 } from './fixtures.client.ts'
 
 usePinnedBrowserLanguages('en-US')
@@ -140,6 +141,7 @@ describe('ui-game-tools browser plugin', () => {
     expect(await face.read()).toEqual({
       ok: true,
       tools: [
+        { moduleName: AMBIENTCG.moduleName, entry: AMBIENTCG },
         { moduleName: BLENDER.moduleName, entry: BLENDER },
         { moduleName: ELEVENLABS.moduleName, entry: ELEVENLABS },
         { moduleName: GAME_ADDONS.moduleName, entry: GAME_ADDONS },

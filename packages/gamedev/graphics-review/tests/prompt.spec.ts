@@ -50,8 +50,8 @@ describe('the graphics review in the agents\' instructions', () => {
   })
 
   it('tells connected agents the same in the overview and the guide, with absolute paths', () => {
-    expect(MCP_DESCRIPTION).toBe('A specialized graphics expert reviewer model for graphics you make, not downloads such as Poly Haven\'s. '
-      + 'Review each piece two to four times, each time with a new image of the result: act on its notes, and stop early when a review has '
+    expect(MCP_DESCRIPTION).toBe('A specialized graphics expert reviewer model for graphics you make, not downloads. '
+      + 'Review each piece two to four times, each with a new image of the result: act on its notes, and stop early when a review has '
       + 'nothing useful.')
     expect(MCP_INSTRUCTIONS).toBe(`${WHAT} ${WHEN} Pass image, an absolute path of a PNG, JPEG, or WebP file: capture a game screenshot with `
       + `godot_screenshot, or a closer look with godot_view, ${SAVE} (give path instead only to save the image somewhere else); or pass a Blender `
@@ -92,12 +92,12 @@ describe('the graphics review in the agents\' instructions', () => {
   })
 
   it('gives the reviewer the tools in the agents\' order of preference, the add-ons by id, and a reply of notes and tools with no rating', () => {
-    const prompt = reviewerPrompt([{ id: 'sky3d', host: 'godot', useWhen: 'A 3D game needs a day and night sky.' }])
+    const prompt = reviewerPrompt([{ id: 'sky3d', host: 'godot', cue: 'day and night sky' }])
     expect(prompt).toContain('- Blender: model, sculpt, bevel, UV-unwrap, texture, rig, and animate 3D assets')
     expect(prompt).toContain('preferring an asset to download when one suits the game\'s art style, then generated 2D art over art drawn by hand or in code')
-    const order = ['- polyhaven_* (Poly Haven):', '- image_generate (Nano Banana):', '- Blender:', '- GIMP:'].map(item => prompt.indexOf(item))
+    const order = ['- polyhaven_* (Poly Haven):', '- ambientcg_* (ambientCG):', '- image_generate (Nano Banana):', '- Blender:', '- GIMP:'].map(item => prompt.indexOf(item))
     expect(order.every((at, index) => at > 0 && (index === 0 || at > (order[index - 1] ?? 0)))).toBe(true)
-    expect(prompt).toContain('- game_addons installs tested add-ons, by id:\n  - sky3d (Godot): A 3D game needs a day and night sky.')
+    expect(prompt).toContain('- game_addons installs tested add-ons, by id:\n  - sky3d (Godot): day and night sky')
     expect(prompt).toContain('When the agent says what it changed since an earlier review of the same work, judge whether those changes '
       + 'worked, and do not repeat a note it says it cannot act on, such as the face of a stock character it cannot remodel; repeat an earlier '
       + 'note only when the image still clearly suffers from it and the agent can change it.')

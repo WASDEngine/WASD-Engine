@@ -1,0 +1,40 @@
+{
+  "id": "mirror3d",
+  "title": "Mirror3D",
+  "host": "godot",
+  "version": "1.9",
+  "category": "rendering",
+  "cue": "flat mirrors and reflective floors that show the scene",
+  "summary": "A flat mirror that reflects the real scene, moving characters included, from a second camera: wall mirrors, polished floors, still pools, and shop windows.",
+  "useWhen": "A flat surface must show a true reflection of the scene: a bathroom or dance-studio mirror, a marble or wet floor, a window at night, or a still pool, where a ReflectionProbe is too blurry or shows no characters.",
+  "avoidWhen": "The surface is curved or rough, which a ReflectionProbe or the sky reflection covers; the water moves, which wasd-water draws with its own reflections; or many mirrors would be on screen at once.",
+  "tags": [
+    "mirror",
+    "reflection",
+    "planar",
+    "floor",
+    "glass",
+    "rendering",
+    "3d"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2025 Joyless, Norodix",
+  "homepage": "https://github.com/Joy-less/Mirror3D",
+  "archive": {
+    "url": "https://github.com/Joy-less/Mirror3D/archive/refs/tags/v1.9.zip",
+    "sha256": "3ec88e1288bbe761b08973bdf647ceb59295f385a8b2e5e7eba027d0f853463e",
+    "bytes": 5475,
+    "root": "Mirror3D-1.9/addons/Mirror3D"
+  },
+  "godot": {
+    "addonDir": "Mirror3D"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

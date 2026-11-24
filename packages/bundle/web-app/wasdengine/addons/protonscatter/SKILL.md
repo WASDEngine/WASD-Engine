@@ -126,4 +126,5 @@ func reseed(scatter: ProtonScatter, count: int, seed_value: int) -> void:
 - Create modifiers place points through the whole box height unless `restrict_height = true`. To put props on uneven ground, add `project_on_geometry.gd`; it only hits physics colliders.
 - `create_inside_random` can create fewer than `amount` points in a thin or curved area, but never more.
 - Do not edit the generated `ScatterOutput` node: every rebuild replaces it.
-- The add-on's demo folder contains a `.blend` file. The installer turned off Godot's Blender importer (`filesystem/import/blender/enabled=false` in `project.godot`) so that the import does not stop. Leave it off, and do not add `.blend` files to the project; export `.glb` instead.
+- In Web builds `render_mode` 2 (GPU particles) draws nothing: keep 0 or 1. A relax modifier falls back from its compute shader by itself there. The Web export's notes name `scatter.gd` and `relax.gd` for these two paths; with `render_mode` 0 or 1 there is nothing to fix.
+- The installation leaves out the add-on's demos, tests, and editor presets.

@@ -65,7 +65,7 @@ const PURPOSE = 'WASD Engine is the game development app open on this computer, 
  * helper's whole conversation is read again at each of its steps, so a new task goes to a new helper with a short one.
  */
 const WORKING = `For a new game, create its project with ${CREATE_PROJECT_TOOL} and make the game in the folder it returns. `
-  + 'Before you first use a plugin\'s tools, read its guide on getting good results from them: below, or, if your client cut these '
+  + 'Before you first use a plugin\'s tools, read its guide: below, or, if your client cut these '
   + `instructions short, from ${SEARCH_TOOL} with plugin set to its id and no query. `
   + `${CALL_TOOL} calls a tool your tool list lacks. `
   + 'Every tool runs on this computer with the user\'s permissions. Some guides name their own plugin\'s tools without its prefix: add it, '

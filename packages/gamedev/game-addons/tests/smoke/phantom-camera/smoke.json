@@ -1,1 +1,1 @@
-{ "run": "scene", "path": "res://wasd_smoke/smoke.tscn", "expect": ["SMOKE_PASS phantom-camera"], "timeoutSeconds": 60 }
+{"run": "scene", "path": "res://wasd_smoke/smoke.tscn", "expect": ["SMOKE_PASS phantom-camera"], "timeoutSeconds": 60, "webNotes": ["screen-space reflections"]}

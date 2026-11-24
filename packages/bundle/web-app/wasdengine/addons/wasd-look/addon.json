@@ -1,0 +1,57 @@
+{
+  "id": "wasd-look",
+  "title": "WASD Look",
+  "host": "godot",
+  "version": "1.0.0",
+  "category": "environment",
+  "cue": "lighting by name: sky, sun, clouds, fog, day clock",
+  "summary": "A whole scene's lighting in one node: a sky with clouds, a sun with shadows, bounce light, fog, exposure, and glow, set by ten looks, a day clock, or an HDRI sky, and alike on every renderer.",
+  "useWhen": "Any 3D game, in place of a hand-set WorldEnvironment and DirectionalLight3D, which tend to come out flat or burnt out and differ between desktop and Web builds: days, sunsets, nights, a day that runs, an HDRI sky from Poly Haven, a studio for one model, or a dim room for its lamps.",
+  "avoidWhen": "A 2D game, or a game whose own lighting already gives the look it wants and was checked in a Web build. Beside Sky3D, use one of the two in a scene: both own the sky and the sun.",
+  "tags": [
+    "lighting",
+    "sky",
+    "sun",
+    "clouds",
+    "fog",
+    "day-night",
+    "hdri",
+    "environment",
+    "exposure",
+    "tonemapping",
+    "atmosphere",
+    "look",
+    "3d",
+    "skybox",
+    "sunset",
+    "night",
+    "moon",
+    "stars",
+    "time-of-day",
+    "shadows"
+  ],
+  "stages": [
+    "prototype",
+    "content",
+    "polish"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "WASD Engine contributors, dedicated to the public domain",
+  "homepage": "https://github.com/WASDEngine/WASD-Engine/tree/main/packages/bundle/web-app/wasdengine/addons/wasd-look",
+  "godot": {
+    "addonDir": "wasd_look",
+    "overlay": [
+      "wasd-look/addon"
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/cloud-sun.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

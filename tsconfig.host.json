@@ -598,6 +598,7 @@
     { "path": "./packages/gamedev/game-assets" },
     { "path": "./packages/gamedev/game-audio" },
     { "path": "./packages/gamedev/polyhaven" },
+    { "path": "./packages/gamedev/ambientcg" },
     { "path": "./packages/gamedev/elevenlabs" },
     { "path": "./packages/gamedev/image-generation" },
     { "path": "./packages/gamedev/art-references" },
