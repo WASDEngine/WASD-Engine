@@ -209,7 +209,8 @@ describe('ambientcg_download', () => {
     current.fake.digests = false
     const unchecked = await callTool(current, 'ambientcg_download', { id: 'Leaking019C' })
     expect(text(unchecked)).toContain('Leaking019C_1K-JPG_Color.jpg arrived damaged: its checksum differs from the archive\'s; nothing was saved.')
-    expect(await files(join(current.work, 'assets', 'ambientcg', 'Leaking019C'))).toEqual([])
+    // The failed downloads leave no folder of their own beside the earlier download's.
+    expect(await readdir(join(current.work, 'assets', 'ambientcg'))).toEqual(['Wood099'])
   })
 
   it('reads an asset again after its archive no longer fits its listing', async () => {

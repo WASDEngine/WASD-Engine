@@ -62,12 +62,13 @@ func is_loading() -> bool:
 ## Changes to the scene at `path` behind the loading screen and returns its root once the screen has gone; null if
 ## the scene cannot be loaded or another change is under way. `also` lists scenes that the game spawns later, such
 ## as enemies, projectiles, and effects: each is loaded with the level, and shown once behind the screen so that
-## its shaders are compiled too (its `_ready` runs for that moment).
+## its shaders are compiled too (its `_ready` runs for that moment). A path that holds no scene changes nothing. A
+## scene that does not load once the old one has gone brings the old one back, new from its file, and returns null.
 func change_scene(path: String, also: PackedStringArray = []) -> Node:
 	if _busy:
 		push_warning("WasdLoader: a scene change is under way; %s was not loaded." % [path])
 		return null
-	if not ResourceLoader.exists(path):
+	if not ResourceLoader.exists(path, "PackedScene"):
 		push_error("WasdLoader: there is no scene at %s." % [path])
 		return null
 	_busy = true
@@ -76,21 +77,30 @@ func change_scene(path: String, also: PackedStringArray = []) -> Node:
 	var was_paused := tree.paused
 	await _show_screen()
 	# The scene that ends goes first, so that its memory is free before the next one loads.
+	var left := ""
 	if tree.current_scene != null:
+		left = tree.current_scene.scene_file_path
 		tree.current_scene.queue_free()
 		tree.current_scene = null
 	await tree.process_frame
 	var wanted := PackedStringArray([path])
 	wanted.append_array(also)
 	await _load_in_steps(wanted, 0.0, 0.8)
-	var packed := ResourceLoader.load(path) as PackedScene
-	if packed == null:
-		push_error("WasdLoader: %s is not a scene." % [path])
+	var scene := _instantiate(path)
+	var changed := scene != null
+	if not changed:
 		_held.clear()
-		await _hide_screen()
-		_busy = false
-		return null
-	var scene := packed.instantiate()
+		also = PackedStringArray()
+		if left != "" and left != path:
+			push_error("WasdLoader: %s did not load; back to %s." % [path, left])
+			await _load_in_steps(PackedStringArray([left]), 0.8, 0.84)
+			scene = _instantiate(left)
+		else:
+			push_error("WasdLoader: %s did not load." % [path])
+		if scene == null:
+			await _hide_screen()
+			_busy = false
+			return null
 	_report(0.86)
 	await tree.process_frame
 	# The new scene waits, paused, until the player can see it.
@@ -114,8 +124,16 @@ func change_scene(path: String, also: PackedStringArray = []) -> Node:
 	tree.paused = was_paused
 	await _hide_screen()
 	_busy = false
+	if not changed:
+		return null
 	finished.emit(scene)
 	return scene
+
+
+## A new instance of the scene at `path`, or null when the file does not load as a scene.
+static func _instantiate(path: String) -> Node:
+	var packed := ResourceLoader.load(path) as PackedScene
+	return packed.instantiate() if packed != null and packed.can_instantiate() else null
 
 
 ## Loads a resource a few files a frame, without a screen, and returns it: the next level's scene while the player

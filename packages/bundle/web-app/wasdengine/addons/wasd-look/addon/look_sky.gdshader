@@ -77,8 +77,10 @@ void sky() {
 	// is low.
 	float band = mix(1.0, exp(-abs(up) * 6.0), low_sun * 0.9);
 	// Four rings of glow, so that the sky brightens toward the sun long before the disc: a wide haze, a soft lift of
-	// some 15 degrees, a halo, and a corona right round the disc.
-	vec3 glow = sun_light * shine * sky_energy * (pow(toward_sun, 8.0 / sun_glow) * 0.14 * sun_glow * band + pow(toward_sun, 50.0 / sun_glow) * 0.22
+	// some 15 degrees, a halo, and a corona right round the disc. A glow of 0 would raise toward_sun to an endless
+	// power, which has no value where it is 1.
+	float reach = max(sun_glow, 0.05);
+	vec3 glow = sun_light * shine * sky_energy * (pow(toward_sun, 8.0 / reach) * 0.14 * sun_glow * band + pow(toward_sun, 50.0 / reach) * 0.22
 		+ pow(toward_sun, 320.0) * 0.4 + pow(toward_sun, 1800.0) * 0.8);
 	if (up >= -0.03) {
 		color += glow * smoothstep(-0.03, 0.02, up);

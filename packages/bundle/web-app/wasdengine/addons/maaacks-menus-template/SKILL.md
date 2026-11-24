@@ -5,7 +5,7 @@ description: Maaack's Menus Template 1.7.2 is installed in this project. It has 
 
 # Maaack's Menus Template 1.7.2
 
-`res://addons/maaacks_menus_template/` (MIT; the opening screen's Godot Engine logo is CC BY 4.0). `base/` holds the building blocks and `examples/scenes/` the ready screens, which is where to start. The installation added the autoload `MenusStartUp`, which applies the player's saved settings when the game starts, and left out the add-on's editor wizard, which copies and wires the screens in the Godot editor: wire them as below.
+`res://addons/maaacks_menus_template/` (MIT; the opening screen's Godot Engine logo is CC BY 4.0). `base/` holds the building blocks and `examples/scenes/` the ready screens, which is where to start. The installation added the autoload `MenusStartUp`, which applies the player's saved settings when the game starts, and left out the add-on's editor wizard, which copies and wires the screens in the Godot editor: wire them as below. The add-on takes the global class names `AppSettings`, `ConfirmationPopupWindowPanel`, `FileLister`, `InputActionsList`, `InputActionsTree`, `InputEventHelper`, `InputIconMapper`, `ListOptionControl`, `MaaacksMenusTemplate`, `MainMenu`, `OptionControl`, `PlayerConfig`, `PopupWindowPanel`, `PopupWindowSceneContainer`, `Vector2ListOptionControl`, and `WindowPanel`: give the game's own classes other names, such as `TitleMenu` for its main menu's script.
 
 All paths below are inside the add-on's folder.
 

@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-WASD Multiplayer is the Godot 4 add-on that connects a game to WASD Engine's online play: WASD sign-in for players, player-hosted lobbies, and WASD dedicated servers. WASD Engine's multiplayer setup copies this folder into a game as `res://addons/wasd_multiplayer/`, registers the `WasdMultiplayer` autoload, and writes `res://wasd_multiplayer.cfg`. A release from WASD Engine replaces an older copy with its own unless the game changed the add-on's scripts, and neither the setup nor a release overwrites an example file the game changed, so adapt `examples/` freely and leave the other files as they are. The add-on is GDScript only, so Web builds keep working, and its files carry the CC0-1.0 license so that they can ship inside any game.
+WASD Multiplayer is the Godot 4 add-on that connects a game to WASD Engine's online play: WASD sign-in for players, player-hosted lobbies, and WASD dedicated servers. WASD Engine's multiplayer setup copies this folder into a game as `res://addons/wasd_multiplayer/`, registers the `WasdMultiplayer` autoload, and writes `res://wasd_multiplayer.cfg`. A release from WASD Engine replaces an older copy with its own unless the game changed the add-on's scripts, and neither the setup nor a release overwrites an example or a Markdown file the game changed or writes through a link in this folder, so adapt `examples/` freely and leave the other files as they are. The setup replaces the add-on's own files whatever their changes, after keeping the ones the game changed in `.wasdengine/backups/wasd_multiplayer/<time>/`. The add-on is GDScript only, so Web builds keep working, and its files carry the CC0-1.0 license so that they can ship inside any game.
 
 ## Modes
 
@@ -64,7 +64,7 @@ A host that does not hear from a joining player within 30 seconds drops that pla
 
 ## Configuration
 
-`res://wasd_multiplayer.cfg`, section `[wasd]`, overrides the same keys under `wasd_multiplayer/config/` in Project Settings:
+`res://wasd_multiplayer.cfg`, section `[wasd]`, overrides the same keys under `wasd_multiplayer/config/` in Project Settings; WASD Engine's setup and releases write `mode`, `max_players`, `api_origin`, `app_origin`, `game_id`, and `version` into it and keep its other keys, sections, and comments:
 
 | Key | Default | Meaning |
 |---|---|---|

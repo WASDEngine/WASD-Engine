@@ -4,12 +4,13 @@
 class_name WasdRadar
 extends Control
 
-## The node at the radar's middle: the player. A Node3D or a Node2D.
+## The node at the radar's middle: the player. A Node3D or a Node2D. Like a WasdCharacter3D, a node with a `model`
+## and a `model_turn` faces where that model faces, and one with a `camera_rig` looks where that rig looks.
 @export var center: Node
 ## Meters (or pixels in 2D) from the middle to the rim.
 @export var reach := 40.0
-## True turns the radar with the center, so that what lies ahead is at the top; false keeps north (-Z, or up in
-## 2D) at the top.
+## True turns the radar with the center, so that what lies ahead is at the top: ahead of its camera rig if it has
+## one, and otherwise where it faces; the arrow points where it faces. False keeps north (-Z, or up in 2D) at the top.
 @export var turns := true
 ## What lies beyond the rim shows on the rim, smaller.
 @export var keeps_far := true
@@ -58,14 +59,14 @@ func _draw() -> void:
 	draw_line(middle - Vector2(rim, 0), middle + Vector2(rim, 0), Color(text, 0.1), 1.0)
 	draw_line(middle - Vector2(0, rim), middle + Vector2(0, rim), Color(text, 0.1), 1.0)
 	# Marks at the four points of the compass; the one for north is longer.
-	var north := -(_heading(center) if turns and center != null and is_instance_valid(center) else 0.0)
+	var alive := center != null and is_instance_valid(center)
+	var heading := _view(center) if turns and alive else 0.0
 	for quarter: int in 4:
-		var way := Vector2.UP.rotated(north + quarter * PI * 0.5)
+		var way := Vector2.UP.rotated(-heading + quarter * PI * 0.5)
 		draw_line(middle + way * (rim - (9.0 if quarter == 0 else 5.0) * scale), middle + way * rim, Color(text, 0.9 if quarter == 0 else 0.5), maxf(2.0 * scale, 1.5))
-	if center == null or not is_instance_valid(center):
+	if not alive:
 		return
 	var here := _flat(center)
-	var heading := _heading(center) if turns else 0.0
 	for index: int in range(_tracked.size() - 1, -1, -1):
 		var node: Node = (_tracked[index][0] as WeakRef).get_ref()
 		if node == null or not node.is_inside_tree():
@@ -81,7 +82,7 @@ func _draw() -> void:
 		draw_circle(at, dot + 1.0, Color(0, 0, 0, 0.5))
 		draw_circle(at, dot, _tracked[index][1])
 	# The player: an arrow that points where the center faces.
-	var facing := 0.0 if turns else _heading(center)
+	var facing := _heading(center) - heading
 	var arrow := PackedVector2Array([Vector2(0, -9), Vector2(6.5, 6.5), Vector2(0, 3), Vector2(-6.5, 6.5)])
 	for point: int in arrow.size():
 		arrow[point] = middle + arrow[point].rotated(facing) * scale
@@ -96,12 +97,26 @@ static func _flat(node: Node) -> Vector2:
 	return (node as Node2D).global_position if node is Node2D else Vector2.ZERO
 
 
-## The angle a node faces, clockwise from north, seen from above.
+## The angle a node faces, clockwise from north, seen from above: its -Z, or for a node that turns only its `model`,
+## that model's +Z turned back by `model_turn` degrees.
 static func _heading(node: Node) -> float:
 	if node is Node3D:
 		var ahead := -(node as Node3D).global_basis.z
+		var model: Variant = node.get(&"model")
+		var turn: Variant = node.get(&"model_turn")
+		if is_instance_valid(model) and model is Node3D and (model as Node3D).is_inside_tree() and (turn is float or turn is int):
+			ahead = (model as Node3D).global_basis * Vector3.BACK.rotated(Vector3.UP, -deg_to_rad(float(turn)))
 		return atan2(ahead.x, -ahead.z)
 	return (node as Node2D).global_rotation + PI * 0.5 if node is Node2D else 0.0
+
+
+## The angle a node looks, clockwise from north, seen from above: that of its `camera_rig` if it has one in the tree,
+## and otherwise the angle it faces.
+static func _view(node: Node) -> float:
+	var rig: Variant = node.get(&"camera_rig")
+	if is_instance_valid(rig) and rig is Node3D and (rig as Node3D).is_inside_tree():
+		return _heading(rig)
+	return _heading(node)
 
 
 func _fit() -> void:

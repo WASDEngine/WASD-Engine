@@ -9,10 +9,21 @@
 import { constants } from 'node:fs'
 import { lstat, mkdir, open, realpath } from 'node:fs/promises'
 import path from 'node:path'
+import { GameAddonError } from './errors.ts'
 
-/** A change that the manager refuses because a path of the project leads outside it. */
-export class GameAddonPathError extends Error {
-  override name = 'GameAddonPathError'
+/**
+ * A change that the manager refuses because a path of the project leads outside it (`GAME_ADDON_OUTSIDE_PROJECT`), or
+ * because a file that it edits is a symbolic link or not a regular file (`GAME_ADDON_NOT_REGULAR_FILE`).
+ */
+export class GameAddonPathError extends GameAddonError {
+  /**
+   * @param message - the path and what to do about it.
+   * @param code - the failure's code.
+   */
+  constructor(message: string, code: 'GAME_ADDON_OUTSIDE_PROJECT' | 'GAME_ADDON_NOT_REGULAR_FILE') {
+    super(message, code)
+    this.name = 'GameAddonPathError'
+  }
 }
 
 /** The path functions of one platform, `node:path` or one of its `posix` and `win32` forms. */
@@ -49,7 +60,7 @@ function isMissing(error: unknown): boolean {
 }
 
 function outside(projectDir: string, relativePath: string, real: string): GameAddonPathError {
-  return new GameAddonPathError(`${relativePath} in ${projectDir} leads outside the project, to ${real}; the add-on manager changes nothing there.`)
+  return new GameAddonPathError(`${relativePath} in ${projectDir} leads outside the project, to ${real}; the add-on manager changes nothing there.`, 'GAME_ADDON_OUTSIDE_PROJECT')
 }
 
 /**
@@ -118,7 +129,7 @@ export async function readProjectText(projectDir: string, name: string): Promise
   const entry = await projectEntry(projectDir, name)
   if (entry === undefined) return undefined
   const refused = (what: string): GameAddonPathError =>
-    new GameAddonPathError(`${name} in ${projectDir} is ${what}; the add-on manager reads and changes it only as a regular file. Replace it with a regular file.`)
+    new GameAddonPathError(`${name} in ${projectDir} is ${what}; the add-on manager reads and changes it only as a regular file. Replace it with a regular file.`, 'GAME_ADDON_NOT_REGULAR_FILE')
   if ((await lstat(entry)).isSymbolicLink()) throw refused('a symbolic link')
   let file
   try {

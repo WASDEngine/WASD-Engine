@@ -1,8 +1,12 @@
 extends Node3D
 ## WASD Weather smoke test (render run on the Compatibility renderer, the one every Web build uses): rain and snow
 ## show in the air and stop under a roof, a weather comes over the seconds it is given, rain wets and snow covers
-## what the node was told to cover and nothing else, the cover comes off when things are dry, lightning flashes and
-## dies away, and the sky, the fog, and the wind are handed to the nodes that ask for them.
+## what the node was told to cover and nothing else, a character's model too, the cover comes off when things are
+## dry, lightning flashes and dies away, also at once when the game pauses or the weather leaves, the sky, the fog,
+## and the wind are handed to the nodes that ask for them, also to one that asks later, and the weather takes back all
+## it gave when it leaves: the sky, the fog, the wind, and the cover, while a material of the game's own over a mesh
+## is never covered over. The weather's own cards and light are children that a walk through the scene does not
+## reach.
 
 const ID := "wasd-weather"
 
@@ -20,6 +24,17 @@ class Vane extends Node:
 
 	func set_wind(value: Vector3) -> void:
 		wind = value
+
+## Stands in for SimpleGrassTextured's autoload, whose wind the weather sets and gives back.
+class Grass extends Node:
+	var wind_direction := Vector3(0, 0, 1)
+	var wind_strength := 0.15
+
+	func set_wind_direction(value: Vector3) -> void:
+		wind_direction = value
+
+	func set_wind_strength(value: float) -> void:
+		wind_strength = value
 
 var camera: Camera3D
 
@@ -70,6 +85,10 @@ func _shade(image: Image, place: Vector3) -> float:
 func _run() -> void:
 	if RenderingServer.get_current_rendering_method() != "gl_compatibility":
 		return _fail("the run draws with %s" % [RenderingServer.get_current_rendering_method()])
+	var grass := Grass.new()
+	grass.name = "SimpleGrass"
+	get_tree().root.add_child.call_deferred(grass)
+	await get_tree().process_frame
 	var world := WorldEnvironment.new()
 	world.environment = Environment.new()
 	world.environment.background_mode = Environment.BG_COLOR
@@ -202,15 +221,23 @@ func _run() -> void:
 		return _fail("with snow the ground, the crate's top, and its side went from %s to %s" % [bare, white])
 	if ground.material_overlay == null or glass.material_overlay != null or statue.material_overlay != null or rock.material_overlay != null or tree.material_overlay != null:
 		return _fail("covered: ground %s, glass %s, marked statue %s, rock outside %s, cut-out tree %s" % [ground.material_overlay, glass.material_overlay, statue.material_overlay, rock.material_overlay, tree.material_overlay])
-	# What comes into the level later is covered too.
+	# What comes into the level later is covered too, also the model of a WASD Character, which draws nothing itself.
 	var late := MeshInstance3D.new()
 	late.mesh = box
 	late.position = Vector3(-8, 1, -4)
 	level.add_child(late)
+	var hero := WasdCharacter3D.new()
+	hero.controlled = false
+	var model := MeshInstance3D.new()
+	model.mesh = CapsuleMesh.new()
+	hero.add_child(model)
+	hero.position = Vector3(-6, 0, 3)
+	level.add_child(hero)
 	await _wait(0.1)
-	if late.material_overlay == null:
-		return _fail("a mesh that came into the level later took no cover")
+	if late.material_overlay == null or model.material_overlay == null:
+		return _fail("what came into the level later took no cover: a mesh %s, a character's model %s" % [late.material_overlay, model.material_overlay])
 	late.queue_free()
+	hero.queue_free()
 
 	# 6. Rain wets: the ground darkens, and the cover comes off when all is dry and clear.
 	weather.snow_cover = 0.0
@@ -247,6 +274,22 @@ func _run() -> void:
 	var gone := await _picture("after_flash.png")
 	if thunder[0] < 0.3 or _shade(flashed, Vector3(0, 0, 5)) < _shade(dark, Vector3(0, 0, 5)) + 0.05 or _changed(gone, dark) > 40 or not is_equal_approx(world.environment.background_energy_multiplier, 1.0):
 		return _fail("lightning: thunder after %f, ground %f before, %f in the flash, %d samples differ afterwards, sky energy %f" % [thunder[0], _shade(dark, Vector3(0, 0, 5)), _shade(flashed, Vector3(0, 0, 5)), _changed(gone, dark), world.environment.background_energy_multiplier])
+	# A flash in progress when the game pauses ends at once, rather than stand at its height while the game waits.
+	if weather.get_child_count() != 0:
+		return _fail("the weather's cards and light are among the %d children that a walk through the scene reaches" % [weather.get_child_count()])
+	var bolt: DirectionalLight3D
+	for child: Node in weather.get_children(true):
+		if child is DirectionalLight3D:
+			bolt = child
+	weather.strike()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var raised := world.environment.background_energy_multiplier
+	get_tree().paused = true
+	var paused := [world.environment.background_energy_multiplier, bolt.light_energy]
+	get_tree().paused = false
+	if raised <= 1.05 or not is_equal_approx(paused[0], 1.0) or paused[1] != 0.0:
+		return _fail("lightning as the game paused: sky energy %f in the flash, then %f with the light at %f" % [raised, paused[0], paused[1]])
 
 	# 8. The sky, the fog, and the wind go to whoever asks; they are given back when the weather leaves.
 	weather.weather = "fog"
@@ -258,9 +301,37 @@ func _run() -> void:
 	var gust := weather.get_wind()
 	if vane.wind.distance_to(Vector3(10, 0, 0)) > 0.05 or gust.x < 5.5 or gust.x > 14.5 or absf(gust.z) > 0.05 or look.overcast != 1.0:
 		return _fail("in a storm blowing toward +X the vane was told %s, the gusts are %s, overcast %f" % [vane.wind, gust, look.overcast])
+	# A node that joins the group later is told the wind too, and SimpleGrassTextured's autoload has it.
+	var newcomer := Vane.new()
+	newcomer.add_to_group(&"wasd_wind")
+	add_child(newcomer)
+	await _wait(0.7)
+	if newcomer.wind.distance_to(Vector3(10, 0, 0)) > 0.05 or not grass.wind_direction.is_equal_approx(Vector3(1, 0, 0)) or not is_equal_approx(grass.wind_strength, 0.5):
+		return _fail("in a storm a vane that came later was told %s, and the grass blows toward %s at %f" % [newcomer.wind, grass.wind_direction, grass.wind_strength])
+	# A material that the game puts over a mesh is never covered over when the rain comes.
+	weather.weather = "clear"
+	weather.cover(level)
+	weather.wetness = 0.0
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var own := StandardMaterial3D.new()
+	crate.material_overlay = own
+	weather.wetness = 1.0
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if ground.material_overlay == null or crate.material_overlay != own:
+		return _fail("the rain came: the ground has %s over it, and the crate %s over it in place of its own %s" % [ground.material_overlay, crate.material_overlay, own])
+	# The weather leaves wet and in the middle of a flash: the sky, the fog, the wind, and the cover are taken back, the
+	# grass gets its own wind again, the sky is as bright as before the flash, and the crate keeps its own material.
+	weather.strike()
+	await get_tree().process_frame
 	weather.queue_free()
 	await _wait(0.2)
 	if look.overcast != 0.0 or look.added_fog != 0.0:
 		return _fail("with the weather gone the look kept overcast %f and added fog %f" % [look.overcast, look.added_fog])
+	if vane.wind != Vector3.ZERO or newcomer.wind != Vector3.ZERO or grass.wind_direction != Vector3(0, 0, 1) or grass.wind_strength != 0.15 or not is_equal_approx(world.environment.background_energy_multiplier, 1.0):
+		return _fail("with the weather gone the vanes keep %s and %s, the grass blows toward %s at %f, and the sky energy is %f" % [vane.wind, newcomer.wind, grass.wind_direction, grass.wind_strength, world.environment.background_energy_multiplier])
+	if ground.material_overlay != null or crate.material_overlay != own:
+		return _fail("with the weather gone the ground keeps %s over it, and the crate %s in place of its own %s" % [ground.material_overlay, crate.material_overlay, own])
 	print("SMOKE_PASS ", ID)
 	get_tree().quit(0)

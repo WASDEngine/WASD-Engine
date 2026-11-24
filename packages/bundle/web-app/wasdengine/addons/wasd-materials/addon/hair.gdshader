@@ -17,9 +17,11 @@ uniform float strands : hint_range(20.0, 600.0) = 220.0;
 uniform bool strands_across = false;
 // How bright the band of light across the strands is.
 uniform float sheen : hint_range(0.0, 2.0) = 1.0;
+// How straight the hair is: 1 for straight or wavy hair, 0 for curls, across which no band runs.
+uniform float straightness : hint_range(0.0, 1.0) = 1.0;
 
 // The way the strands run at this point, as the view sees it, how straight they are, and which strand this is. The
-// red of the mesh's own color, 1 where it has none, tells straight hair from curls, across which no band runs.
+// red of the mesh's own color, 1 where it has none, multiplies `straightness`: earlier exports gave curls a red of 0.
 varying vec3 run;
 varying float straight;
 varying float fiber;
@@ -30,7 +32,7 @@ void fragment() {
 	SPECULAR = 0.25;
 	vec3 way = strands_across ? TANGENT : BINORMAL;
 	run = dot(way, way) > 0.0001 ? normalize(way) : vec3(0.0, 1.0, 0.0);
-	straight = COLOR.r;
+	straight = COLOR.r * straightness;
 	vec2 along = strands_across ? UV.yx : UV;
 	fiber = texture(grain, vec2(along.x * strands / 16.0, along.y * 0.6)).b;
 	// Strands lie together in locks: a hairline thins out lock by lock, not along a ruled line.

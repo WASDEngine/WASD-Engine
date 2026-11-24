@@ -8,7 +8,7 @@ extends MultiMeshInstance3D
 
 ## The baked model: a WasdCrowdData file that bake_crowd.gd saved.
 @export var data: WasdCrowdData: set = _set_data
-## Most members the crowd can hold.
+## Most members the crowd can hold. Changed, it keeps its members; a lower one drops those numbered from it up.
 @export_range(1, 20000, 1) var capacity := 512: set = _set_capacity
 
 var _used := 0
@@ -21,7 +21,10 @@ func _init() -> void:
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
 	multimesh.use_colors = true
 	multimesh.use_custom_data = true
-	_resize()
+	multimesh.instance_count = capacity
+	multimesh.visible_instance_count = 0
+	# Members may stand anywhere, so the crowd is never culled as a whole.
+	custom_aabb = AABB(Vector3.ONE * -100000.0, Vector3.ONE * 200000.0)
 
 
 ## Adds a member at a place, given in this node's own space, playing a clip. `pace` multiplies the clip's speed, and
@@ -120,13 +123,18 @@ func clear() -> void:
 	multimesh.visible_instance_count = 0
 
 
+## Makes room for `capacity` members and keeps the members whose numbers it holds, with their places, clips, and tints.
 func _resize() -> void:
+	var kept := mini(_used, capacity)
+	var members := multimesh.buffer if kept > 0 else PackedFloat32Array()
+	var each := members.size() / multimesh.instance_count
 	multimesh.instance_count = capacity
-	multimesh.visible_instance_count = 0
-	_used = 0
-	_free.clear()
-	# Members may stand anywhere, so the crowd is never culled as a whole.
-	custom_aabb = AABB(Vector3.ONE * -100000.0, Vector3.ONE * 200000.0)
+	if kept > 0 and each > 0:
+		members.resize(capacity * each)
+		multimesh.buffer = members
+	_used = kept
+	_free.assign(_free.filter(func(member: int) -> bool: return member < kept))
+	multimesh.visible_instance_count = _used
 
 
 func _set_data(value: WasdCrowdData) -> void:

@@ -874,11 +874,13 @@ describe('gamedev preset', () => {
   it('has the persona and godot-project get each asset from a fitting download first, then from image_generate and ElevenLabs', () => {
     const persona = String(configOf(gameRow('persona')).prefix)
     expect(persona).toContain('The tested add-ons of game_addons and the CC0 assets of polyhaven_* and ambientcg_* are the exception: add them yourself when the game needs them.')
-    expect(persona).toContain('For each asset, first look for one to download from Poly Haven, ambientCG, or a catalog add-on, and use it when it suits the game\'s art style. '
+    // Each of those plugins has a row that the Plugins page can switch off, so the persona asks for the tools the agent has.
+    expect(persona).toContain('For each asset, first look for one to download from Poly Haven, ambientCG, or a catalog add-on, with whichever of those tools you have, '
+      + 'and use it when it suits the game\'s art style. '
       + 'Otherwise generate 2D art with image_generate instead of drawing it yourself in GIMP or code, and voices, sound effects, and music with the '
-      + 'elevenlabs_* tools instead of SuperCollider.')
+      + 'elevenlabs_* tools instead of SuperCollider, when you have those tools.')
     const skill = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-project', 'SKILL.md'), 'utf8')
-    expect(skill).toContain('Get each asset from the first source that suits the game\'s art style: download skies, textures, and models with `polyhaven_*` '
+    expect(skill).toContain('Get each asset from the first source you have that suits the game\'s art style: download skies, textures, and models with `polyhaven_*` '
       + 'or `ambientcg_*`, or an add-on\'s assets with `game_addons`; otherwise generate 2D art, UI pieces, and tiling textures with `image_generate` instead of drawing '
       + 'them yourself, and voices, effects, and music with `elevenlabs_*` instead of SuperCollider.')
     expect(skill).toContain('Use the `mcp__wasd_supercollider__` tools only when the user asks for them or ElevenLabs cannot make a sound')

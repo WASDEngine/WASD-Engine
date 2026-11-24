@@ -15,18 +15,18 @@ hero.add_child(preload("res://characters/hero.glb").instantiate())    # the mode
 add_child(hero)
 ```
 
-In a scene file: a `CharacterBody3D` with the script `res://addons/wasd_character/character_3d.gd` and the model as its child: add the model before any other Node3D child, such as a shadow or a prop, or set `model`. When it enters the tree it:
+In a scene file: a `CharacterBody3D` with the script `res://addons/wasd_character/character_3d.gd` and the model as its child: add the model before any other Node3D child or set `model`. When it enters the tree it:
 
 - gets a capsule of `body_size` (1.75 m high, 0.32 m radius) unless it has a collision shape of its own;
-- adds the input actions the project lacks, `move_left`, `move_right`, `move_forward`, `move_back`, `jump`, `sprint`, and `walk`: WASD and the arrow keys, Space, Shift, Ctrl, and on a gamepad the left stick, the bottom button, and the left stick's click. The dictionary `actions` names others;
+- adds the input actions the project lacks, `move_left`, `move_right`, `move_forward`, `move_back`, `jump`, `sprint`, and `walk`: WASD and the arrow keys, Space, Shift, C, and on a gamepad the left stick, the bottom button, and the left stick's click. The dictionary `actions` names others;
 - adds an orbit camera, `hero.camera_rig`: the mouse or the right stick turns it, the first click takes the mouse pointer, and the cancel key gives it back;
 - finds the model's animation player and its clips.
 
-Movement is relative to the camera. A light tilt of the stick, or Ctrl, walks; Shift sprints.
+Movement is relative to the camera. A light tilt of the stick, or holding C, walks; Shift sprints.
 
 ## Animations
 
-With `universal-animation-library` installed and the model retargeted as that guide says, there is nothing to do: the character gives the model that library and plays Idle, Walk, Jog_Fwd, Sprint, Jump_Start, Jump, and Jump_Land. Each clip plays at the pace at which its feet stay planted at the body's speed, between 0.6 and 1.8 times.
+With `universal-animation-library` installed and the model retargeted as that guide says, the character gives the model that library and plays Idle, Walk, Jog_Fwd, Sprint, Jump_Start, Jump, and Jump_Land. Each clip plays at the pace at which its feet stay planted at the body's speed, between 0.6 and 1.8 times.
 
 A model with clips of its own is searched for these names after any library prefix such as `moves/`, without regard to case; `_Loop` endings count:
 
@@ -38,9 +38,9 @@ A model with clips of its own is searched for these names after any library pref
 | sprinting | Sprint, Sprint_Fwd, Run_Fast |
 | leaving the ground, in the air, landing | Jump_Start, Jump_Up; Jump, Fall, Falling; Jump_Land, Land |
 
-A missing gait uses the nearest one. `hero.clips` holds what was found, to read or to change after `add_child`: `hero.clips["run"] = "moves/Gallop"`. A model without clips moves all the same.
+A missing gait uses the nearest one. `hero.clips` holds what was found, to read or to change after `add_child`: `hero.clips["run"] = "moves/Gallop"`.
 
-`hero.play_action("Sword_Attack")` plays a clip once, by its name with or without its library prefix, and holds the character in place until it ends; `play_action("Wave", false)` lets it walk meanwhile. It returns false when the model has no such clip. The clips of `universal-animation-library-2` play once their library is added: `hero.animation_player.add_animation_library(&"ual2", preload("res://addons/universal_animation_library_2/UAL2_Standard.glb"))`.
+`hero.play_action("Sword_Attack")` plays a clip once, a looping one too, by its name with or without its library prefix, and holds the character in place, unable to jump, until it ends; `play_action("Wave", false)` lets it walk meanwhile, and a jump ends it. It returns false when the model has no such clip; `hero.stop_action()` ends an action early. The clips of `universal-animation-library-2` play once their library is added: `hero.animation_player.add_animation_library(&"ual2", preload("res://addons/universal_animation_library_2/UAL2_Standard.glb"))`.
 
 ## Settings
 
@@ -58,7 +58,7 @@ A missing gait uses the nearest one. `hero.clips` holds what was found, to read 
 | `model_turn` | 0 | 180 for a model that faces -Z, as Kenney's do |
 | `blend` | 0.2 s | cross-fade between clips |
 
-Signals: `jumped`, and `landed(speed)` with the speed of the fall, for dust, a thud, or damage. `hero.teleport(place, facing)` puts it somewhere at rest, `hero.face_toward(direction)` turns the model at once, `hero.get_ground_speed()` reads its speed. To knock it back, add to `hero.velocity`.
+Signals: `jumped`, and `landed(speed)` with the speed of the fall. `hero.teleport(place, facing)` puts it somewhere at rest, `hero.face_toward(direction)` turns the model at once, `hero.get_ground_speed()` reads its speed. To knock it back, add to `hero.velocity`.
 
 ## Stairs and feet
 
@@ -90,7 +90,7 @@ func _physics_process(_delta: float) -> void:
 
 For a camera of the game's own, a fixed one, one that looks down, or `phantom-camera`, set `hero.orbit_camera = false` before `add_child`: movement is then relative to the current camera, and for one that looks straight down, to the top of the screen.
 
-The camera also works alone, for a car or a ball: `var rig := WasdOrbitCamera3D.new()`, `rig.target = $Car`, `add_child(rig)`. With `capture_mouse = false` it turns while the right mouse button is held.
+The camera also works alone, for a car or a ball: `var rig := WasdOrbitCamera3D.new()`, `rig.target = $Car`, `add_child(rig)`, and `rig.reset_smoothing()` after teleporting the car. With `capture_mouse = false` it turns while the right mouse button is held.
 
 ## With other packs
 

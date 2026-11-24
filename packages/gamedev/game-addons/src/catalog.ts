@@ -5,7 +5,8 @@
  * Loading validates every entry, its archive pin, its setup script, overlay folders, and extension files, and its
  * guide's frontmatter and the `references/` files the guide links, and rejects a catalog whose entries name unknown
  * conflicts. Every entry has a category and a cue, the few words the catalog's index says of it. Search ranks entries
- * by query words against their ids, titles, tags, cues, and descriptions. Guides that go with the add-ons without being
+ * by query words against their ids, titles, tags, cues, and descriptions, and a query that names Godot or Blender keeps
+ * to that application's add-ons. Guides that go with the add-ons without being
  * one's, such as the order in which a 3D game's look is built, load from their own files beside the catalog.
  * @module @deepseek-ai/dsh-game-addons/src/catalog
  */
@@ -13,6 +14,7 @@ import { access, readdir, readFile, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
+import { GameAddonError } from './errors.ts'
 import type { GameAddon, GameAddonCategory, GameAddonHost, GameAddonStage } from './types.ts'
 
 /** File name of an entry inside its folder. */
@@ -106,9 +108,16 @@ const Entry = z.strictObject({
   }),
 })
 
-/** A catalog folder that cannot be used: the plugin does not start with it. */
-export class GameAddonCatalogError extends Error {
-  override name = 'GameAddonCatalogError'
+/** A catalog folder or guide that cannot be used, with the code `GAME_ADDON_CATALOG_INVALID`: the plugin does not start with it. */
+export class GameAddonCatalogError extends GameAddonError {
+  /**
+   * @param message - what is wrong and where.
+   * @param options - the failure's cause.
+   */
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, 'GAME_ADDON_CATALOG_INVALID', options)
+    this.name = 'GameAddonCatalogError'
+  }
 }
 
 /** The frontmatter fields of a usage guide that the skill catalog shows. */
@@ -141,7 +150,7 @@ export function parseGuide(raw: string, source: string): ParsedGuide {
   try {
     data = parseYaml(lines.slice(1, closing).map(line => line.replace(/\r$/u, '')).join('\n'))
   } catch (error) {
-    throw new GameAddonCatalogError(`${source} has invalid YAML frontmatter: ${(error as Error).message}`)
+    throw new GameAddonCatalogError(`${source} has invalid YAML frontmatter: ${(error as Error).message}`, { cause: error })
   }
   const fields = typeof data === 'object' && data !== null && !Array.isArray(data) ? data as Record<string, unknown> : {}
   const { name, description } = fields
@@ -176,7 +185,7 @@ async function checkReferences(folder: string, body: string, source: string): Pr
     try {
       await access(join(folder, ...reference.split('/')))
     } catch (error) {
-      throw new GameAddonCatalogError(`${source} links ${reference}, which cannot be read: ${(error as Error).message}`)
+      throw new GameAddonCatalogError(`${source} links ${reference}, which cannot be read: ${(error as Error).message}`, { cause: error })
     }
   }
 }
@@ -230,7 +239,7 @@ async function readIcon(path: string): Promise<string> {
   try {
     bytes = await readFile(path)
   } catch (error) {
-    throw new GameAddonCatalogError(`Cannot read the icon ${path}: ${(error as Error).message}`)
+    throw new GameAddonCatalogError(`Cannot read the icon ${path}: ${(error as Error).message}`, { cause: error })
   }
   if (bytes.byteLength > MAX_ICON_BYTES) throw new GameAddonCatalogError(`The icon ${path} has ${bytes.byteLength} bytes; at most ${MAX_ICON_BYTES} fit.`)
   if (path.endsWith('.svg')) {
@@ -302,7 +311,7 @@ export async function loadCatalog(dir: string): Promise<GameAddonCatalog> {
   try {
     folders = (await readdir(dir, { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name).sort()
   } catch (error) {
-    throw new GameAddonCatalogError(`Cannot read the add-on catalog at ${dir}: ${(error as Error).message}`)
+    throw new GameAddonCatalogError(`Cannot read the add-on catalog at ${dir}: ${(error as Error).message}`, { cause: error })
   }
   const entries: GameAddon[] = []
   const guides = new Map<string, GuideHeader>()
@@ -314,13 +323,13 @@ export async function loadCatalog(dir: string): Promise<GameAddonCatalog> {
       text = await readFile(entryPath, 'utf8')
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
-      throw new GameAddonCatalogError(`Cannot read ${entryPath}: ${(error as Error).message}`)
+      throw new GameAddonCatalogError(`Cannot read ${entryPath}: ${(error as Error).message}`, { cause: error })
     }
     let json: unknown
     try {
       json = JSON.parse(text)
     } catch (error) {
-      throw new GameAddonCatalogError(`${entryPath} is not valid JSON: ${(error as Error).message}`)
+      throw new GameAddonCatalogError(`${entryPath} is not valid JSON: ${(error as Error).message}`, { cause: error })
     }
     const parsed = Entry.safeParse(json)
     if (!parsed.success) throw new GameAddonCatalogError(`${entryPath} is not a valid add-on entry: ${z.prettifyError(parsed.error)}`)
@@ -331,14 +340,14 @@ export async function loadCatalog(dir: string): Promise<GameAddonCatalog> {
     try {
       guideText = await readFile(guidePath, 'utf8')
     } catch (error) {
-      throw new GameAddonCatalogError(`Cannot read the guide of ${entry.id} at ${guidePath}: ${(error as Error).message}`)
+      throw new GameAddonCatalogError(`Cannot read the guide of ${entry.id} at ${guidePath}: ${(error as Error).message}`, { cause: error })
     }
     const setup = entry.blender?.setup
     if (setup !== undefined) {
       try {
         await access(join(dir, folder, setup))
       } catch (error) {
-        throw new GameAddonCatalogError(`Cannot read the setup script of ${entry.id} at ${join(dir, folder, setup)}: ${(error as Error).message}`)
+        throw new GameAddonCatalogError(`Cannot read the setup script of ${entry.id} at ${join(dir, folder, setup)}: ${(error as Error).message}`, { cause: error })
       }
     }
     const files = entry.blender?.files
@@ -347,7 +356,7 @@ export async function loadCatalog(dir: string): Promise<GameAddonCatalog> {
       try {
         await access(manifest)
       } catch (error) {
-        throw new GameAddonCatalogError(`Cannot read the extension manifest of ${entry.id} at ${manifest}: ${(error as Error).message}`)
+        throw new GameAddonCatalogError(`Cannot read the extension manifest of ${entry.id} at ${manifest}: ${(error as Error).message}`, { cause: error })
       }
     }
     for (const overlay of entry.godot?.overlay ?? []) {
@@ -356,7 +365,7 @@ export async function loadCatalog(dir: string): Promise<GameAddonCatalog> {
       try {
         isFolder = (await stat(overlayPath)).isDirectory()
       } catch (error) {
-        throw new GameAddonCatalogError(`Cannot read the overlay folder of ${entry.id} at ${overlayPath}: ${(error as Error).message}`)
+        throw new GameAddonCatalogError(`Cannot read the overlay folder of ${entry.id} at ${overlayPath}: ${(error as Error).message}`, { cause: error })
       }
       if (!isFolder) throw new GameAddonCatalogError(`The overlay ${overlayPath} of ${entry.id} is not a folder.`)
     }
@@ -399,7 +408,7 @@ export async function loadGuides(paths: readonly string[], catalog: GameAddonCat
     try {
       text = await readFile(path, 'utf8')
     } catch (error) {
-      throw new GameAddonCatalogError(`Cannot read the guide ${path}: ${(error as Error).message}`)
+      throw new GameAddonCatalogError(`Cannot read the guide ${path}: ${(error as Error).message}`, { cause: error })
     }
     const guide = parseGuide(text, path)
     if (!ADDON_ID_PATTERN.test(guide.name)) throw new GameAddonCatalogError(`${path}: name ${guide.name} must be kebab-case.`)
@@ -414,9 +423,9 @@ export async function loadGuides(paths: readonly string[], catalog: GameAddonCat
 
 /** Filters and words of one catalog search. */
 export interface CatalogQuery {
-  /** Words to match; empty lists every entry. */
+  /** An add-on id, or words to rank by; without words to rank by, every entry that the filters let through matches. */
   readonly text?: string
-  /** Only add-ons for this application. */
+  /** Only add-ons for this application; without it, a query that names one of the two applications sets it. */
   readonly host?: GameAddonHost
   /** Only add-ons for this development stage. */
   readonly stage?: GameAddonStage
@@ -424,28 +433,76 @@ export interface CatalogQuery {
   readonly category?: GameAddonCategory
 }
 
-/** Words too common to rank by. */
+/** Words too common to rank by, with the names of the two applications, which {@link queryTerms} reads as a filter. */
 const STOPWORDS: ReadonlySet<string> = new Set(['a', 'an', 'and', 'or', 'the', 'for', 'with', 'to', 'of', 'in', 'on', 'my', 'me', 'i', 'that', 'this', 'it', 'is', 'add', 'addon', 'addons', 'plugin', 'plugins', 'godot', 'blender', 'game', 'need', 'want', 'use'])
 
+/** The query words that name an application, and the application each names. */
+const HOST_WORDS: ReadonlyMap<string, GameAddonHost> = new Map([['godot', 'godot'], ['blender', 'blender']])
+
+/**
+ * "add-on", "add-ons", "add on", and "addons", with any dash or space, each one word, which the split at other
+ * characters would cut in two.
+ */
+const ADD_ON = /\badd[\s\p{Pd}]?ons?\b/gu
+
+/** A word of digits alone, such as a version in "Blender 5" or "Godot 4.7", which ranks nothing. */
+const NUMBER = /^\p{N}+$/u
+
+/** A possessive ending, as in "Blender's", whose "s" the split would leave as a word. */
+const POSSESSIVE = /['’]s\b/gu
+
 function words(text: string): string[] {
-  return text.toLowerCase().normalize('NFKC').split(/[^\p{L}\p{N}]+/u).filter(word => word !== '')
+  return text.toLowerCase().normalize('NFKC').replace(POSSESSIVE, '').replace(ADD_ON, 'addon').split(/[^\p{L}\p{N}]+/u).filter(word => word !== '')
+}
+
+/** What a query asks for once its common words are left out. */
+export interface QueryTerms {
+  /** The words that rank entries. */
+  readonly words: readonly string[]
+  /** The application that the query names, when it names exactly one of Godot and Blender. */
+  readonly host?: GameAddonHost
 }
 
 /**
- * Rank the entries that match a query: a query that is one entry's id gives that entry alone; otherwise each query
- * word scores by the best field it starts a word of, 3 for the id or title, 2 for a tag or the cue, and 1 for the
- * summary or use; entries without any matching word are left out.
+ * The words of a query that rank entries, and the application that it names: common words, such as "plugin", "game",
+ * and "add-ons", and words of digits alone rank nothing, and "godot" or "blender" names that application instead,
+ * unless the query names both.
+ * @param text - the query.
+ * @returns the ranking words, in query order, and the application.
+ */
+export function queryTerms(text: string): QueryTerms {
+  const all = words(text)
+  const hosts = new Set(all.flatMap((word) => {
+    const host = HOST_WORDS.get(word)
+    return host === undefined ? [] : [host]
+  }))
+  const [host] = hosts
+  const ranking = all.filter(word => !STOPWORDS.has(word) && !NUMBER.test(word))
+  return { words: ranking, ...hosts.size === 1 && host !== undefined ? { host } : {} }
+}
+
+/**
+ * Rank the entries that match a query: a query that is one entry's id gives that entry alone; otherwise each of the
+ * query's ranking words ({@link queryTerms}) scores by the best field it starts a word of, 3 for the id or title, 2 for
+ * a tag or the cue, and 1 for the summary or use, and entries without any matching word are left out. A query that
+ * names Godot or Blender searches only that application's add-ons, unless `host` names one.
  * @param entries - catalog entries in catalog order.
  * @param query - words and filters.
- * @returns matching entries, best first, catalog order among equals; every filtered entry without words.
+ * @returns matching entries, best first, catalog order among equals; without ranking words, every entry that the
+ *   filters let through, in catalog order.
  */
 export function searchCatalog(entries: readonly GameAddon[], query: CatalogQuery): GameAddon[] {
-  const filtered = entries.filter(entry => (query.host === undefined || entry.host === query.host)
+  const text = query.text ?? ''
+  const terms = queryTerms(text)
+  const passes = (entry: GameAddon, host: GameAddonHost | undefined): boolean => (host === undefined || entry.host === host)
     && (query.stage === undefined || entry.stages.includes(query.stage))
-    && (query.category === undefined || entry.category === query.category))
-  const named = filtered.find(entry => entry.id === (query.text ?? '').trim().toLowerCase())
+    && (query.category === undefined || entry.category === query.category)
+  // An id names its add-on whichever application its words name.
+  const named = entries.find(entry => entry.id === text.trim().toLowerCase() && passes(entry, query.host))
   if (named !== undefined) return [named]
-  const wanted = words(query.text ?? '').filter(word => !STOPWORDS.has(word))
+  const host = query.host ?? terms.host
+  const filtered = entries.filter(entry => passes(entry, host))
+  const wanted = terms.words
   if (wanted.length === 0) return filtered
   // A query word matches a catalog word it starts, or, from five letters on, one of four letters or more that it starts with.
   const matchesWord = (candidate: string, word: string): boolean => candidate.startsWith(word)

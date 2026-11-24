@@ -15,6 +15,7 @@ import { join } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { z } from 'zod'
 import { ADDON_ID_PATTERN } from './catalog.ts'
+import { GameAddonError } from './errors.ts'
 import { isProjectPath, projectFolder } from './paths.ts'
 import type { InstalledGameAddon } from './types.ts'
 
@@ -71,9 +72,17 @@ const SettingsFile = z.object({
   ),
 })
 
-/** A record file that cannot be read as this format. */
-export class GameAddonRecordError extends Error {
-  override name = 'GameAddonRecordError'
+/** A record or settings file that cannot be read (`GAME_ADDON_RECORD_UNREADABLE`) or is not valid (`GAME_ADDON_RECORD_CORRUPT`). */
+export class GameAddonRecordError extends GameAddonError {
+  /**
+   * @param message - the file and what to do about it.
+   * @param code - the failure's code.
+   * @param options - the failure's cause.
+   */
+  constructor(message: string, code: 'GAME_ADDON_RECORD_UNREADABLE' | 'GAME_ADDON_RECORD_CORRUPT', options?: ErrorOptions) {
+    super(message, code, options)
+    this.name = 'GameAddonRecordError'
+  }
 }
 
 /**
@@ -86,6 +95,30 @@ export function recordPath(projectDir: string): string {
 }
 
 /**
+ * The JSON value of a file of the project's state folder, such as the record.
+ * @param path - absolute path of the file.
+ * @returns the value, or undefined when the file does not exist.
+ * @throws {GameAddonRecordError} `GAME_ADDON_RECORD_UNREADABLE` when the file cannot be read, and
+ *   `GAME_ADDON_RECORD_CORRUPT` when it is not JSON.
+ */
+async function readStateJson(path: string): Promise<unknown> {
+  let text: string
+  try {
+    text = await readFile(path, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw new GameAddonRecordError(`Cannot read ${path}: ${(error as Error).message}`, 'GAME_ADDON_RECORD_UNREADABLE', { cause: error })
+  }
+  let json: unknown
+  try {
+    json = JSON.parse(text)
+  } catch (error) {
+    throw new GameAddonRecordError(`${path} is not valid JSON (${(error as Error).message}); fix or delete it.`, 'GAME_ADDON_RECORD_CORRUPT', { cause: error })
+  }
+  return json
+}
+
+/**
  * Read a project's record.
  * @param projectDir - absolute project folder.
  * @returns the installed add-ons in record order; empty when the project has no record.
@@ -93,21 +126,10 @@ export function recordPath(projectDir: string): string {
  */
 export async function readRecord(projectDir: string): Promise<InstalledGameAddon[]> {
   const path = recordPath(projectDir)
-  let text: string
-  try {
-    text = await readFile(path, 'utf8')
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
-    throw new GameAddonRecordError(`Cannot read ${path}: ${(error as Error).message}`)
-  }
-  let json: unknown
-  try {
-    json = JSON.parse(text)
-  } catch (error) {
-    throw new GameAddonRecordError(`${path} is not valid JSON (${(error as Error).message}); fix or delete it.`)
-  }
+  const json = await readStateJson(path)
+  if (json === undefined) return []
   const parsed = RecordFile.safeParse(json)
-  if (!parsed.success) throw new GameAddonRecordError(`${path} is not a valid add-on record; fix or delete it. ${z.prettifyError(parsed.error)}`)
+  if (!parsed.success) throw new GameAddonRecordError(`${path} is not a valid add-on record; fix or delete it. ${z.prettifyError(parsed.error)}`, 'GAME_ADDON_RECORD_CORRUPT')
   return parsed.data.addons
 }
 
@@ -119,21 +141,10 @@ export async function readRecord(projectDir: string): Promise<InstalledGameAddon
  */
 async function readSettings(projectDir: string): Promise<Map<string, readonly SettingBefore[]>> {
   const path = join(projectDir, STATE_DIR, SETTINGS_FILE)
-  let text: string
-  try {
-    text = await readFile(path, 'utf8')
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return new Map()
-    throw new GameAddonRecordError(`Cannot read ${path}: ${(error as Error).message}`)
-  }
-  let json: unknown
-  try {
-    json = JSON.parse(text)
-  } catch (error) {
-    throw new GameAddonRecordError(`${path} is not valid JSON (${(error as Error).message}); fix or delete it.`)
-  }
+  const json = await readStateJson(path)
+  if (json === undefined) return new Map()
   const parsed = SettingsFile.safeParse(json)
-  if (!parsed.success) throw new GameAddonRecordError(`${path} is not a valid list of add-on settings; fix or delete it. ${z.prettifyError(parsed.error)}`)
+  if (!parsed.success) throw new GameAddonRecordError(`${path} is not a valid list of add-on settings; fix or delete it. ${z.prettifyError(parsed.error)}`, 'GAME_ADDON_RECORD_CORRUPT')
   return new Map(Object.entries(parsed.data.addons))
 }
 

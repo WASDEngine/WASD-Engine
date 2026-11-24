@@ -7,7 +7,7 @@
   "cue": "bake materials, occlusion, and high-poly detail to textures",
   "summary": "Texture baking in one call: node materials become color, roughness, metal, and normal images with shaded creases; a detailed model's surface goes onto a simple one; occlusion goes into vertex colors.",
   "useWhen": "A Blender model's node materials, which glTF cannot carry and Godot shows white, must become textures, and it has metal parts, which a plain bake turns black, or several materials, or needs occlusion in its creases; or a detailed sculpt should become a light model that keeps its look.",
-  "avoidWhen": "The model already has image textures on a UV map without overlaps, such as a Poly Haven texture; or it has one plain material without metal and needs no crease shading, which a plain bpy.ops.object.bake covers.",
+  "avoidWhen": "The model already has image textures on a UV map without overlaps, such as a Poly Haven texture, unless it needs crease shading, which vertex_ao adds without touching them; or it has one plain material without metal and needs no crease shading, which a plain bpy.ops.object.bake covers.",
   "tags": [
     "bake",
     "texture",

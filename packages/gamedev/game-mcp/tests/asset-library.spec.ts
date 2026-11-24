@@ -3,9 +3,9 @@
  * client, preview images in a result, the folder of a download, and files written whole or not at all. The Poly Haven
  * and ambientCG specs run the same code through their tools; these cases pin what each helper does by itself.
  */
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import {
@@ -225,5 +225,87 @@ describe('writeAssetFiles', () => {
     await expect(writeAssetFiles([file('a.txt', 'alpha'), failing], folder, { replace: false, signal })).rejects.toThrow('b.txt arrived damaged')
     expect(await readdir(folder)).toEqual([])
     await expect(writeAssetFiles([file('../outside.txt', 'x')], folder, { replace: false, signal })).rejects.toThrow('The file ../outside.txt would leave the download folder; the download stopped.')
+  })
+
+  it('removes the folders it created when a file fails, keeping a folder that something else wrote into', async () => {
+    const folder = await temporaryFolder()
+    const failing: AssetFileWrite = { ...file('textures/b.txt', 'beta'), write: () => Promise.reject(new Error('b.txt arrived damaged')) }
+    const files = [file('a.txt', 'alpha'), file('maps/c.txt', 'gamma'), failing]
+    await expect(writeAssetFiles(files, join(folder, 'assets', 'library', 'rock'), { replace: false, signal })).rejects.toThrow('b.txt arrived damaged')
+    expect(await readdir(folder)).toEqual([])
+    // A file that another program writes into a new folder keeps that folder and the folders above it.
+    const meanwhile: AssetFileWrite = {
+      ...file('maps/a.txt', 'alpha'),
+      write: async (temporary) => {
+        await writeFile(join(dirname(temporary), 'notes.txt'), 'the user\'s notes')
+        throw new Error('a.txt arrived damaged')
+      },
+    }
+    await expect(writeAssetFiles([meanwhile, file('textures/b.txt', 'beta')], join(folder, 'rock'), { replace: false, signal })).rejects.toThrow('a.txt arrived damaged')
+    expect(await readdir(join(folder, 'rock'))).toEqual(['maps'])
+    expect(await readdir(join(folder, 'rock', 'maps'))).toEqual(['notes.txt'])
+  })
+
+  it('removes the folders it created when cancelled, and keeps the folders that were there before', async () => {
+    const folder = await temporaryFolder()
+    await mkdir(join(folder, 'assets'))
+    const controller = new AbortController()
+    const waiting: AssetFileWrite = {
+      ...file('maps/a.txt', 'alpha'),
+      write: (_temporary, linked) => new Promise((_resolve, reject) => {
+        linked.addEventListener('abort', () => { reject(linked.reason as Error) })
+        controller.abort()
+      }),
+    }
+    await expect(writeAssetFiles([waiting], join(folder, 'assets', 'library', 'rock'), { replace: false, signal: controller.signal })).rejects.toThrow()
+    expect(await readdir(folder)).toEqual(['assets'])
+    expect(await readdir(join(folder, 'assets'))).toEqual([])
+  })
+
+  it('keeps a folder that another download into it still uses when a download that created it fails', async () => {
+    const folder = await temporaryFolder()
+    const target = join(folder, 'assets', 'textures')
+    const gate = (): { readonly open: () => void; readonly passed: Promise<void> } => {
+      let open = (): void => {}
+      const passed = new Promise<void>((resolve) => { open = resolve })
+      return { open, passed }
+    }
+    const [aWriting, aFails, bWriting, bArrives] = [gate(), gate(), gate(), gate()]
+    // The first download makes the folders and fails while the second, which found them in place, still waits for its file.
+    const first = writeAssetFiles([{
+      ...file('wood/a.jpg', 'aaa'),
+      write: async () => {
+        aWriting.open()
+        await aFails.passed
+        throw new Error('a.jpg arrived damaged')
+      },
+    }], target, { replace: false, signal })
+    await aWriting.passed
+    const second = writeAssetFiles([{
+      ...file('wood/b.jpg', 'bbb'),
+      write: async (temporary) => {
+        bWriting.open()
+        await bArrives.passed
+        await writeFile(temporary, 'bbb', { flag: 'wx' })
+      },
+    }], target, { replace: false, signal })
+    await bWriting.passed
+    aFails.open()
+    await expect(first).rejects.toThrow('a.jpg arrived damaged')
+    bArrives.open()
+    expect(await second).toEqual([{ path: 'wood/b.jpg', bytes: 3, status: 'downloaded' }])
+    expect(await readdir(join(target, 'wood'))).toEqual(['b.jpg'])
+  })
+
+  it('refuses two paths that name one file, such as two that differ only in letter case, before anything is written', async () => {
+    const folder = await temporaryFolder()
+    const log: string[] = []
+    const target = join(folder, 'rock')
+    await expect(writeAssetFiles([file('maps/Color.jpg', 'a', log), file('MAPS/color.JPG', 'b', log)], target, { replace: false, signal })).rejects.toThrow(
+      'The files maps/Color.jpg and MAPS/color.JPG would be one file in the download folder, since macOS and Windows ignore letter case in file names; the download stopped.')
+    await expect(writeAssetFiles([file('a.txt', 'a', log), file('a.txt', 'b', log)], target, { replace: false, signal })).rejects.toThrow(
+      'The files a.txt and a.txt would be one file in the download folder; the download stopped.')
+    expect(log).toEqual([])
+    expect(await readdir(folder)).toEqual([])
   })
 })

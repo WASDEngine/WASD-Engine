@@ -12,7 +12,8 @@
 class_name WasdLook3D
 extends WorldEnvironment
 
-## The moon took over from the sun as the light, or the sun from the moon: the moment to switch lamps on or off.
+## The moon took over from the sun as the light, or the sun from the moon: the moment to switch lamps on or off. The
+## first hour of a day's clock tells which light is up, too.
 signal night_changed(is_night: bool)
 ## The picture's values were set again: after a look, each step of a fade or of the day's clock, or a property. The
 ## moment to hand `get_horizon_color()` to whatever else fades into the sky.
@@ -20,6 +21,7 @@ signal applied
 
 const SKY_SHADER := preload("res://addons/wasd_look/look_sky.gdshader")
 const PANORAMA_SHADER := preload("res://addons/wasd_look/look_panorama.gdshader")
+const READ_SHADER := preload("res://addons/wasd_look/look_read.gdshader")
 
 ## How much of the sky's light and of a sun of energy 1 an ordinary surface throws back, per unit of sky brightness
 ## and sun brightness: fitted to pictures of the same scenes on Forward+ and Compatibility.
@@ -95,16 +97,25 @@ var _sky := Sky.new()
 var _sky_material := ShaderMaterial.new()
 var _panorama_material := ShaderMaterial.new()
 var _cloud_offset := Vector2.ZERO
+## Whether a wind drives the clouds, and their own drift and heading from before it took them over.
+var _wind_drives := false
+var _own_drift := Vector2.ZERO
 var _compatibility := RenderingServer.get_current_rendering_method() == "gl_compatibility"
 var _inside_tree := false
 var _night := false
 ## True while several values change at once, so that the picture is worked out once at the end.
 var _holding := false
+## The fade that runs, if any.
+var _fade: Tween
 ## The average color (as light) of the photographed sky without its sun, its color at the horizon, and where its
 ## sun is, read when it is set.
 var _panorama_color := Color(0.4, 0.5, 0.7)
 var _panorama_horizon := Color(0.6, 0.7, 0.8)
 var _panorama_sun := Vector2(0.0, 45.0)
+## The photographed sky that a pass is reading, if any, and whether find_sun_in_panorama() was called since the sky
+## was set, for the sun to move when that reading lands.
+var _reading: Texture2D
+var _sun_wanted := false
 
 
 func _init() -> void:
@@ -174,18 +185,28 @@ func _process(delta: float) -> void:
 
 
 ## Takes the wind, in meters a second along the world's axes: the clouds drift where it blows, the faster the
-## harder it blows.
+## harder it blows. No wind, as WASD Weather tells when it leaves, gives the clouds back the `cloud_drift` and
+## `cloud_heading` they had before a wind took them over.
 func set_wind(wind: Vector3) -> void:
 	var flat := Vector2(wind.x, wind.z)
-	if flat.length() > 0.01:
-		cloud_heading = rad_to_deg(atan2(flat.x, -flat.y))
+	if flat.length() <= 0.01:
+		if _wind_drives:
+			_wind_drives = false
+			cloud_drift = _own_drift.x
+			cloud_heading = _own_drift.y
+		return
+	if not _wind_drives:
+		_wind_drives = true
+		_own_drift = Vector2(cloud_drift, cloud_heading)
+	cloud_heading = rad_to_deg(atan2(flat.x, -flat.y))
 	cloud_drift = flat.length() * 0.5
 
 
-## Sets every value to a look's and stops the day's clock. An unknown name gives "noon" and a warning.
+## Sets every value to a look's and stops the day's clock and a fade. An unknown name gives "noon" and a warning.
 func set_look(value: String) -> void:
 	if not WasdLookPresets.LOOKS.has(value):
 		push_warning("WasdLook3D: no look named %s; the looks are %s." % [value, ", ".join(WasdLookPresets.names())])
+	_stop_fade()
 	look = value
 	hour = -1.0
 	_values = WasdLookPresets.values(value)
@@ -194,26 +215,33 @@ func set_look(value: String) -> void:
 
 
 ## Changes single values of the look that shows, by the names in WasdLookPresets.BASE, such as
-## `{"sky_top": Color(0.3, 0.2, 0.5), "fog": 0.01}`: the way to a look of the game's own. A change of `look`, a fade,
-## or the day's clock replaces them.
+## `{"sky_top": Color(0.3, 0.2, 0.5), "fog": 0.01}`: the way to a look of the game's own. Numbers are kept as the
+## look's own are (`"fog": 0` as 0.0); a color must be a Color. A change of `look`, a fade, or the day's clock
+## replaces them.
 func set_values(changes: Dictionary) -> void:
 	for key: String in changes:
 		if not WasdLookPresets.BASE.has(key):
 			push_warning("WasdLook3D: no look value named %s; the names are %s." % [key, ", ".join(WasdLookPresets.BASE.keys())])
 			continue
-		_values[key] = changes[key]
+		var own: Variant = WasdLookPresets.BASE[key]
+		if own is Color and changes[key] is not Color:
+			push_warning("WasdLook3D: the look value %s is a Color, not %s." % [key, changes[key]])
+			continue
+		_values[key] = type_convert(changes[key], typeof(own))
 	# The sun's place and the clouds are properties of their own: only those named change.
 	_holding = true
 	for key: String in ["sun_azimuth", "sun_elevation", "clouds"]:
 		if changes.has(key):
-			set(key, changes[key])
+			set(key, _values[key])
 	_holding = false
 	_apply()
 
 
 ## Fades to another look over `seconds`: colors, energies, the sun's place, and the clouds move from their values now to
-## the look's. It stops the day's clock.
+## the look's. It stops the day's clock. Setting `look`, a running `hour`, or another fade stops the fade where it
+## is, and its Tween's `finished` comes right after.
 func fade_to(next: String, seconds: float) -> Tween:
+	_stop_fade()
 	hour = -1.0
 	var from := _values.duplicate()
 	from["sun_azimuth"] = sun_azimuth
@@ -224,18 +252,34 @@ func fade_to(next: String, seconds: float) -> Tween:
 		_values = WasdLookPresets.blend(from, to, weight)
 		_take_place_from_values()
 		_apply()
-	var tween := create_tween()
-	tween.tween_method(step, 0.0, 1.0, seconds)
-	tween.tween_callback(func() -> void: look = next)
-	return tween
+	_fade = create_tween()
+	_fade.tween_method(step, 0.0, 1.0, seconds)
+	_fade.tween_callback(func() -> void:
+		# The fade ends here: setting the look it ends at must not stop it as one that another cuts short.
+		_fade = null
+		look = next)
+	return _fade
+
+
+## Stops the fade that runs, if any, where it is. A killed Tween does not finish by itself: its `finished` is emitted
+## once the call that stopped it is over, so that whoever waits for it goes on after that call and cannot run inside it.
+func _stop_fade() -> void:
+	if _fade == null:
+		return
+	var stopped := _fade
+	_fade = null
+	stopped.kill()
+	(func() -> void: stopped.finished.emit()).call_deferred()
 
 
 ## Shows the hour of a day (0 to 24): blends the looks of `day_looks` around it and puts the sun, or at night the moon,
-## where that hour has it. A negative hour stops the clock and keeps the picture as it is.
+## where that hour has it, and stops a fade. A negative hour stops the clock and keeps the picture as it is.
 func set_hour(value: float) -> void:
+	var starting := hour < 0.0
 	hour = value
 	if value < 0.0 or day_looks.is_empty():
 		return
+	_stop_fade()
 	var before: Array = day_looks[0]
 	var after: Array = day_looks[day_looks.size() - 1]
 	for pair: Array in day_looks:
@@ -255,7 +299,8 @@ func set_hour(value: float) -> void:
 	sun_azimuth = day_peak_azimuth - 90.0 + 180.0 * along
 	_holding = false
 	_apply()
-	if _night == by_day:
+	# The clock's first hour tells which light is up, and every change after it.
+	if starting or _night == by_day:
 		_night = not by_day
 		night_changed.emit(_night)
 
@@ -302,6 +347,8 @@ func is_night() -> bool:
 ## as wide as high; an HDR picture (.hdr or .exr) lights the scene best.
 func set_panorama(value: Texture2D) -> void:
 	panorama = value
+	_reading = null
+	_sun_wanted = false
 	if value == null:
 		_sky.sky_material = _sky_material
 	else:
@@ -313,10 +360,16 @@ func set_panorama(value: Texture2D) -> void:
 
 ## Puts the sun where the photographed sky has its brightest spot, so that shadows fall the way the picture's light
 ## does, and returns that place as (azimuth, elevation) in degrees. Skies without a visible sun, such as an overcast
-## one, have no such spot worth following: set `sun_azimuth` and `sun_elevation` by hand for those.
+## one, have no such spot worth following: set `sun_azimuth` and `sun_elevation` by hand for those. In a Web build,
+## whose renderer hands pictures back cut off at 1, and for a sky with no light above 1, the sky is read a frame
+## after it is set: until then this returns where the sun is, and the sun moves to the picture's when the reading
+## lands.
 func find_sun_in_panorama() -> Vector2:
 	if panorama == null:
 		push_warning("WasdLook3D: set a panorama before find_sun_in_panorama().")
+		return Vector2(sun_azimuth, sun_elevation)
+	_sun_wanted = true
+	if _reading != null:
 		return Vector2(sun_azimuth, sun_elevation)
 	sun_elevation = _panorama_sun.y
 	sun_azimuth = _panorama_sun.x + panorama_turn
@@ -534,19 +587,91 @@ func _apply_quality() -> void:
 
 ## Reads from a photographed sky where its sun is, how bright the sky is without it, and the color at its horizon.
 func _read_panorama(texture: Texture2D) -> void:
+	_reading = null
 	var image := texture.get_image()
 	if image == null or image.is_empty():
 		return
 	if image.is_compressed():
 		image.decompress()
-	# A picture in a float format holds light; one in bytes holds color values.
-	var is_light := image.get_format() >= Image.FORMAT_RF and image.get_format() <= Image.FORMAT_RGBE9995
+	# A picture in a float format holds light; one in bytes holds color values. The texture tells its own format, which
+	# a picture handed back as bytes has lost.
+	var is_light := _holds_light(texture.get_format()) or _holds_light(image.get_format())
 	_panorama_material.set_shader_parameter(&"picture_is_light", is_light)
 	image.convert(Image.FORMAT_RGBAF)
 	if not is_light:
 		image.srgb_to_linear()
 	while image.get_width() > 256 and image.get_width() % 2 == 0 and image.get_height() % 2 == 0:
 		image.shrink_x2()
+	if is_light and _brightest(image) <= 1.0:
+		# The renderer handed the light back cut off at 1, as the Compatibility renderer does in Web builds, or the sky
+		# has none above 1: a pass of its own reads it whole.
+		_read_through_pass(texture, image.get_size())
+		return
+	_take_reading(image)
+
+
+## Reads a photographed sky's light through look_read.gdshader into a picture of `size` pixels, a frame later, and
+## takes that reading; the sun then moves to the picture's if find_sun_in_panorama() asked for it meanwhile.
+func _read_through_pass(texture: Texture2D, size: Vector2i) -> void:
+	_reading = texture
+	if not is_node_ready():
+		await ready
+		if _reading != texture:
+			return
+	var reader := SubViewport.new()
+	reader.size = size
+	reader.disable_3d = true
+	reader.transparent_bg = true
+	reader.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var cover := ColorRect.new()
+	cover.size = Vector2(size)
+	var material := ShaderMaterial.new()
+	material.shader = READ_SHADER
+	material.set_shader_parameter(&"picture", texture)
+	material.set_shader_parameter(&"block", Vector2i(texture.get_size()) / size)
+	cover.material = material
+	reader.add_child(cover)
+	add_child(reader, false, Node.INTERNAL_MODE_BACK)
+	await RenderingServer.frame_post_draw
+	var bytes := reader.get_texture().get_image()
+	reader.queue_free()
+	if _reading != texture:
+		return
+	_reading = null
+	if bytes == null or bytes.get_size() != size:
+		push_warning("WasdLook3D: the photographed sky could not be read; set sun_azimuth and sun_elevation by hand.")
+		return
+	bytes.convert(Image.FORMAT_RGBA8)
+	var light := Image.create(size.x, size.y, false, Image.FORMAT_RGBAF)
+	for y: int in size.y:
+		for x: int in size.x:
+			var stored := bytes.get_pixel(x, y)
+			var power := pow(2.0, roundf(stored.a * 255.0) - 128.0)
+			light.set_pixel(x, y, Color(stored.r * power, stored.g * power, stored.b * power))
+	_take_reading(light)
+	if _sun_wanted:
+		find_sun_in_panorama()
+	_apply()
+
+
+## Whether pictures of a format hold light, in floats, instead of color values.
+static func _holds_light(format: Image.Format) -> bool:
+	return (format >= Image.FORMAT_RF and format <= Image.FORMAT_RGBE9995) or format in [Image.FORMAT_BPTC_RGBF, Image.FORMAT_BPTC_RGBFU, Image.FORMAT_ASTC_4x4_HDR, Image.FORMAT_ASTC_8x8_HDR]
+
+
+## The largest value of any pixel of a picture.
+static func _brightest(image: Image) -> float:
+	var largest := 0.0
+	for y: int in image.get_height():
+		for x: int in image.get_width():
+			var pixel := image.get_pixel(x, y)
+			largest = maxf(largest, maxf(pixel.r, maxf(pixel.g, pixel.b)))
+	return largest
+
+
+## Takes from a photographed sky's light, in a picture shrunk to about 256 pixels across, where its sun is, how bright
+## the sky is without it, and the color at its horizon.
+func _take_reading(image: Image) -> void:
 	var size := image.get_size()
 	# First the place of the brightest spot and a rough brightness with the sun cut off, then the sky's brightness
 	# and its color at the horizon with everything far above that cut off.

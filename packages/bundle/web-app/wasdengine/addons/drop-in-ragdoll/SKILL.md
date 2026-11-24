@@ -1,9 +1,9 @@
 ---
 name: drop-in-ragdoll
-description: Drop-In Ragdoll 1.0.0 is installed in this project. One node, DropInRagdoll, under a humanoid Skeleton3D makes the character fall limp (go_limp), take hits (hit), come to rest, and blend back into its animation (get_up), at any scale, with bodies sized to the mesh. It needs Jolt Physics. Load before making a character die, get knocked out, or be thrown.
+description: Drop-In Ragdoll 1.0.2 is installed in this project. One node, DropInRagdoll, under a humanoid Skeleton3D makes the character fall limp (go_limp), take hits (hit), come to rest, and blend back into its animation (get_up), at any scale, with bodies sized to the mesh. It needs Jolt Physics. Load before making a character die, get knocked out, or be thrown.
 ---
 
-# Drop-In Ragdoll 1.0.0
+# Drop-In Ragdoll 1.0.2
 
 `res://addons/dropin_ragdoll/` (MIT, no plugin to enable; the class is global): `DropInRagdoll` extends `SkeletonModifier3D` and goes under the character's `Skeleton3D`. It builds 16 rigid bodies with joints when the character first goes limp and frees them when it gets up.
 

@@ -1,14 +1,16 @@
 extends Node3D
 ## WASD Decals smoke test (render run on the Compatibility renderer): marks show on a floor and a wall, keep to their
-## capacity, and fade after their lifetime; the marks drawn in code show without a texture, in the tint the screen
-## shows, and turn toward a direction; a walking body leaves footprints, left and right in turn, and none in the air;
-## a blob shadow darkens the ground under a body, follows it, and fades as the body rises.
+## capacity, and fade after their lifetime, also when the pool's clock has run for most of a day; the marks drawn in
+## code show without a texture, in the tint the screen shows, and turn toward a direction; a walking body leaves
+## footprints, left and right in turn, and none in the air; a blob shadow darkens the ground under a body, follows it,
+## and fades as the body rises.
 
 const ID := "wasd-decals"
 
 
 func _ready() -> void:
-	get_tree().create_timer(60.0).timeout.connect(func() -> void: _fail("timed out"))
+	# In real seconds: the test makes game time run fast for a while.
+	get_tree().create_timer(60.0, true, false, true).timeout.connect(func() -> void: _fail("timed out"))
 	_run()
 
 
@@ -125,6 +127,27 @@ func _run() -> void:
 	marks.clear()
 	if _red(await _frame("cleared.png")) > 0.0005:
 		return _fail("clear() left marks")
+	# A pool whose clock has run for 70,000 seconds, as one in an autoload does in a long session: a mark still shows
+	# for its lifetime and then goes. The Compatibility renderer keeps a mark's end as a half float, which holds no time
+	# past 65,504 seconds.
+	var lasting := WasdDecals3D.new()
+	lasting.texture = splat
+	lasting.unlit = true
+	lasting.size = 1.5
+	lasting.lifetime = 1.2
+	lasting.fade = 0.4
+	add_child(lasting)
+	Engine.time_scale = 100000.0
+	await get_tree().create_timer(70000.0).timeout
+	Engine.time_scale = 1.0
+	lasting.add(Vector3(0, 0, 1), Vector3.UP)
+	await get_tree().create_timer(0.3).timeout
+	var shown_late := _red(await _frame("late_shown.png"))
+	await get_tree().create_timer(1.3).timeout
+	var gone_late := _red(await _frame("late_gone.png"))
+	if shown_late < 0.002 or gone_late > 0.0005:
+		return _fail("after 70,000 seconds a mark of 1.2 s covers %f of the picture at 0.3 s and %f at 1.7 s" % [shown_late, gone_late])
+	lasting.queue_free()
 
 	# Marks drawn in code: soot darkens the pale floor without any texture.
 	var middle := Rect2(0.485, 0.535, 0.03, 0.05)

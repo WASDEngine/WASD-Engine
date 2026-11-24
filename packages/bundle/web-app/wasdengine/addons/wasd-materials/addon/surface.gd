@@ -347,7 +347,8 @@ static func eye_middles(mesh: Mesh, surface := 0) -> Vector4:
 ## edges, and broken up into strands where the mesh says that the hair thins out, in the alpha of its vertices'
 ## color, as the mpfb guide's humans say it along their hairline. `tint` colors the picture. Options: `strands`
 ## (float, 220): how many strands lie side by side across the picture; `across` (bool): the strands run across the
-## picture instead of down it.
+## picture instead of down it; `straight` (float, 1): how straight the hair is, 0 for curls, across which no band of
+## light runs.
 static func hair(picture: Texture2D, tint := Color.WHITE, options := {}) -> ShaderMaterial:
 	var material := ShaderMaterial.new()
 	material.shader = HAIR_SHADER
@@ -356,6 +357,7 @@ static func hair(picture: Texture2D, tint := Color.WHITE, options := {}) -> Shad
 	material.set_shader_parameter(&"tint", tint)
 	material.set_shader_parameter(&"strands", options.get("strands", 220.0))
 	material.set_shader_parameter(&"strands_across", options.get("across", false))
+	material.set_shader_parameter(&"straightness", options.get("straight", 1.0))
 	return material
 
 
@@ -432,7 +434,8 @@ static func human(root: Node) -> Dictionary:
 				mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				continue
 			if kind == "hair":
-				mesh.set_surface_override_material(surface, hair(material.albedo_texture, material.albedo_color))
+				# The mpfb guide's humans name the material of curly hair with "curl".
+				mesh.set_surface_override_material(surface, hair(material.albedo_texture, material.albedo_color, {"straight": 0.0 if name.contains("curl") else 1.0}))
 				continue
 			if kind == "cutout":
 				# Cloth with holes, and hair that does not say what it is: cut out, not blended. Every pixel is either
@@ -486,13 +489,29 @@ static func _has_holes(picture: Texture2D) -> bool:
 	return found
 
 
-## Gives a material to every mesh and CSG shape under `node`, `node` included.
+## Gives a material to every mesh and CSG shape under `node`, `node` included. What a WASD add-on's node draws by its
+## own means, such as a halo, a fog bank, water, decals, a crowd, a rope, or cloth, is left out with all under it.
 static func paint(node: Node, material: Material) -> void:
-	for part: Node in [node] + node.find_children("*", "GeometryInstance3D", true, false):
+	var open: Array[Node] = [node]
+	while not open.is_empty():
+		var part: Node = open.pop_back()
+		if part is GeometryInstance3D and _is_wasd_node(part):
+			continue
 		if part is MeshInstance3D or part is MultiMeshInstance3D:
 			(part as GeometryInstance3D).material_override = material
 		elif part is CSGPrimitive3D:
 			(part as CSGPrimitive3D).material = material
+		open.append_array(part.get_children())
+
+
+## Whether a node's script is a WASD add-on's or extends one.
+static func _is_wasd_node(node: Node) -> bool:
+	var script := node.get_script() as Script
+	while script != null:
+		if script.resource_path.begins_with("res://addons/wasd_"):
+			return true
+		script = script.get_base_script()
+	return false
 
 
 ## The words in a picture's file name that tell what it holds.

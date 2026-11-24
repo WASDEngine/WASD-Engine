@@ -25,7 +25,6 @@
   ],
   "license": "MIT",
   "copyright": "Copyright (c) 2024 David Shoemaker; portions Copyright (c) 2021 Dechode and Copyright (c) 2024 Baron Wittman",
-  "credit": "Car models: Kenney Car Kit, CC0.",
   "homepage": "https://github.com/DAShoe1/Godot-Easy-Vehicle-Physics",
   "archive": {
     "url": "https://github.com/DAShoe1/Godot-Easy-Vehicle-Physics/archive/c392257f54f6ca537dc10bc5badad0c060f18982.zip",

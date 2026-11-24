@@ -1,13 +1,17 @@
 extends Node3D
-## WASD Character smoke test (render run on the Compatibility renderer): a character that code steers reaches its
-## walk, run, and sprint speeds, stops, turns its model toward where it goes, and plays the clip of each gait at a
-## pace that follows its speed; it jumps to its jump height, tells when it jumps and lands, cannot jump twice with
-## one jump and can with two, jumps a moment after walking off an edge, and pushes a crate; an action clip plays once
-## and holds it in place; it walks up and down a flight of stairs without leaving the ground or its walk clip, and
-## stops before a step higher than it may take; a humanoid's feet stand on the slope under them, which they miss
-## without foot placement, and stay as animated on level ground, and it has no face without the add-on that gives
-## one; a character the player controls adds its actions,
-## moves on a held key relative to its orbit camera, and gets a capsule; and the camera stays in front of a wall.
+## WASD Character smoke test (render run on the Compatibility renderer): a character that code steers reaches its walk,
+## run, and sprint speeds, stops, turns its model toward where it goes, and plays the clip of each gait at a pace that
+## follows its speed; it jumps to its jump height, tells when it jumps and lands, cannot jump twice with one jump and
+## can with two, jumps a moment after walking off an edge, and pushes a crate; an action clip plays once and holds it in
+## place, is found by its whole name too, and ends with stop_action(), a held one keeps it from jumping, a jump ends one
+## that does not hold and a hard landing does not, one begun on jumped plays, and a looping clip plays through once,
+## after each of which it runs on with its run clip; it walks up and down a flight of stairs without leaving the ground
+## or its walk clip, and stops before a step higher than it may take; a humanoid's feet stand on the slope under them,
+## which they miss without foot placement, and stay as animated on level ground, and it has no face without the add-on
+## that gives one; a character whose body is turned faces where it goes in the world, and where face_toward() and
+## teleport() say; a character the player controls adds its actions, moves on a held key relative to its orbit camera,
+## and gets a capsule; and the camera stays in front of a wall, comes along at once when the character teleports, and
+## moves with the character in the physics steps that move it and in every frame in which a Tween carries it.
 
 const ID := "wasd-character"
 
@@ -59,6 +63,127 @@ func _block(size: Vector3, at: Vector3) -> StaticBody3D:
 	body.position = at
 	add_child(body)
 	return body
+
+
+## Whether the character, told to run toward +X, runs with its run clip: no action is left over. It stops after.
+func _runs_on(hero: WasdCharacter3D, after: String) -> bool:
+	hero.wish_direction = Vector3(1, 0, 0)
+	await _seconds(0.5)
+	var speed := hero.get_ground_speed()
+	var clip := hero.animation_player.current_animation
+	hero.wish_direction = Vector3.ZERO
+	await _seconds(0.6)
+	if speed < 3.0 or clip != "moves/Jog_Fwd":
+		_fail("after %s the character, told to run, moves at %.2f m/s with the clip %s" % [after, speed, clip])
+		return false
+	return true
+
+
+## Actions after the first: one named by its whole name, which stop_action() ends; a held one, which keeps the
+## character from jumping; one that does not hold, which a jump ends and a hard landing does not cut short; one begun
+## on the jumped signal; and a clip that loops, which plays through once and holds the character meanwhile.
+func _actions(hero: WasdCharacter3D) -> bool:
+	var player := hero.animation_player
+	hero.wish_gait = "run"
+	if not hero.play_action("MOVES/wave") or player.current_animation != "moves/Wave":
+		_fail("play_action(\"MOVES/wave\") plays %s" % [player.current_animation])
+		return false
+	hero.stop_action()
+	if not await _runs_on(hero, "stop_action()"):
+		return false
+	hero.play_action("Wave")
+	await _seconds(0.1)
+	if hero.jump():
+		_fail("the character jumped during an action that holds it")
+		return false
+	await _seconds(0.6)
+	if not await _runs_on(hero, "a jump refused during an action"):
+		return false
+	hero.play_action("Wave", false)
+	await _seconds(0.1)
+	if not hero.jump():
+		_fail("the character could not jump during an action that does not hold it")
+		return false
+	await _seconds(1.5)
+	if not await _runs_on(hero, "a jump during an action"):
+		return false
+	# A fall of 1.5 m lands at about 7 m/s, before the wave ends.
+	hero.teleport(hero.global_position + Vector3.UP * 1.5)
+	hero.play_action("Wave", false)
+	await _seconds(1.0)
+	if not await _runs_on(hero, "a hard landing during an action"):
+		return false
+	# An action begun when the character jumps, such as a flip, plays.
+	var flip := func() -> void: hero.play_action("Wave", false)
+	hero.jumped.connect(flip)
+	hero.jump()
+	hero.jumped.disconnect(flip)
+	await get_tree().physics_frame
+	if player.current_animation != "moves/Wave":
+		_fail("an action begun on jumped gave way to %s" % [player.current_animation])
+		return false
+	await _seconds(1.5)
+	if not await _runs_on(hero, "an action begun on jumped"):
+		return false
+	hero.play_action("Dance")
+	hero.wish_direction = Vector3(1, 0, 0)
+	await _seconds(0.5)
+	if player.current_animation != "moves/Dance" or hero.get_ground_speed() > 0.01:
+		_fail("half through a looping action the clip is %s and the speed %.2f" % [player.current_animation, hero.get_ground_speed()])
+		return false
+	hero.wish_direction = Vector3.ZERO
+	await _seconds(0.7)
+	return await _runs_on(hero, "a looping action of one second")
+
+
+## A character whose body is turned a quarter turn, with a model that faces its own +X (`model_turn` -90): the model
+## faces where the character goes in the world, and where face_toward() and teleport() say.
+func _turned() -> bool:
+	var turned := WasdCharacter3D.new()
+	turned.controlled = false
+	turned.position = Vector3(-20, 0.05, 0)
+	turned.rotation.y = PI * 0.5
+	turned.model_turn = -90.0
+	turned.add_child(_model(["Idle", "Walk"]))
+	add_child(turned)
+	await _seconds(0.3)
+	var front := func() -> Vector3: return turned.model.global_basis.x.normalized()
+	turned.wish_direction = Vector3(0, 0, -1)
+	await _seconds(1.0)
+	if front.call().dot(Vector3(0, 0, -1)) < 0.98:
+		_fail("a turned character going toward -Z faces %s" % [front.call()])
+		return false
+	turned.wish_direction = Vector3.ZERO
+	await _seconds(0.5)
+	turned.face_toward(Vector3(1, 0, 0))
+	if front.call().dot(Vector3(1, 0, 0)) < 0.999:
+		_fail("a turned character told to face +X faces %s" % [front.call()])
+		return false
+	turned.teleport(Vector3(-20, 0.05, 5), Vector3(0, 0, 1))
+	if front.call().dot(Vector3(0, 0, 1)) < 0.999:
+		_fail("a turned character teleported facing +Z faces %s" % [front.call()])
+		return false
+	turned.queue_free()
+	return true
+
+
+## Over 60 frames, each as it is drawn: in how many the character moved and its camera rig did not, and in how many
+## the rig moved and the character did not.
+func _apart(character: WasdCharacter3D) -> Array[int]:
+	var counts: Array[int] = [0, 0]
+	var body := character.global_position
+	var rig := character.camera_rig.global_position
+	for _i: int in 60:
+		await RenderingServer.frame_pre_draw
+		var moved := character.global_position != body
+		var followed := character.camera_rig.global_position != rig
+		if moved and not followed:
+			counts[0] += 1
+		elif followed and not moved:
+			counts[1] += 1
+		body = character.global_position
+		rig = character.camera_rig.global_position
+	return counts
 
 
 ## Six steps of 18 cm that rise toward -Z from z = -60, a landing behind them, and beside them a step of 50 cm.
@@ -227,7 +352,7 @@ func _run() -> void:
 	# A character that code steers, with clips for every gait.
 	var hero := WasdCharacter3D.new()
 	hero.controlled = false
-	hero.add_child(_model(["Idle", "Walk", "Jog_Fwd", "Sprint", "Jump_Start", "Jump", "Jump_Land", "Wave"]))
+	hero.add_child(_model(["Idle", "Walk", "Jog_Fwd", "Sprint", "Jump_Start", "Jump", "Jump_Land", "Wave", "Dance"]))
 	add_child(hero)
 	var events: Array[String] = []
 	hero.jumped.connect(func() -> void: events.append("jumped"))
@@ -294,6 +419,8 @@ func _run() -> void:
 		return _fail("after the action the character does not walk on")
 	hero.wish_direction = Vector3.ZERO
 	await _seconds(0.5)
+	if not await _actions(hero):
+		return
 
 	# It pushes a crate, and jumps a moment after walking off an edge.
 	var crate := RigidBody3D.new()
@@ -342,6 +469,8 @@ func _run() -> void:
 		return
 	if not await _feet():
 		return
+	if not await _turned():
+		return
 
 	# A character the player controls: it adds its actions and its capsule, and a held key moves it away from its
 	# camera.
@@ -383,6 +512,27 @@ func _run() -> void:
 	var back := (played.camera_rig.camera.global_position - played.global_position).dot(-forward)
 	if back > 1.5 or back < 0.2:
 		return _fail("with a wall 1.5 m behind, the camera is %.2f m behind the character" % [back])
+	# A teleport 40 m away takes the camera along at once, not across what lies between.
+	played.teleport(played.global_position + Vector3(40, 0, 0))
+	await get_tree().process_frame
+	var behind := played.camera_rig.global_position.distance_to(played.global_position + Vector3.UP * played.camera_rig.height)
+	if behind > 0.2:
+		return _fail("a frame after a teleport of 40 m the camera rig is %.2f m from its place" % [behind])
+	# With fewer physics steps than frames, the rig moves with a walk only in the steps that move the character, and
+	# with a Tween that carries the character in every frame, so that neither shakes on the screen.
+	var ticks := Engine.physics_ticks_per_second
+	Engine.physics_ticks_per_second = 20
+	Input.action_press(&"move_forward")
+	var walking := await _apart(played)
+	Input.action_release(&"move_forward")
+	await _seconds(0.5)
+	var carry := create_tween()
+	carry.tween_property(played, "position:x", played.position.x + 10.0, 2.0)
+	var carried := await _apart(played)
+	carry.kill()
+	Engine.physics_ticks_per_second = ticks
+	if walking[1] > 1 or carried[0] > 3:
+		return _fail("in 60 frames the rig moved without the walking character in %d, and stood while a Tween carried it in %d" % [walking[1], carried[0]])
 	await RenderingServer.frame_post_draw
 	print("SMOKE_PASS ", ID)
 	get_tree().quit(0)

@@ -27,7 +27,8 @@ const WEATHERS := {
 	"blizzard": {"rain": 0.0, "snow": 1.0, "overcast": 1.0, "fog": 0.02, "wind": 12.0, "lightning": 0.0},
 	"fog": {"rain": 0.0, "snow": 0.0, "overcast": 0.7, "fog": 0.03, "wind": 0.5, "lightning": 0.0},
 }
-## Nodes in this group with a method `set_wind(wind: Vector3)` are told the wind whenever it changes.
+## Nodes in this group with a method `set_wind(wind: Vector3)` are told the wind whenever it changes, and within
+## half a second of joining. When the weather leaves the tree, those it told are told Vector3.ZERO.
 const WIND_GROUP := &"wasd_wind"
 ## Nodes in this group, and everything under them, never take snow or wetness.
 const BARE_GROUP := &"wasd_weather_bare"
@@ -87,11 +88,20 @@ var _buried_at := -1.0
 var _flash := DirectionalLight3D.new()
 var _flash_left := 0.0
 var _flash_energy := 0.0
+## The environment whose sky a flash brightens, and how bright that sky was before the flash.
+var _flash_shown: Environment
 var _flash_sky := 1.0
 var _told_look := false
 var _told_overcast := -1.0
 var _told_fog := -1.0
 var _told_wind := Vector3(INF, 0, 0)
+## The nodes of the wind group that have been told the wind, by instance id, and the seconds until the group is
+## looked through again for nodes that joined since.
+var _wind_told := {}
+var _wind_check := 0.0
+## SimpleGrassTextured's own wind direction and strength from before the weather first set them, given back when the
+## weather leaves.
+var _grass_wind: Array = []
 
 
 func _init() -> void:
@@ -112,13 +122,15 @@ func _init() -> void:
 	_snow.material_override = _snow_material
 	_rings.multimesh = _cards(SPLASH_CARDS)
 	_rings.material_override = _ring_material
+	# The cards and the flash below are the node's own: internal children, which code that walks a scene's children,
+	# such as WasdSurface.paint() and the effects of WasdFx, does not reach.
 	for cards: MultiMeshInstance3D in [_rain, _snow, _rings]:
 		cards.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		# The shader places the cards round the camera, wherever this node is.
 		cards.custom_aabb = AABB(Vector3.ONE * -100000.0, Vector3.ONE * 200000.0)
 		cards.visible = false
 		cards.top_level = true
-		add_child(cards)
+		add_child(cards, false, Node.INTERNAL_MODE_BACK)
 	var noise := FastNoiseLite.new()
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	noise.frequency = 0.02
@@ -137,7 +149,7 @@ func _init() -> void:
 	_flash.light_energy = 0.0
 	_flash.light_color = Color(0.85, 0.9, 1.0)
 	_flash.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
-	add_child(_flash)
+	add_child(_flash, false, Node.INTERNAL_MODE_BACK)
 
 
 func _enter_tree() -> void:
@@ -146,6 +158,19 @@ func _enter_tree() -> void:
 
 func _exit_tree() -> void:
 	get_tree().node_added.disconnect(_on_node_added)
+	_end_flash()
+	# What the weather left goes with it: the cover comes off all it covered, and buried plants stand up again. Each
+	# mesh keeps what another hand has put over it.
+	var fx := _effects()
+	for kept: WeakRef in _covered:
+		var mesh := kept.get_ref() as GeometryInstance3D
+		if mesh != null:
+			_set_cover(mesh, false, fx)
+	_covering = false
+	for plant: Array in _buried:
+		if (plant[0] as WeakRef).get_ref() != null:
+			_bury(plant, 0.0)
+	_buried_at = -1.0
 	var look := _look()
 	if _told_look and look != null:
 		look.set(&"overcast", 0.0)
@@ -153,6 +178,26 @@ func _exit_tree() -> void:
 	_told_look = false
 	_told_overcast = -1.0
 	_told_fog = -1.0
+	# The wind goes with the weather, also from autoloads such as WasdFx that outlive the scene.
+	for id: int in _wind_told:
+		var node := instance_from_id(id) as Node
+		if node != null and node.is_inside_tree() and node.has_method(&"set_wind"):
+			node.call(&"set_wind", Vector3.ZERO)
+	_wind_told.clear()
+	_told_wind = Vector3(INF, 0, 0)
+	var grass := get_node_or_null(^"/root/SimpleGrass")
+	if grass != null and _grass_wind.size() == 2:
+		if _grass_wind[0] is Vector3:
+			grass.call(&"set_wind_direction", _grass_wind[0])
+		if _grass_wind[1] is float:
+			grass.call(&"set_wind_strength", _grass_wind[1])
+	_grass_wind = []
+
+
+func _notification(what: int) -> void:
+	# A flash would otherwise stand at its height for as long as the game is paused.
+	if what == NOTIFICATION_PAUSED:
+		_end_flash()
 
 
 ## The names of the weathers.
@@ -203,9 +248,11 @@ func get_snow() -> float:
 
 ## Lets the weather leave snow and wetness on every mesh under `root`, `root` included, and on those that come
 ## under it later: ground, walls, roofs, props, characters. Each such mesh is drawn once more while snow lies or
-## things are wet. Left bare: see-through materials, nodes of the WASD packs that draw their own surfaces or light
-## (water, effects, marks), and everything in the group "wasd_weather_bare" or under such a node. Snow buries the
-## grass of LiteTerrain and SimpleGrassTextured under `root`.
+## things are wet. Left bare: see-through materials, the meshes that WASD packs draw by their own means (water, light,
+## marks, cloth), and everything in the group "wasd_weather_bare" or under such a node; a material that another hand
+## puts over a mesh stays, and the cover is off that mesh meanwhile. With WASD FX the cover waits under a flash, an
+## outline, or a dissolve. Snow buries the grass of LiteTerrain and SimpleGrassTextured under `root`. When the weather
+## leaves the tree, the cover comes off and the grass stands up again.
 func cover(root: Node) -> void:
 	_cover_roots.append(weakref(root))
 	_cover_under(root)
@@ -217,11 +264,12 @@ func uncover(root: Node) -> void:
 		var kept: Object = _cover_roots[index].get_ref()
 		if kept == null or kept == root:
 			_cover_roots.remove_at(index)
+	var fx := _effects()
 	for index: int in range(_covered.size() - 1, -1, -1):
 		var node: Node = _covered[index].get_ref()
 		if node == null or node == root or root.is_ancestor_of(node):
-			if node != null and (node as GeometryInstance3D).material_overlay == _cover_material:
-				(node as GeometryInstance3D).material_overlay = null
+			if node != null:
+				_set_cover(node as GeometryInstance3D, false, fx)
 			_covered.remove_at(index)
 	for index: int in range(_buried.size() - 1, -1, -1):
 		var plant: Node = (_buried[index][0] as WeakRef).get_ref()
@@ -235,8 +283,8 @@ func uncover(root: Node) -> void:
 ## until its thunder. Storms strike by themselves.
 func strike() -> void:
 	if _flash_left <= 0.0:
-		var shown := _environment()
-		_flash_sky = shown.background_energy_multiplier if shown != null else 1.0
+		_flash_shown = _environment()
+		_flash_sky = _flash_shown.background_energy_multiplier if _flash_shown != null else 1.0
 	_flash.rotation = Vector3(deg_to_rad(randf_range(-70.0, -35.0)), randf() * TAU, 0.0)
 	_flash_energy = randf_range(1.2, 2.2)
 	_flash_left = 0.35
@@ -294,12 +342,13 @@ func _process(delta: float) -> void:
 	var covering := wetness > 0.001 or snow_cover > 0.001
 	if covering != _covering:
 		_covering = covering
+		var fx := _effects()
 		for index: int in range(_covered.size() - 1, -1, -1):
 			var node: Object = _covered[index].get_ref()
 			if node == null:
 				_covered.remove_at(index)
 			else:
-				(node as GeometryInstance3D).material_overlay = _cover_material if covering else null
+				_set_cover(node as GeometryInstance3D, covering, fx)
 	if absf(snow_cover - _buried_at) > 0.004 or (snow_cover == 0.0 and _buried_at != 0.0):
 		_buried_at = snow_cover
 		for index: int in range(_buried.size() - 1, -1, -1):
@@ -317,9 +366,10 @@ func _process(delta: float) -> void:
 		var beat := maxf(_flash_left, 0.0) / 0.35
 		var flash := beat * beat * (1.0 if fmod(beat * 3.0, 1.0) > 0.3 else 0.35)
 		_flash.light_energy = _flash_energy * flash
-		var shown := _environment()
-		if shown != null:
-			shown.background_energy_multiplier = _flash_sky * (1.0 + 0.5 * _flash_energy * flash)
+		if _flash_shown != null:
+			_flash_shown.background_energy_multiplier = _flash_sky * (1.0 + 0.5 * _flash_energy * flash)
+		if _flash_left <= 0.0:
+			_end_flash()
 
 	# The sky and the fog follow, where a WASD Look node is the scene's lighting; the wind goes to whatever asks.
 	if look != null:
@@ -332,17 +382,38 @@ func _process(delta: float) -> void:
 			look.set(&"overcast", overcast)
 			look.set(&"added_fog", fog)
 	var steady := _steady_wind()
+	_wind_check -= delta
 	if steady.distance_to(_told_wind) > 0.2:
 		_told_wind = steady
-		for node: Node in get_tree().get_nodes_in_group(WIND_GROUP):
-			if node.has_method(&"set_wind"):
-				node.call(&"set_wind", steady)
+		_wind_told.clear()
+		_wind_check = 0.0
 		# SimpleGrassTextured's grass takes its wind from its autoload.
 		var grass := get_node_or_null(^"/root/SimpleGrass")
 		if grass != null and grass.has_method(&"set_wind_strength"):
+			if _grass_wind.is_empty():
+				_grass_wind = [grass.get(&"wind_direction"), grass.get(&"wind_strength")]
 			if steady.length() > 0.01:
 				grass.call(&"set_wind_direction", steady.normalized())
 			grass.call(&"set_wind_strength", clampf(steady.length() * 0.05, 0.03, 0.6))
+	if _wind_check <= 0.0:
+		# Each node of the group is told the wind once, also one that joined after the wind last changed.
+		_wind_check = 0.5
+		var told := {}
+		for node: Node in get_tree().get_nodes_in_group(WIND_GROUP):
+			if node.has_method(&"set_wind"):
+				if not _wind_told.has(node.get_instance_id()):
+					node.call(&"set_wind", _told_wind)
+				told[node.get_instance_id()] = true
+		_wind_told = told
+
+
+## Ends a flash of lightning at once: its light goes out, and the sky it brightened is as bright as before.
+func _end_flash() -> void:
+	_flash_left = 0.0
+	_flash.light_energy = 0.0
+	if _flash_shown != null:
+		_flash_shown.background_energy_multiplier = _flash_sky
+	_flash_shown = null
 
 
 ## The wind without its gusts.
@@ -362,12 +433,20 @@ func _environment() -> Environment:
 	return world.environment if world != null else null
 
 
-## Whether a node and all under it stay bare: by the group, or because a WASD pack draws it by its own means.
+## Whether a node and all under it stay bare: by the group, or because a WASD pack draws it by its own means, a mesh
+## whose script is a WASD pack's or extends one. A WASD node that draws nothing itself, such as a WasdCharacter3D,
+## leaves the model under it to be covered.
 func _is_bare(node: Node) -> bool:
 	if node.is_in_group(BARE_GROUP):
 		return true
-	var script: Script = node.get_script()
-	return script != null and script.resource_path.begins_with("res://addons/wasd_")
+	if not (node is GeometryInstance3D):
+		return false
+	var script := node.get_script() as Script
+	while script != null:
+		if script.resource_path.begins_with("res://addons/wasd_"):
+			return true
+		script = script.get_base_script()
+	return false
 
 
 func _cover_under(node: Node) -> void:
@@ -428,13 +507,28 @@ func _cover_node(node: Node) -> void:
 	var mesh := node as GeometryInstance3D
 	if _shows_through(mesh):
 		return
-	if mesh.material_overlay != null and mesh.material_overlay != _cover_material:
-		return
 	if _covered.size() % 256 == 255:
 		_covered = _covered.filter(func(kept: WeakRef) -> bool: return kept.get_ref() != null)
 	_covered.append(weakref(node))
 	if _covering:
-		mesh.material_overlay = _cover_material
+		_set_cover(mesh, true, _effects())
+
+
+## Puts the cover over a mesh, or with `on` false takes it off again, where the mesh shows no material of another
+## hand's: through WASD FX's `put_under()` when the game has WASD FX (`fx`), so that the cover waits under its effects.
+func _set_cover(mesh: GeometryInstance3D, on: bool, fx: Node) -> void:
+	var wanted: Material = _cover_material if on else null
+	var was: Material = null if on else _cover_material
+	if fx != null:
+		fx.call(&"put_under", mesh, wanted, was)
+	elif mesh.material_overlay == was:
+		mesh.material_overlay = wanted
+
+
+## WASD FX's autoload, when the game has it.
+func _effects() -> Node:
+	var fx := get_node_or_null(^"/root/WasdFx") if is_inside_tree() else null
+	return fx if fx != null and fx.has_method(&"put_under") else null
 
 
 ## A mesh that enters the tree under a covered root is covered too, once it has had its turn to set itself up.

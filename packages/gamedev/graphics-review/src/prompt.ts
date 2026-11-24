@@ -1,9 +1,9 @@
 /**
  * What the agents read about the graphics review and what the reviewer reads: the Session's system prompt section, the
- * MCP provider's description and guide, and the reviewer's instructions with WASD Engine's tools and the add-on
- * catalog. The agents' texts call the reviewer a specialized graphics expert reviewer model, ask for two to four
- * reviews of each piece of graphics the agent makes itself and none of the assets it downloads, and never mention a
- * cost; the reviewer replies with notes and the tools and add-ons to consider, never with a rating.
+ * MCP provider's description and guide, and the reviewer's instructions with the WASD Engine tools the agent has and
+ * the add-on catalog. The agents' texts call the reviewer a specialized graphics expert reviewer model, ask for two to
+ * four reviews of each piece of graphics the agent makes itself and none of the assets it downloads, and never mention
+ * a cost; the reviewer replies with notes and the tools and add-ons to consider, never with a rating.
  * @module @deepseek-ai/dsh-graphics-review/src/prompt
  */
 
@@ -72,16 +72,61 @@ export const MCP_INSTRUCTIONS = `${WHAT} ${WHEN} Pass image, an absolute path of
   + `render, an image from image_generate, a texture, or a sprite sheet. ${AFTER}`
 
 /**
- * The reviewer's instructions: what to look at, WASD Engine's tools, the add-on catalog, and the form of the reply.
- * @param addons - the catalog add-ons, in catalog order; none leaves the catalog out.
+ * Join phrases into one list, the last after `and`.
+ * @param items - the phrases.
+ * @returns the list.
+ */
+function listed(items: readonly string[]): string {
+  return items.length <= 2 ? items.join(' and ') : `${items.slice(0, -1).join(', ')}, and ${items.at(-1) ?? ''}`
+}
+
+/**
+ * The reviewer's instructions: what to look at, the WASD Engine tools the agent has, the add-on catalog, and the form of
+ * the reply. The instructions name only the tools the agent has, and Godot, whose project the game is, and the catalog
+ * add-ons only while the agent has `game_addons`, which installs them, and Blender's only while it also has the Blender
+ * tools, which run them.
+ * @param addons - the catalog add-ons that agents may use, in catalog order.
+ * @param tools - the names of the tools the agent has, as a Session calls them, such as `mcp__wasd_blender__execute_python`.
  * @returns the system prompt of one review.
  */
-export function reviewerPrompt(addons: readonly ReviewAddon[]): string {
-  const catalog = addons.length === 0
+export function reviewerPrompt(addons: readonly ReviewAddon[], tools: readonly string[]): string {
+  const has = (prefix: string): boolean => tools.some(name => name.startsWith(prefix))
+  const polyhaven = has('polyhaven_')
+  const ambientcg = has('ambientcg_')
+  const image = has('image_generate')
+  // Blender and GIMP reach a Session as the MCP servers of their plugins.
+  const blender = has('mcp__wasd_blender__')
+  const gimp = has('mcp__wasd_gimp__')
+  const references = has('reference_search')
+  const offered = tools.includes('game_addons') ? addons.filter(addon => addon.host === 'godot' || blender) : []
+  const downloads = polyhaven || ambientcg
+  const kit = [
+    ...blender ? ['a headless Blender'] : [], ...gimp ? ['a headless GIMP'] : [], ...image ? ['image generation'] : [],
+    ...offered.length === 0 ? [] : ['a catalog of tested add-ons'],
+  ]
+  const preference = [
+    ...downloads ? ['an asset to download when one suits the game\'s art style'] : [],
+    ...image ? [`${downloads ? 'then ' : ''}generated 2D art over art drawn by hand or in code`] : [],
+  ]
+  const lines = [
+    ...polyhaven ? ['- polyhaven_* (Poly Haven): free CC0 HDRI skies, PBR textures, and models, the first choice when one suits the game\'s art style.'] : [],
+    ...ambientcg
+      ? [`- ambientcg_* (ambientCG): more than 2,000 free CC0 PBR materials, with decals, leaf atlases, and HDRI skies, ${polyhaven ? 'for surfaces that Poly Haven lacks' : 'the first choice when one suits the game\'s art style'}.`]
+      : [],
+    ...image
+      ? [`- image_generate (Nano Banana): concept art, sprites, textures, UI pieces, icons, and backgrounds, made from references. Prefer it to painting 2D art${gimp ? ' in GIMP' : ''} or drawing it in code.`]
+      : [],
+    ...blender
+      ? ['- Blender: model, sculpt, bevel, UV-unwrap, texture, rig, and animate 3D assets, bake procedural materials into image textures, and export .glb files. Prefer it for every 3D model the player sees that no download provides, and for the parts of meshes that the game builds at runtime, over primitives and meshes built in code.']
+      : [],
+    ...gimp ? ['- GIMP: edit, recolor, cut out, and clean up textures and sprites, make textures seamless, and build sprite sheets.'] : [],
+    ...references ? ['- reference_search: references for a style or subject before redoing art.'] : [],
+  ]
+  const catalog = offered.length === 0
     ? ''
     : '\n- game_addons installs tested add-ons, by id:\n'
-      + addons.map(addon => `  - ${addon.id} (${addon.host === 'godot' ? 'Godot' : 'Blender'}): ${addon.cue}`).join('\n')
-  return `You review the graphics of games that an AI agent makes with WASD Engine, a game development app: each game is a Godot 4.7 project, and the agent also has a headless Blender, a headless GIMP, image generation, and a catalog of tested add-ons. The agent sends you one image of its work with what it shows and the look it is going for. Review it as a senior game art director and technical artist reviews a teammate's work: specific, honest, and practical, so that the next version looks clearly better.
+      + offered.map(addon => `  - ${addon.id} (${addon.host === 'godot' ? 'Godot' : 'Blender'}): ${addon.cue}`).join('\n')
+  return `You review the graphics of games that an AI agent makes with WASD Engine, a game development app: each game is a Godot 4.7 project${kit.length === 0 ? '' : `, and the agent also has ${listed(kit)}`}. The agent sends you one image of its work with what it shows and the look it is going for. Review it as a senior game art director and technical artist reviews a teammate's work: specific, honest, and practical, so that the next version looks clearly better.
 
 Judge the image for what it is: a game screenshot, a close view of one model, a render, a texture, a sprite or sprite sheet, concept art, or a UI mockup. Look at:
 - Readability: whether the player can tell at a glance, at the game's camera distance, what matters: the player character, enemies, pickups, hazards, paths, and the UI. Silhouettes, value contrast, and visual hierarchy.
@@ -93,14 +138,8 @@ Judge the image for what it is: a game screenshot, a close view of one model, a 
 - UI and text: legibility, contrast, alignment, spacing, hierarchy, and consistency with the game's style.
 - Technical flaws: aliasing, z-fighting, clipping, misaligned tiles, mixed pixel sizes, blurred or filtered pixel art, and stretched images.
 
-For each note, say how to make the change with WASD Engine's tools, preferring an asset to download when one suits the game's art style, then generated 2D art over art drawn by hand or in code:
-- polyhaven_* (Poly Haven): free CC0 HDRI skies, PBR textures, and models, the first choice when one suits the game's art style.
-- ambientcg_* (ambientCG): more than 2,000 free CC0 PBR materials, with decals, leaf atlases, and HDRI skies, for surfaces that Poly Haven lacks.
-- image_generate (Nano Banana): concept art, sprites, textures, UI pieces, icons, and backgrounds, made from references. Prefer it to painting 2D art in GIMP or drawing it in code.
-- Blender: model, sculpt, bevel, UV-unwrap, texture, rig, and animate 3D assets, bake procedural materials into image textures, and export .glb files. Prefer it for every 3D model the player sees that no download provides, and for the parts of meshes that the game builds at runtime, over primitives and meshes built in code.
-- GIMP: edit, recolor, cut out, and clean up textures and sprites, make textures seamless, and build sprite sheets.
-- reference_search: references for a style or subject before redoing art.
-- Godot: WorldEnvironment (sky, fog, glow, SSAO, tonemapping, adjustments), lights and shadows, StandardMaterial3D and shaders, particles, MultiMesh, CanvasItem shaders and lights, texture filtering, and camera settings. Released games play in browsers, which draw no volumetric fog, SSR, SSIL, SDFGI, depth of field, Decal nodes, or particle trails: do not suggest those.${catalog}
+For each note, say how to make the change with WASD Engine's tools${preference.length === 0 ? '' : `, preferring ${preference.join(', ')}`}:
+${lines.map(line => `${line}\n`).join('')}- Godot: WorldEnvironment (sky, fog, glow, SSAO, tonemapping, adjustments), lights and shadows, StandardMaterial3D and shaders, particles, MultiMesh, CanvasItem shaders and lights, texture filtering, and camera settings. Released games play in browsers, which draw no volumetric fog, SSR, SSIL, SDFGI, depth of field, Decal nodes, or particle trails: do not suggest those.${catalog}
 Name the tool or add-on and what to do with it. Suggest only what fits this image and this game.
 
 When the agent says what it changed since an earlier review of the same work, judge whether those changes worked, and do not repeat a note it says it cannot act on, such as the face of a stock character it cannot remodel; repeat an earlier note only when the image still clearly suffers from it and the agent can change it.

@@ -1,7 +1,8 @@
 extends Node3D
 ## WASD Post smoke test (render run on the Compatibility renderer): the plain look changes nothing; looks and single
 ## properties change the picture the way they say, the drawn, old-screen, scope, dream, and night looks among them; a
-## transparent object stays in the picture; and a HUD above the pass keeps its colors.
+## transparent object stays in the picture; a HUD above the pass keeps its colors; fades into and out of the looks
+## with steps move evenly; and a look or another fade stops a running fade, whose waiters go on.
 
 const ID := "wasd-post"
 
@@ -263,5 +264,43 @@ func _run() -> void:
 	await tween.finished
 	if post.look != "warm" or not is_equal_approx(post.temperature, 0.45):
 		return _fail("fade_to ended at look %s, temperature %f" % [post.look, post.temperature])
+
+	# Fades into and out of the looks with steps move evenly: on the way the picture never goes dark, and no tenth of
+	# the fade changes it by more than a tenth of full brightness.
+	for pair: Array in [["none", "retro"], ["retro", "none"], ["none", "comic"], ["comic", "none"]]:
+		post.look = pair[0]
+		var fade := post.fade_to(pair[1], 1.0)
+		fade.pause()
+		var lights: Array[float] = []
+		for step: int in 11:
+			lights.append(_mean(await _frame("fade.png"), centre).get_luminance())
+			fade.custom_step(0.1)
+		for step: int in 10:
+			if lights[step + 1] < minf(lights[0], lights[10]) * 0.75 or absf(lights[step + 1] - lights[step]) > 0.1:
+				return _fail("a fade from %s to %s showed the centre as %s" % [pair[0], pair[1], lights])
+	# Counts of steps below 2 are off, as a game's own tween passes through them.
+	post.look = "none"
+	post.color_levels = 1.5
+	post.tone_levels = 1.5
+	var below := _mean(await _frame("below_two.png"), centre).get_luminance()
+	if absf(below - _mean(before, centre).get_luminance()) > 0.02:
+		return _fail("color_levels and tone_levels of 1.5 drew the centre at %f, not %f" % [below, _mean(before, centre).get_luminance()])
+	# A look or another fade stops a fade where it is, and code that waits for the stopped fade to finish goes on.
+	for stop: String in ["look", "fade"]:
+		post.look = "none"
+		var running := post.fade_to("noir", 10.0)
+		var resumed: Array[bool] = [false]
+		(func() -> void:
+			await running.finished
+			resumed[0] = true).call()
+		await get_tree().process_frame
+		if stop == "look":
+			post.look = "warm"
+		else:
+			await post.fade_to("warm", 0.1).finished
+		for _i: int in 3:
+			await get_tree().process_frame
+		if running.is_valid() or not resumed[0] or post.look != "warm" or not is_equal_approx(post.saturation, 1.08):
+			return _fail("a %s during a fade left it running %s, its waiter resumed %s, saturation at %f" % [stop, running.is_valid(), resumed[0], post.saturation])
 	print("SMOKE_PASS ", ID)
 	get_tree().quit(0)

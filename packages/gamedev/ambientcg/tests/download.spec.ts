@@ -202,4 +202,24 @@ describe('writeDownload', () => {
     expect((await listing(root)).filter(name => !name.startsWith('tmp'))).toEqual([])
     expect(await listing(temporary)).toEqual([])
   })
+
+  it('leaves no folder behind when a download into a new folder fails or is cancelled', async () => {
+    // A remembered directory lets the pictures' folder be made before the archive is fetched, as on a second download.
+    await writeDownload(WOOD, ARCHIVE, join(root, 'first'), options())
+    const failing = options({ open: () => Promise.reject(new Error('Could not reach ambientCG at ambientcg.com for the archive: fetch failed')) })
+    await expect(writeDownload(WOOD, ARCHIVE, join(root, 'assets', 'ambientcg', 'Wood099'), failing)).rejects.toThrow('fetch failed')
+    const controller = new AbortController()
+    const cancelled = options({ signal: controller.signal, open: () => { controller.abort(); return Promise.reject(new Error('cancelled')) } })
+    await expect(writeDownload(WOOD, ARCHIVE, join(root, 'assets', 'ambientcg', 'Wood099'), cancelled)).rejects.toThrow()
+    expect((await readdir(root)).sort()).toEqual(['first', 'tmp'])
+  })
+
+  it('refuses an archive whose pictures differ only in letter case before anything is written', async () => {
+    const colliding = zipped({ 'Wood099_1K-JPG_Color.jpg': 'upper', 'wood099_1k-jpg_color.jpg': 'lower' })
+    const archive = { ...ARCHIVE, size: colliding.byteLength }
+    await expect(writeDownload(WOOD, archive, join(root, 'wood'), options({ body: colliding, headers: {} }))).rejects.toThrow(
+      'The files Wood099_1K-JPG_Color.jpg and wood099_1k-jpg_color.jpg would be one file in the download folder, since macOS and Windows ignore letter case in file names; the download stopped.')
+    expect((await readdir(root)).sort()).toEqual(['tmp'])
+    expect(await listing(temporary)).toEqual([])
+  })
 })

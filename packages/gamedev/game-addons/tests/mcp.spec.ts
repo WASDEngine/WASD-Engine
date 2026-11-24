@@ -18,7 +18,7 @@ async function host(): Promise<{ host: GameAddonToolHost; catalog: Awaited<Retur
   const catalog = await loadCatalog(await writeCatalog(dir.root))
   // The provider reads only the catalog; the calls below stop in preparation, before the manager would run.
   const guides = new Map([['test-look', { name: 'test-look', description: 'Make a game look finished.', body: '# Look\n', folder: dir.root }]])
-  return { catalog, host: { manager: { catalog } as GameAddonToolHost['manager'], guides, project: requested => Promise.resolve(requested ?? '/none') } }
+  return { catalog, host: { manager: { catalog } as GameAddonToolHost['manager'], guides, resultChars: 8192, project: requested => Promise.resolve(requested ?? '/none') } }
 }
 
 describe('gameAddonMcpProvider', () => {
@@ -33,7 +33,9 @@ describe('gameAddonMcpProvider', () => {
     expect(parameters.properties.project.description).toMatch(/^Absolute path/u)
     const call = { client: { id: 'claude-code', title: 'Claude Code' }, signal: new AbortController().signal, session: vi.fn(), reveal: vi.fn() }
     await expect(tool!.prepare!({ action: 'search', project: 'relative' }, call)).rejects.toThrow(/project must be an absolute path/u)
+    await expect(tool!.prepare!({ action: 'search', project: 'relative' }, call)).rejects.toMatchObject({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
     await expect(tool!.prepare!({ action: 'install', id: 'x' }, call)).rejects.toThrow(/action install needs project/u)
+    await expect(tool!.prepare!({ action: 'install', id: 'x' }, call)).rejects.toMatchObject({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
     expect(await tool!.prepare!({ action: 'search', query: 'camera' }, call)).toEqual({ args: { action: 'search', query: 'camera' } })
     expect(await tool!.prepare!({ action: 'remove', id: 'x', project: '/games/a' }, call)).toEqual({ args: { action: 'remove', id: 'x', project: '/games/a' } })
     expect(call.session).not.toHaveBeenCalled()

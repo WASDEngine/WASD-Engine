@@ -1921,6 +1921,12 @@ export interface Config {
   /** Time limit of one archive download, including its body. */
   downloadTimeoutMs: number
   /**
+   * Most Unicode code points of a `game_addons` result that stays whole: a guide brings the `references/` files it
+   * links, and a search with filters alone describes its matches in full, only within it. Keep it at the
+   * `thresholdChars` of the profile's tool-result pruner, which trims a longer result once a Session's context fills.
+   */
+  resultChars: number
+  /**
    * Whether agents may use each catalog add-on, by id; an add-on without an entry is on. The Add-ons dialog's switches
    * write it while the app runs, and a change applies to the next model step and tool call.
    */

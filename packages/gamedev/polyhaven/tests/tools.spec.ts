@@ -179,8 +179,8 @@ describe('polyhaven_download', () => {
     const failed = await callTool(damaged, 'polyhaven_download', { id: 'WoodenChair_01' })
     expect(failed.isError).toBe(true)
     expect(text(failed)).toContain('WoodenChair_01.bin arrived damaged: its MD5 digest differs from Poly Haven\'s; the download stopped.')
-    expect(await readdir(damaged.work)).toEqual(['assets'])
-    expect(await files(damaged.work)).toEqual([])
+    // Nor does it leave the folders it created for the files.
+    expect(await readdir(damaged.work)).toEqual([])
   })
 })
 

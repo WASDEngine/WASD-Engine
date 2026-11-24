@@ -2,10 +2,11 @@ extends Node3D
 ## WASD Materials smoke test (render run on the Compatibility renderer, the one every Web build uses): surfaces by
 ## name draw in their own colors with a pattern, take a color, a size, and other options, and share one picture; a
 ## folder of downloaded textures and a single picture become materials laid out from three sides; the toon look has
-## its outline, glass lets what is behind it through, glow glows; paint() reaches meshes and CSG shapes; and a
-## human whose materials all came in see-through is put right: skin, eyes of any color, teeth, lashes and brows
-## that cast no shadow, and hair each get their shader, cloth with holes is cut out, and the inside of a proxy's
-## mouth stays dark.
+## its outline, glass lets what is behind it through, glow glows; a cut-out seen from behind is lit like its front;
+## paint() reaches meshes and CSG shapes and leaves a WASD Light halo alone; a human whose materials all came in
+## see-through is put right: skin, eyes of any color, teeth, lashes and brows that cast no shadow, and hair each get
+## their shader, curls without a band of light, cloth with holes is cut out, and the inside of a proxy's mouth stays
+## dark; and matte skin has no black specks.
 
 const ID := "wasd-materials"
 
@@ -159,6 +160,26 @@ func _run() -> void:
 	wall.visible = true
 	if cut.g < 0.1 or cut.b < 0.2 or cut.r > cut.g:
 		return _fail("a cut-out of green over blue draws as %s" % [cut])
+	# Seen from behind, a cut-out takes the light that falls on the side the camera sees, as a double-sided material
+	# does: a white card turned round is lit by the sun behind the camera as brightly as one that faces it.
+	var white_picture := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+	white_picture.fill(Color.WHITE)
+	var white_cut := ShaderMaterial.new()
+	white_cut.shader = WasdSurface.CUTOUT_SHADER
+	white_cut.set_shader_parameter(&"color_map", ImageTexture.create_from_image(white_picture))
+	white_cut.set_shader_parameter(&"opacity_map", ImageTexture.create_from_image(white_picture))
+	var sides := {}
+	for turn: float in [0.0, 180.0]:
+		var side := MeshInstance3D.new()
+		side.mesh = quad
+		side.position = Vector3(0, 1.5, 0.3)
+		side.rotation_degrees.y = turn
+		side.material_override = white_cut
+		add_child(side)
+		sides[turn] = ((await _look_at_wall("cutout_%d.png" % [turn]))["color"] as Color).get_luminance()
+		side.queue_free()
+	if sides[180.0] < sides[0.0] * 0.9:
+		return _fail("a white cut-out shows %f from the front and %f from behind, in the same light" % [sides[0.0], sides[180.0]])
 	var by_uv := WasdSurface.from_folder("res://wasd_smoke/stone", {"uv": true})
 	var relief := WasdSurface.from_picture(stone.albedo_texture, {"with_object": true})
 	if by_uv.uv1_triplanar or not relief.normal_enabled or relief.normal_texture == null or relief.uv1_world_triplanar or not relief.uv1_triplanar:
@@ -190,7 +211,8 @@ func _run() -> void:
 	if not lamp.emission_enabled or lamp.emission_energy_multiplier != 4.0:
 		return _fail("glow has emission %s at %f" % [lamp.emission_enabled, lamp.emission_energy_multiplier])
 
-	# 6. paint() reaches every mesh and CSG shape under a node.
+	# 6. paint() reaches every mesh and CSG shape under a node, and leaves alone what a WASD add-on's node draws, such as
+	# a halo of WASD Light.
 	var house := Node3D.new()
 	add_child(house)
 	var part := MeshInstance3D.new()
@@ -198,10 +220,13 @@ func _run() -> void:
 	house.add_child(part)
 	var block := CSGBox3D.new()
 	house.add_child(block)
+	var halo := WasdHalo3D.new()
+	house.add_child(halo)
+	var halo_material := halo.material_override
 	house.position = Vector3(0, -50, 0)
 	WasdSurface.paint(house, bricks)
-	if part.material_override != bricks or block.material != bricks:
-		return _fail("paint() left %s on the mesh and %s on the CSG box" % [part.material_override, block.material])
+	if part.material_override != bricks or block.material != bricks or halo.material_override != halo_material:
+		return _fail("paint() left %s on the mesh, %s on the CSG box, and %s on the halo" % [part.material_override, block.material, halo.material_override])
 
 	# 7. A human whose materials all came in see-through: skin, eyes, teeth, lashes, brows, and hair get their
 	# shaders, whole cloth becomes solid, and cloth with holes is cut out. Brown eyes are eyes, not brows.
@@ -282,6 +307,22 @@ func _run() -> void:
 			"Human_long01": WasdSurface.HAIR_SHADER, "Human_skirt": null, "Human_shirt": null}
 	if shaders != shaded:
 		return _fail("the human's parts have the shaders %s" % [shaders])
+	# Hair whose material says it curls, as the mpfb guide's humans name it, takes no band of light; other hair does.
+	var curly := MeshInstance3D.new()
+	curly.name = "Curly"
+	var curly_ball := SphereMesh.new()
+	curly_ball.material = StandardMaterial3D.new()
+	curly_ball.material.resource_name = "Curly.hair_afro01_curly"
+	curly.mesh = curly_ball
+	var curly_human := Node3D.new()
+	curly_human.position = Vector3(0, -50, 0)
+	curly_human.add_child(curly)
+	add_child(curly_human)
+	WasdSurface.human(curly_human)
+	var curls := curly.get_active_material(0) as ShaderMaterial
+	var long_hair := (parts["Human_long01"] as MeshInstance3D).get_active_material(0) as ShaderMaterial
+	if curls == null or curls.get_shader_parameter(&"straightness") != 0.0 or long_hair.get_shader_parameter(&"straightness") != 1.0:
+		return _fail("curly hair is drawn as %s, and long hair has the straightness %s" % [curls, long_hair.get_shader_parameter(&"straightness")])
 	# A card of lashes or brows casts no shadow: it would lie on the lid as a solid band.
 	var casting := [(parts["Human_eyelashes01"] as MeshInstance3D).cast_shadow, (parts["Human_eyebrow001"] as MeshInstance3D).cast_shadow, (parts["Human_long01"] as MeshInstance3D).cast_shadow]
 	if casting != [GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, GeometryInstance3D.SHADOW_CASTING_SETTING_ON]:
@@ -328,5 +369,30 @@ func _run() -> void:
 		drawn[kind] = (await _look_at_wall(kind + ".png"))["color"]
 		if (drawn[kind] as Color).r < (drawn[kind] as Color).b * 1.3 or (drawn[kind] as Color).r < 0.05:
 			return _fail("the %s shader draws %s" % [kind, drawn[kind]])
+	# Matte pale skin lit from the side has no black specks, where its highlight would raise 0 to the power 0.
+	wall.visible = false
+	var skin_picture := Image.create(4, 4, false, Image.FORMAT_RGB8)
+	skin_picture.fill(Color(0.9, 0.9, 0.9))
+	var ball := MeshInstance3D.new()
+	ball.mesh = SphereMesh.new()
+	ball.position = Vector3(0, 1.5, 2.6)
+	ball.material_override = WasdSurface.skin(ImageTexture.create_from_image(skin_picture), {"roughness": 1.0})
+	add_child(ball)
+	sun.rotation_degrees = Vector3(0, 90, 0)
+	for _frame: int in 4:
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var matte := get_viewport().get_texture().get_image()
+	matte.save_png(ProjectSettings.globalize_path("res://wasd_smoke/matte_skin.png"))
+	var to_picture := Vector2(matte.get_size()) / get_viewport().get_visible_rect().size
+	var middle := camera.unproject_position(ball.position) * to_picture
+	var radius := camera.unproject_position(ball.position + Vector3(0.45, 0, 0)).x * to_picture.x - middle.x
+	var specks := 0
+	for y: int in range(int(middle.y - radius), int(middle.y + radius)):
+		for x: int in range(int(middle.x - radius), int(middle.x + radius)):
+			if Vector2(x, y).distance_to(middle) < radius and matte.get_pixel(x, y).get_luminance() < 0.02:
+				specks += 1
+	if specks > 0:
+		return _fail("matte skin shows %d black specks" % [specks])
 	print("SMOKE_PASS ", ID)
 	get_tree().quit(0)

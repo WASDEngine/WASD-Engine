@@ -15,17 +15,29 @@ import { dirname, join } from 'node:path'
 import type { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { open as openZip, type Entry, type ZipFile } from 'yauzl'
-import type { GameAddonArchive } from './types.ts'
 import { unpackedFolder } from '@deepseek-ai/dsh-app-mcp'
+import { GameAddonError, type GameAddonErrorCode } from './errors.ts'
+import type { GameAddonArchive } from './types.ts'
 
 /** Archive entries that are never installed: macOS resource forks and Finder metadata. */
 function isMetadata(name: string): boolean {
   return name.split('/').some(segment => segment === '__MACOSX' || segment === '.DS_Store')
 }
 
-/** An archive that could not be downloaded, did not match its pin, or could not be unpacked. */
-export class GameAddonArchiveError extends Error {
-  override name = 'GameAddonArchiveError'
+/**
+ * An archive that could not be downloaded (`GAME_ADDON_DOWNLOAD_FAILED`), that did not match its pin or could not be
+ * unpacked safely (`GAME_ADDON_ARCHIVE_CORRUPT`), or that its catalog entry no longer fits (`GAME_ADDON_CATALOG_INVALID`).
+ */
+export class GameAddonArchiveError extends GameAddonError {
+  /**
+   * @param message - what failed and with which archive.
+   * @param code - the failure's code.
+   * @param options - the failure's cause.
+   */
+  constructor(message: string, code: GameAddonErrorCode, options?: ErrorOptions) {
+    super(message, code, options)
+    this.name = 'GameAddonArchiveError'
+  }
 }
 
 /** How archives are downloaded. */
@@ -60,7 +72,6 @@ export function bundledArchivesDir(packageRoot: string): string {
   return unpackedFolder(packageRoot, 'archives')
 }
 
-/** Whether a file exists with the given size; false for a missing one. */
 /**
  * Whether a file is the pinned archive: its size and, read whole, its SHA-256. A cached or shipped archive is checked
  * each time it is used, so one that changed since it was checked, such as a cache that another program wrote, is never
@@ -103,10 +114,10 @@ export async function cachedArchive(archive: GameAddonArchive, downloads: Archiv
       response = await downloads.fetch(archive.url, signal)
     } catch (error) {
       signal.throwIfAborted()
-      throw new GameAddonArchiveError(`Downloading ${archive.url} failed: ${(error as Error).message}`)
+      throw new GameAddonArchiveError(`Downloading ${archive.url} failed: ${(error as Error).message}`, 'GAME_ADDON_DOWNLOAD_FAILED', { cause: error })
     }
     if (!response.ok || response.body === null) {
-      throw new GameAddonArchiveError(`Downloading ${archive.url} failed with HTTP ${response.status}.`)
+      throw new GameAddonArchiveError(`Downloading ${archive.url} failed with HTTP ${response.status}.`, 'GAME_ADDON_DOWNLOAD_FAILED')
     }
     const hash = createHash('sha256')
     let bytes = 0
@@ -116,17 +127,17 @@ export async function cachedArchive(archive: GameAddonArchive, downloads: Archiv
       for await (const chunk of response.body) {
         signal.throwIfAborted()
         bytes += chunk.byteLength
-        if (bytes > archive.bytes) throw new GameAddonArchiveError(`${archive.url} is larger than the ${archive.bytes} bytes the catalog pins; the download stopped.`)
+        if (bytes > archive.bytes) throw new GameAddonArchiveError(`${archive.url} is larger than the ${archive.bytes} bytes the catalog pins; the download stopped.`, 'GAME_ADDON_ARCHIVE_CORRUPT')
         hash.update(chunk)
         await file.write(chunk)
       }
     } finally {
       await file.close()
     }
-    if (bytes !== archive.bytes) throw new GameAddonArchiveError(`${archive.url} arrived with ${bytes} bytes, but the catalog pins ${archive.bytes}.`)
+    if (bytes !== archive.bytes) throw new GameAddonArchiveError(`${archive.url} arrived with ${bytes} bytes, but the catalog pins ${archive.bytes}.`, 'GAME_ADDON_ARCHIVE_CORRUPT')
     const digest = hash.digest('hex')
     if (digest !== archive.sha256) {
-      throw new GameAddonArchiveError(`${archive.url} does not match the SHA-256 the catalog pins (got ${digest}); it was not installed.`)
+      throw new GameAddonArchiveError(`${archive.url} does not match the SHA-256 the catalog pins (got ${digest}); it was not installed.`, 'GAME_ADDON_ARCHIVE_CORRUPT')
     }
     await rename(temporary, target)
     return { path: target, bundled: false }
@@ -151,8 +162,8 @@ function readerError(archivePath: string, error: unknown): Error {
   if (error instanceof GameAddonArchiveError || (error instanceof Error && error.name === 'AbortError')) return error
   const message = error instanceof Error ? error.message : String(error)
   const unsafe = UNSAFE_NAME.exec(message)
-  if (unsafe !== null) return new GameAddonArchiveError(`The archive entry ${unsafe[1] as string} would leave the add-on folder; nothing was installed.`)
-  return new GameAddonArchiveError(`${archivePath} is not a readable zip archive: ${message}`)
+  if (unsafe !== null) return new GameAddonArchiveError(`The archive entry ${unsafe[1] as string} would leave the add-on folder; nothing was installed.`, 'GAME_ADDON_ARCHIVE_CORRUPT', { cause: error })
+  return new GameAddonArchiveError(`${archivePath} is not a readable zip archive: ${message}`, 'GAME_ADDON_ARCHIVE_CORRUPT', { cause: error })
 }
 
 /** Open an archive for reading its entries one at a time. */
@@ -234,7 +245,7 @@ export async function unpackFolder(
       const name = entry.fileName
       if (name.endsWith('/') || isMetadata(name) || !name.startsWith(prefix)) continue
       const relative = safeRelative(name.slice(prefix.length))
-      if (relative === undefined || relative === '') throw new GameAddonArchiveError(`The archive entry ${name} would leave the add-on folder; nothing was installed.`)
+      if (relative === undefined || relative === '') throw new GameAddonArchiveError(`The archive entry ${name} would leave the add-on folder; nothing was installed.`, 'GAME_ADDON_ARCHIVE_CORRUPT')
       const left = omit.exclude?.find(path => under(relative, path))
       if (left !== undefined) {
         excluded.add(left)
@@ -244,8 +255,8 @@ export async function unpackFolder(
       selected.push({ entry, relative })
     }
     const unmatched = (omit.exclude ?? []).filter(path => !excluded.has(path))
-    if (unmatched.length > 0) throw new GameAddonArchiveError(`The archive has nothing at ${unmatched.join(', ')} under ${where}, which its catalog entry leaves out; the entry no longer fits the archive.`)
-    if (selected.length === 0) throw new GameAddonArchiveError(`The archive has no files under ${where}.`)
+    if (unmatched.length > 0) throw new GameAddonArchiveError(`The archive has nothing at ${unmatched.join(', ')} under ${where}, which its catalog entry leaves out; the entry no longer fits the archive.`, 'GAME_ADDON_CATALOG_INVALID')
+    if (selected.length === 0) throw new GameAddonArchiveError(`The archive has no files under ${where}.`, 'GAME_ADDON_CATALOG_INVALID')
     await mkdir(destination, { recursive: false })
     for (const { entry, relative } of selected) {
       signal.throwIfAborted()
@@ -283,5 +294,5 @@ export async function readArchiveFile(archivePath: string, name: string): Promis
   } finally {
     zipfile.close()
   }
-  throw new GameAddonArchiveError(`The archive has no file ${name}.`)
+  throw new GameAddonArchiveError(`The archive has no file ${name}.`, 'GAME_ADDON_CATALOG_INVALID')
 }

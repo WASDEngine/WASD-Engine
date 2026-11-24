@@ -25,7 +25,7 @@ It gives the object a new UV map without overlaps (Smart UV Project), bakes each
 
 | Map | Holds |
 |---|---|
-| `color` | each material's Base Color, metals included |
+| `color` | each material's Principled BSDF Base Color, metals included; a material without one is refused |
 | `roughness`, `metallic` | those inputs |
 | `normal` | the relief that Bump and Normal Map nodes give the materials |
 | `emission` | what glows |
@@ -38,7 +38,7 @@ It gives the object a new UV map without overlaps (Smart UV Project), bakes each
 - `replace_materials=False` only makes the images.
 - The dict's `range` gives each image's darkest and brightest value: `metallic` at `(0, 0)` means nothing is metal, and a `normal` that barely leaves 0.5 means the materials have no relief, so leave such maps out next time.
 
-Bake one object at a time. Join parts that share a texture first, and apply modifiers that change the shape.
+Bake one object at a time. Join parts that share a texture first, and apply modifiers that change the shape. Bake each model once, with every map it needs: its own materials are gone afterwards, and a second `textures()` on it is refused. Take a `checkpoint` before baking: `undo` is the way back to them.
 
 ## Detail from a high-poly model
 
@@ -51,6 +51,7 @@ The simple model must lie where the detailed one does. Its relief becomes a norm
 - `extrusion` (0.05 m): how far outside the low model the rays start. Raise it when parts of the detail are missed and come out flat; lower it when neighboring parts bleed in.
 - Give the low model smooth shading first (`bpy.ops.object.shade_smooth()`), or its facets show through the normal map.
 - `high` may be a list of objects.
+- A low model baked before keeps the maps of that bake that `maps` leaves out. Those of an earlier `from_high` come again from the detailed model, so run it again to change `extrusion`; those of `textures()` stay as they are, on their UV map. `textures(low, maps=("color",))` and then `from_high(low, high, maps=("normal",))` give a model its own colors and the detail's relief; the dict's `kept` names what stayed.
 
 ## Occlusion in vertex colors
 
@@ -58,12 +59,12 @@ The simple model must lie where the detailed one does. Its relief becomes a norm
 print(bake.vertex_ao("Tree"))
 ```
 
-It bakes ambient occlusion into a color attribute and multiplies it into each material's base color, which makes glTF export it and Godot shade with it: no texture, no UV map. It shades only as finely as the mesh is divided, so it suits models of many small faces with plain colors, such as low-poly trees, rocks, and buildings, not a box of twelve triangles.
+It bakes ambient occlusion into a color attribute and multiplies it into each material's base color, which makes glTF export it and Godot shade with it: no texture, no UV map. A material that other objects without such an attribute show too is copied first, and the objects baked after it that show that material share the copy. It shades only as finely as the mesh is divided, so it suits models of many small faces, such as low-poly trees, rocks, and buildings, not a box of twelve triangles.
 
 ## Pitfalls
 
 - Bake after the model's shape is final: moving a vertex afterwards leaves the texture where it was.
 - Baked images are colors under no light. Lights in the Blender scene do not go into them; only `ao` shades.
 - Other objects close by darken the `ao` of the one being baked. Move it apart, or hide the others from rendering.
-- A model with image textures on good UVs needs no bake, only `ao`: `bake.textures(obj, maps=("color", "ao"), unwrap=False)` keeps its UV map and darkens its color.
+- A model with image textures on good UVs needs no texture bake: `vertex_ao` shades its creases as finely as its mesh is divided and keeps its materials whole, while `textures()` would give it one material of only the maps it bakes.
 - Look with render_preview in material mode after the bake, and at the model in Godot with `asset_view` after export.

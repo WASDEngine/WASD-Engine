@@ -1,6 +1,8 @@
 /**
  * The `game_addons` tool as the Session's agent calls it through the real tool runtime and executor, with an approval
- * service under the `ask` policy that records every question: the agent installs and removes add-ons without one.
+ * service under the `ask` policy that records every question: the agent installs and removes add-ons without one. Its
+ * searches keep to the application a query names and give every match of filters alone, its guide results stay within
+ * the result limit, and its failures carry their class and code.
  */
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -13,17 +15,20 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
-import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { type ToolErrorInfo, type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadCatalog, loadGuides } from '../src/catalog.ts'
 import { GameAddonManager } from '../src/manager.ts'
 import { MCP_WORDING } from '../src/mcp.ts'
 import { gameAddonToolDefinition, SESSION_WORDING, TOOL_NAME, type GameAddonToolWording } from '../src/tools.ts'
-import { fakeDownloads, guideText, scratch, URLS, writeCatalog, writeProject, type Scratch } from './fixtures.ts'
+import { editableCatalogEntries, fakeDownloads, guideText, scratch, URLS, writeCatalog, writeProject, type Scratch } from './fixtures.ts'
 
 let dir: Scratch | undefined
 let ctx: Context | undefined
+
+/** The `resultChars` of the plugin's default Config, which the tool of these specs keeps its results within. */
+const RESULT_CHARS = 8192
 
 afterEach(async () => {
   await ctx?.fiber.dispose()
@@ -87,6 +92,7 @@ async function setup(wording: GameAddonToolWording = SESSION_WORDING, options: S
   ctx.tools.register(gameAddonToolDefinition({
     manager,
     guides,
+    resultChars: RESULT_CHARS,
     project: async (requested) => {
       if (requested === undefined || requested === 'game') return project
       throw new Error(`No project.godot in ${requested}.`)
@@ -116,6 +122,16 @@ function text(result: ToolExecutionResult): string {
   return result.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
 }
 
+/** The class and code that a failed call records. */
+function failure(result: ToolExecutionResult): ToolErrorInfo | undefined {
+  return result.isError ? result.error.info : undefined
+}
+
+/** The length of a text in Unicode code points. */
+function codePoints(value: string): number {
+  return Array.from(value).length
+}
+
 describe('game_addons', () => {
   it('tells the model what kinds of add-ons there are and to install what the game needs without asking the user', async () => {
     await setup()
@@ -131,13 +147,13 @@ describe('game_addons', () => {
     const result = await call(state, { action: 'search', query: 'camera smoothing' })
     expect(result.isError).toBe(false)
     expect(text(result)).toBe([
-      '2 matching add-ons for ' + state.project + ':',
-      '- test-camera: Test Camera 1.2.0 (Godot, MIT, 1 KB) [not installed]',
+      '2 matching add-ons:',
+      '- test-camera: Test Camera 1.2.0 (Godot, MIT, 1 KB)',
       '  Virtual cameras that follow and frame targets.',
       '  Use when: The camera must follow a moving target with smoothing.',
       '  Skip when: A fixed Camera2D is enough.',
       '  Instead of: other-camera',
-      '- other-camera: Other Camera 0.1 (Godot, MIT, 1 KB) [not installed]',
+      '- other-camera: Other Camera 0.1 (Godot, MIT, 1 KB)',
       '  Another camera add-on.',
       '  Use when: Never in tests.',
       '  Instead of: test-camera',
@@ -169,18 +185,87 @@ describe('game_addons', () => {
   it('describes one add-on for its id, and a category\'s add-ons for the category', async () => {
     const state = await setup()
     const named = text(await call(state, { action: 'search', query: 'other-camera' }))
-    expect(named).toContain(`1 matching add-on for ${state.project}:\n- other-camera: Other Camera 0.1`)
+    expect(named).toContain('1 matching add-on:\n- other-camera: Other Camera 0.1')
     expect(named).not.toContain('- test-camera:')
     const category = text(await call(state, { action: 'search', category: 'camera' }))
-    expect(category).toContain(`2 matching add-ons for ${state.project}:`)
+    expect(category).toContain('2 matching add-ons:')
     expect(category).not.toContain('test-trees')
     expect(text(await call(state, { action: 'search', category: 'testing' }))).toContain('No catalog add-on matches.')
+  })
+
+  it('keeps to the add-ons of the application that a query names, and gives the index for a query of common words alone', async () => {
+    const state = await setup()
+    for (const query of ['blender', 'blender add-ons', 'Blender addons', 'an add-on for Blender']) {
+      const blender = text(await call(state, { action: 'search', query }))
+      expect(blender, query).toMatch(/^2 matching add-ons:\n- test-rig: Test Rig 5\.2\.3 \(Blender,/u)
+      expect(blender, query).toContain('\n- test-trees: Test Trees 2.0.0 (Blender,')
+      expect(blender, query).not.toContain('camera')
+    }
+    const godot = text(await call(state, { action: 'search', query: 'godot plugin' }))
+    expect(godot).toMatch(/^2 matching add-ons:\n- other-camera: /u)
+    expect(godot).toContain('\n- test-camera: ')
+    // Beside words that rank, the application still filters, and an explicit host wins over the query's.
+    expect(text(await call(state, { action: 'search', query: 'blender rigging' }))).toMatch(/^1 matching add-on:\n- test-rig: /u)
+    expect(text(await call(state, { action: 'search', query: 'blender camera' }))).toContain('No catalog add-on matches.')
+    expect(text(await call(state, { action: 'search', host: 'godot', query: 'blender' }))).toMatch(/^2 matching add-ons:\n- other-camera: /u)
+    // A query of common words, or one that names both applications, narrows nothing.
+    for (const query of ['game', 'add-ons', 'a plugin for my game', 'godot blender']) {
+      expect(text(await call(state, { action: 'search', query })), query).toMatch(/^The catalog's 4 add-ons for .*, under their categories/u)
+    }
+  })
+
+  /** The numbers of the camera add-ons that {@link manyCameras} adds. */
+  const CAMERA_NUMBERS = Array.from({ length: 12 }, (_, index) => index + 1)
+
+  /** Twelve more camera add-ons, each described at the lengths the catalog allows, more than one result describes. */
+  async function manyCameras(catalogDir: string): Promise<void> {
+    for (const number of CAMERA_NUMBERS) {
+      const id = `camera-${String(number)}`
+      const entry = editableCatalogEntries()['other-camera'] as Record<string, unknown>
+      delete entry.conflicts
+      delete entry.credit
+      Object.assign(entry, {
+        id,
+        title: `Camera ${String(number)}`,
+        summary: 'Frames a moving target with smoothing and dead zones, '.repeat(4).slice(0, 200),
+        useWhen: 'The camera must follow a moving target and keep it framed, '.repeat(6).slice(0, 300),
+        avoidWhen: 'A fixed camera or one Camera3D child of the player is enough, '.repeat(6).slice(0, 300),
+        godot: { addonDir: `camera_${String(number)}`, plugin: 'plugin.cfg' },
+      })
+      await mkdir(join(catalogDir, id))
+      await writeFile(join(catalogDir, id, 'addon.json'), `${JSON.stringify(entry, null, 2)}\n`)
+      await writeFile(join(catalogDir, id, 'SKILL.md'), guideText(id))
+    }
+  }
+
+  it('gives every match of a search with filters alone, in full when they fit in one result and else under their category', async () => {
+    const state = await setup(SESSION_WORDING, { catalog: manyCameras })
+    expect((await call(state, { action: 'install', id: 'test-camera' })).isError).toBe(false)
+    const cameras = text(await call(state, { action: 'search', category: 'camera' }))
+    expect(cameras).toBe([
+      `The 14 matching add-ons for ${state.project}, too many to describe in one result, under their categories, with what each is for:`,
+      'Camera and game feel (camera)',
+      // The catalog orders add-ons by title.
+      ...[...CAMERA_NUMBERS].sort((a, b) => `Camera ${String(a)}`.localeCompare(`Camera ${String(b)}`, 'en')).map(number => `- camera-${String(number)}: another camera add-on`),
+      '- other-camera: another camera add-on',
+      '- test-camera: cameras that follow and frame targets [installed]',
+      'Search with an add-on\'s id, or add words, for when it helps, when to skip it, its size, license, and conflicts; read its guide with action guide, or install it with action install.',
+    ].join('\n'))
+    // The matches in full would not fit, so none of them comes in full.
+    expect(codePoints(cameras)).toBeLessThanOrEqual(RESULT_CHARS)
+    expect(text(await call(state, { action: 'search', stage: 'prototype' }))).toMatch(/^1 matching add-on:\n- test-camera: Test Camera 1\.2\.0 \(Godot, MIT, 1 KB\) \[installed\]\n/u)
+    const blender = text(await call(state, { action: 'search', host: 'blender' }))
+    expect(blender).toMatch(/^2 matching add-ons:\n- test-rig: /u)
+    // Words to rank by still give the best matches in full.
+    expect(text(await call(state, { action: 'search', category: 'camera', query: 'camera' }))).toMatch(/^The best 8 of 14 matching add-ons; narrow the search/u)
   })
 
   it('shows a guide, noting when the project does not have the add-on yet', async () => {
     const state = await setup()
     expect(text(await call(state, { action: 'guide', id: 'test-trees' }))).toBe('Test Trees is not installed in this project; install it with action install before following this guide.\n\n# test-trees\n\nUse it like this.')
-    expect(text(await call(state, { action: 'guide' }))).toContain('action guide needs id')
+    const noId = await call(state, { action: 'guide' })
+    expect(text(noId)).toContain('action guide needs id')
+    expect(failure(noId)).toEqual({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
   })
 
   /** A Blender guide that links a file of its folder and names a Blender tool as a Session lists it. */
@@ -201,6 +286,55 @@ describe('game_addons', () => {
       '# Kinds',
       'Oak and birch; preview them with `mcp__wasd_blender__render_preview`.',
     ].join('\n\n'))
+  })
+
+  /** The start of the test trees' guide result, before the files it links: the note on its absence and its text. */
+  const TREES_HEAD = 'Test Trees is not installed in this project; install it with action install before following this guide.\n\n# test-trees\n\nUse it like this.'
+
+  /** A guide that links a short file and a long one, which do not both fit beside it in one result. */
+  async function longLinks(catalogDir: string): Promise<void> {
+    await writeFile(join(catalogDir, 'test-trees', 'SKILL.md'), guideText('test-trees', '\n\nThe kinds are in [references/kinds.md](references/kinds.md), the bark in [references/bark.md](references/bark.md).'))
+    await mkdir(join(catalogDir, 'test-trees', 'references'))
+    await writeFile(join(catalogDir, 'test-trees', 'references', 'kinds.md'), 'Oak and birch; preview them with `mcp__wasd_blender__render_preview`.\n')
+    await writeFile(join(catalogDir, 'test-trees', 'references', 'bark.md'), `${'Rough oak bark. '.repeat(520)}\n`)
+  }
+
+  it('keeps a guide with the files it links within the result limit, and shows a file that did not fit by its reference', async () => {
+    const state = await setup(MCP_WORDING, { catalog: longLinks })
+    const guide = text(await call(state, { action: 'guide', id: 'test-trees' }))
+    expect(guide).toBe([
+      TREES_HEAD,
+      'The kinds are in [references/kinds.md](references/kinds.md), the bark in [references/bark.md](references/bark.md).',
+      'The file references/kinds.md, which this guide links:',
+      'Oak and birch; preview them with `blender_render_preview`.',
+      'The file references/bark.md, which this guide links, did not fit in this result; read it with action guide, id test-trees, and reference references/bark.md.',
+    ].join('\n\n'))
+    expect(text(await call(state, { action: 'guide', id: 'test-trees', reference: 'references/bark.md' })))
+      .toBe(`The file references/bark.md, which the guide test-trees links:\n\n${'Rough oak bark. '.repeat(520).trim()}`)
+    expect(text(await call(state, { action: 'guide', id: 'test-trees', reference: 'references/kinds.md' })))
+      .toBe('The file references/kinds.md, which the guide test-trees links:\n\nOak and birch; preview them with `blender_render_preview`.')
+    const unknown = await call(state, { action: 'guide', id: 'test-trees', reference: 'references/leaves.md' })
+    expect(text(unknown)).toContain('the guide test-trees links no file "references/leaves.md"; it links references/kinds.md, references/bark.md.')
+    expect(failure(unknown)).toEqual({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
+    expect(failure(await call(state, { action: 'guide', id: 'test-camera', reference: 'references/kinds.md' }))).toEqual({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
+  })
+
+  it('counts the result limit in code points, keeping a linked file that fills it exactly', async () => {
+    const state = await setup(SESSION_WORDING, { catalog: async (catalogDir) => {
+      await writeFile(join(catalogDir, 'test-trees', 'SKILL.md'), guideText('test-trees', '\n\nThe bark is in [references/bark.md](references/bark.md).'))
+      await mkdir(join(catalogDir, 'test-trees', 'references'))
+      await writeFile(join(catalogDir, 'test-trees', 'references', 'bark.md'), 'Bark.\n')
+    } })
+    const bark = join(dir!.root, 'catalog', 'test-trees', 'references', 'bark.md')
+    const shown = `${TREES_HEAD}\n\nThe bark is in [references/bark.md](references/bark.md).\n\nThe file references/bark.md, which this guide links:\n\n`
+    // Each tree is one code point and two UTF-16 units, so only a count in code points lets the file in.
+    const room = RESULT_CHARS - codePoints(shown)
+    await writeFile(bark, '🌳'.repeat(room))
+    const full = text(await call(state, { action: 'guide', id: 'test-trees' }))
+    expect(full).toBe(`${shown}${'🌳'.repeat(room)}`)
+    expect(codePoints(full)).toBe(RESULT_CHARS)
+    await writeFile(bark, '🌳'.repeat(room + 1))
+    expect(text(await call(state, { action: 'guide', id: 'test-trees' }))).toMatch(/did not fit in this result; read it with action guide, id test-trees, and reference references\/bark\.md\.$/u)
   })
 
   it('names the Blender tools as a connected agent calls them, in guides and in a Blender add-on\'s installation note', async () => {
@@ -280,7 +414,7 @@ describe('game_addons', () => {
     state.off.add('test-camera')
     const refusal = 'The user turned Test Camera (test-camera) off in WASD Engine\'s Add-ons dialog, so agents cannot use it. Do the work without it, or ask the user to turn it on there.'
     const search = text(await call(state, { action: 'search', query: 'camera smoothing' }))
-    expect(search).toContain(`1 matching add-on for ${state.project}:\n- other-camera: Other Camera 0.1 (Godot, MIT, 1 KB) [not installed]\n`)
+    expect(search).toContain('1 matching add-on:\n- other-camera: Other Camera 0.1 (Godot, MIT, 1 KB)\n')
     expect(search).not.toContain('- test-camera:')
     const guide = await call(state, { action: 'guide', id: 'test-camera' })
     expect(guide.isError).toBe(true)
@@ -295,7 +429,20 @@ describe('game_addons', () => {
 
   it('reports an unknown id and a missing project as tool errors', async () => {
     const state = await setup()
-    expect(text(await call(state, { action: 'install', id: 'nope' }))).toContain('No catalog add-on has the id "nope"')
+    const unknown = await call(state, { action: 'install', id: 'nope' })
+    expect(text(unknown)).toContain('No catalog add-on has the id "nope"')
+    expect(failure(unknown)).toEqual({ name: 'GameAddonError', code: 'GAME_ADDON_NOT_FOUND' })
     expect(text(await call(state, { action: 'list', project: 'elsewhere' }))).toContain('No project.godot in elsewhere.')
+  })
+
+  it('records the class and code of each refusal, so that a result says why without its text', async () => {
+    const state = await setup()
+    expect((await call(state, { action: 'install', id: 'test-camera' })).isError).toBe(false)
+    expect(failure(await call(state, { action: 'install', id: 'other-camera' }))).toEqual({ name: 'GameAddonError', code: 'GAME_ADDON_CONFLICT' })
+    expect(failure(await call(state, { action: 'remove', id: 'test-rig' }))).toEqual({ name: 'GameAddonError', code: 'GAME_ADDON_NOT_INSTALLED' })
+    expect(failure(await call(state, { action: 'install' }))).toEqual({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
+    state.off.add('test-trees')
+    expect(failure(await call(state, { action: 'guide', id: 'test-trees' }))).toEqual({ name: 'GameAddonError', code: 'GAME_ADDON_PERMISSION_DENIED' })
+    expect(failure(await call(state, { action: 'install', id: 'test-trees' }))).toEqual({ name: 'GameAddonError', code: 'GAME_ADDON_PERMISSION_DENIED' })
   })
 })

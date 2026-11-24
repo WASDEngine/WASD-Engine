@@ -107,18 +107,21 @@ static func values(look: String) -> Dictionary:
 
 
 ## The values between two sets of values: `weight` 0 gives `from`, 1 gives `to`. The sun's compass direction turns
-## the short way round, and a value that is on or off switches halfway.
+## the short way round, and a value that is on or off switches halfway. Each value takes the type of `to`'s: a number
+## of `from` given as a whole number blends as a float.
 static func blend(from: Dictionary, to: Dictionary, weight: float) -> Dictionary:
 	var result := {}
 	for key: String in to:
 		var a: Variant = from.get(key, to[key])
 		var b: Variant = to[key]
-		if a is bool:
-			result[key] = b if weight >= 0.5 else a
+		if b is bool:
+			result[key] = b if weight >= 0.5 else bool(a)
 		elif key == "sun_azimuth":
 			result[key] = float(a) + wrapf(float(b) - float(a), -180.0, 180.0) * weight
+		elif b is Color:
+			result[key] = (a as Color).lerp(b, weight)
 		else:
-			result[key] = lerp(a, b, weight)
+			result[key] = lerpf(float(a), float(b), weight)
 	return result
 
 

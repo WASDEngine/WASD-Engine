@@ -9,7 +9,7 @@ The Add-ons dialog shows these icons beside the catalog's add-ons. Each one is t
 | Better Terrain | `better-terrain/icon.svg` | Unlicense | — | <https://raw.githubusercontent.com/Portponky/better-terrain/e93040e1cdd9dba0117c87f8f6b2883c83872d5d/addons/better-terrain/icon.svg> |
 | Controller Icons | `controller-icons/icon.png` | CC0-1.0 | — | <https://raw.githubusercontent.com/rsubtil/controller_icons/v3.1.8/addons/controller_icons/assets/positional/south.png> |
 | Dialogue Manager | `dialogue-manager/icon.png` | MIT | Copyright (c) 2022-present Nathan Hoad and Dialogue Manager contributors | <https://raw.githubusercontent.com/nathanhoad/godot_dialogue_manager/v4.2.0/docs/media/icon.png> |
-| Drop-In Ragdoll | `drop-in-ragdoll/icon.svg` | MIT | Copyright (c) 2026 Sir Debugalot (ExcaliBug) | <https://raw.githubusercontent.com/debugalot/drop-in-ragdoll/v1.0.0/addons/dropin_ragdoll/icon.svg> |
+| Drop-In Ragdoll | `drop-in-ragdoll/icon.svg` | MIT | Copyright (c) 2026 Sir Debugalot (ExcaliBug) | <https://raw.githubusercontent.com/debugalot/drop-in-ragdoll/c7b56c7ae338d052923cd56ac7b590c1a4f2b8ff/addons/dropin_ragdoll/icon.svg> |
 | Easy Vehicle Physics | `easy-vehicle-physics/icon.png` | MIT | Copyright (c) 2024 David Shoemaker | <https://raw.githubusercontent.com/DAShoe1/Godot-Easy-Vehicle-Physics/c392257f54f6ca537dc10bc5badad0c060f18982/addons/gevp/icon.png> |
 | Gaea | `gaea/icon.svg` | MIT | Copyright (c) 2023 BenjaTK | <https://raw.githubusercontent.com/gaea-godot/gaea/v2.0.0-beta6/addons/gaea/assets/generator.svg> |
 | GLoot | `gloot/icon.png` | MIT | Copyright (c) 2022 Peter Kish | <https://raw.githubusercontent.com/peter-kish/gloot/v3.0.2/images/gloot_logo_128x128.png> |

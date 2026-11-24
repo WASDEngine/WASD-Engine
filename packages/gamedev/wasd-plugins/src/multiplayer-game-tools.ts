@@ -109,7 +109,7 @@ export function gameTools(host: MultiplayerToolHost, surface: MultiplayerSurface
 
   const setup = defineTool({
     name: 'wasd_multiplayer_setup',
-    description: 'Set the Godot project up for online multiplayer in the mode the user chose: copy the WASD Multiplayer add-on into addons/wasd_multiplayer, turn on its WasdMultiplayer autoload and editor plugin, and write res://wasd_multiplayer.cfg. The add-on handles WASD sign-in, lobbies, connections, and dedicated server joins; the game uses Godot\'s own multiplayer API (@rpc, MultiplayerSpawner, MultiplayerSynchronizer). Calling it again updates the add-on, keeping the example files the game changed, or switches the mode.',
+    description: 'Set the Godot project up for online multiplayer in the mode the user chose: copy the WASD Multiplayer add-on into addons/wasd_multiplayer, turn on its WasdMultiplayer autoload and editor plugin, and set the mode, the most players, the site, and the released game in res://wasd_multiplayer.cfg, keeping the file\'s other settings. The add-on handles WASD sign-in, lobbies, connections, and dedicated server joins; the game uses Godot\'s own multiplayer API (@rpc, MultiplayerSpawner, MultiplayerSynchronizer). Calling it again switches the mode or updates the add-on: it replaces the add-on\'s own files, first keeping the ones the game changed in a backup folder that the result names, and keeps the example files the game changed and the files it added.',
     parameters: {
       project: PROJECT,
       mode: { type: 'string', enum: MULTIPLAYER_MODES, required: true, description: 'player_hosted (free, a player hosts) or dedicated (a server WASD Engine runs).' },
@@ -130,6 +130,15 @@ export function gameTools(host: MultiplayerToolHost, surface: MultiplayerSurface
             items: { type: 'string' },
             description: 'Files in the add-on folder that the game changed or added, such as an example it adapted, which the setup left as they were.',
           },
+          addon_backup: {
+            type: 'string',
+            description: 'Project folder of the backup that keeps the game\'s versions of the add-on files it had changed, which the setup replaced.',
+          },
+          addon_backup_files: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'The game\'s versions in addon_backup, as paths in the project: <addon_backup>/addons/wasd_multiplayer/ followed by each file\'s path in the add-on folder.',
+          },
           project_changed: BOOLEAN,
           next_steps: { type: 'array', required: true, items: { type: 'string' } },
           for_user: FOR_USER,
@@ -137,6 +146,9 @@ export function gameTools(host: MultiplayerToolHost, surface: MultiplayerSurface
       },
       render: (_args, value) => text(value, [
         ...value.addon_kept === undefined ? [] : [`The add-on files the game changed or added stayed as they were: ${value.addon_kept.join(', ')}.`],
+        ...value.addon_backup_files === undefined
+          ? []
+          : [`The setup replaced add-on files that the game had changed; the game's versions are at ${value.addon_backup_files.join(', ')}.`],
         'Next steps:',
         ...value.next_steps.map(step => `- ${step}`),
       ]),
@@ -194,6 +206,8 @@ export function gameTools(host: MultiplayerToolHost, surface: MultiplayerSurface
             'Save on WasdMultiplayer.server_stopping(), calling WasdMultiplayer.delay_stop() before a save that awaits and stop_ready() after it, and warn players on server_warning(seconds, reason, message).',
             'Call wasd_multiplayer_test, then wasd_release_game, which uploads the server build; a server needs the user to pick a size from wasd_server_plans.',
           ]
+        // The backup keeps each file at its path in the project, inside the backup folder.
+        const backup = installed.backup
         return {
           project_dir: projectDir,
           mode,
@@ -201,6 +215,9 @@ export function gameTools(host: MultiplayerToolHost, surface: MultiplayerSurface
           ...version === undefined ? {} : { addon_version: version },
           addon_files: installed.written.length,
           ...installed.kept.length === 0 ? {} : { addon_kept: [...installed.kept] },
+          ...backup === undefined
+            ? {}
+            : { addon_backup: backup.folder, addon_backup_files: backup.files.map(path => `${backup.folder}/${ADDON_DIR}/${path}`) },
           project_changed: after !== before,
           next_steps: nextSteps,
           for_user: mode === 'player_hosted'

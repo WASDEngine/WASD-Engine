@@ -23,8 +23,7 @@ import { resolveGodotProject } from '@deepseek-ai/dsh-godot'
 import type {} from '@deepseek-ai/dsh-game-mcp'
 import type {} from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import type {} from '@deepseek-ai/dsh-tools'
-import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { ToolArgsError, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { bundledArchivesDir } from './archive.ts'
@@ -38,7 +37,8 @@ import type { GameAddon, GameAddonsProjectView } from './types.ts'
 
 export type * from './types.ts'
 export { GameAddonCatalogError, loadCatalog, parseGuide, searchCatalog } from './catalog.ts'
-export { GameAddonError, GameAddonManager, STORE_INDEX, STORE_MARKER } from './manager.ts'
+export { GameAddonError, type GameAddonErrorCode } from './errors.ts'
+export { GameAddonManager, STORE_INDEX, STORE_MARKER } from './manager.ts'
 export { GameAddonRecordError, readRecord, RECORD_FILE, STATE_DIR } from './record.ts'
 export { NOTICES_FILE } from './notices.ts'
 export { ProjectFile } from './project-file.ts'
@@ -61,6 +61,12 @@ export interface Config {
   guides: string[]
   /** Time limit of one archive download, including its body. */
   downloadTimeoutMs: number
+  /**
+   * Most Unicode code points of a `game_addons` result that stays whole: a guide brings the `references/` files it
+   * links, and a search with filters alone describes its matches in full, only within it. Keep it at the
+   * `thresholdChars` of the profile's tool-result pruner, which trims a longer result once a Session's context fills.
+   */
+  resultChars: number
   /**
    * Whether agents may use each catalog add-on, by id; an add-on without an entry is on. The Add-ons dialog's switches
    * write it while the app runs, and a change applies to the next model step and tool call.
@@ -95,6 +101,7 @@ export default class GameAddons extends TypertRemoteService {
     blenderStore: z.string().required(),
     guides: z.array(z.string().min(1)).default([]),
     downloadTimeoutMs: z.natural().min(1).max(2_147_483_647).default(600_000),
+    resultChars: z.natural().min(1).default(8192),
     allowed: z.dict(z.boolean()).default({}).volatile(),
   })
 
@@ -146,6 +153,7 @@ export default class GameAddons extends TypertRemoteService {
     const host: GameAddonToolHost = {
       manager: this.manager,
       guides,
+      resultChars: this.config.resultChars,
       project: async (requested, exec) => (await resolveGodotProject(await this.base(requested, exec), requested, exec.signal)).dir,
     }
     ctx.tools.register(gameAddonToolDefinition(host, SESSION_WORDING))
@@ -178,8 +186,9 @@ export default class GameAddons extends TypertRemoteService {
       const mcpHost: GameAddonToolHost = {
         manager: this.manager,
         guides,
+        resultChars: this.config.resultChars,
         project: async (requested, exec) => {
-          if (requested === undefined || !isAbsolute(requested)) throw new Error('Pass project as the absolute folder that holds project.godot.')
+          if (requested === undefined || !isAbsolute(requested)) throw new ToolArgsError(['pass project as the absolute folder that holds project.godot.'])
           return (await resolveGodotProject(requested, requested, exec.signal)).dir
         },
       }
@@ -267,7 +276,7 @@ export default class GameAddons extends TypertRemoteService {
   /** The folder a call's relative paths start from: none for an absolute path, else the Session's working directory. */
   private async base(requested: string | undefined, exec: ToolRunContext): Promise<string> {
     if (requested !== undefined && isAbsolute(requested)) return resolve(requested)
-    if (exec.agent === undefined) throw new Error('Pass project as an absolute path.')
+    if (exec.agent === undefined) throw new ToolArgsError(['pass project as an absolute path.'])
     return await this.ctx.workingDirectory.ensure(exec.agent, exec.signal)
   }
 }

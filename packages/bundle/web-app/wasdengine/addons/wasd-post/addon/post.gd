@@ -38,9 +38,9 @@ const SHADER := preload("res://addons/wasd_post/post.gdshader")
 @export var shadows := Color(0.5, 0.5, 0.5): set = _set_shadows
 ## Tint of the bright tones; middle gray tints nothing.
 @export var highlights := Color(0.5, 0.5, 0.5): set = _set_highlights
-## Steps per color channel; 0 keeps every shade.
+## Steps per color channel, 2 or more; 0 keeps every shade.
 @export_range(0.0, 32.0, 1.0) var color_levels := 0.0: set = _set_color_levels
-## Steps of brightness with each color's hue kept, for flat comic shades; 0 keeps every shade.
+## Steps of brightness with each color's hue kept, for flat comic shades, 2 or more; 0 keeps every shade.
 @export_range(0.0, 16.0, 1.0) var tone_levels := 0.0: set = _set_tone_levels
 
 @export_group("Frame")
@@ -70,6 +70,8 @@ const SHADER := preload("res://addons/wasd_post/post.gdshader")
 
 var _material := ShaderMaterial.new()
 var _rect := ColorRect.new()
+## The fade that runs, if any.
+var _fade: Tween
 
 
 func _init() -> void:
@@ -82,24 +84,56 @@ func _init() -> void:
 	add_child(_rect, false, Node.INTERNAL_MODE_FRONT)
 
 
-## Sets every property to a look's values. An unknown name gives the plain picture and a warning.
+## Sets every property to a look's values and stops a fade. An unknown name gives the plain picture and a warning.
 func set_look(value: String) -> void:
 	if not WasdPostLooks.LOOKS.has(value):
 		push_warning("WasdPost: no look named %s; the looks are %s." % [value, ", ".join(WasdPostLooks.names())])
+	_stop_fade()
 	look = value
 	var values := WasdPostLooks.values(value)
 	for property: String in values:
 		set(property, values[property])
 
 
-## Fades to another look over `seconds`: every property moves from its value now to the look's value.
+## Fades to another look over `seconds`: every property moves from its value now to the look's value, `pixel_size` a
+## whole pixel at a time, and the steps of `color_levels` and `tone_levels` come in too fine to see and grow, or
+## shrink until they no longer show. Setting `look` or another fade stops the fade where it is, and its Tween's
+## `finished` comes right after.
 func fade_to(next: String, seconds: float) -> Tween:
+	_stop_fade()
 	var values := WasdPostLooks.values(next)
-	var tween := create_tween().set_parallel(true)
+	_fade = create_tween().set_parallel(true)
 	for property: String in values:
-		tween.tween_property(self, property, values[property], seconds)
-	tween.chain().tween_callback(func() -> void: look = next)
-	return tween
+		if property == "color_levels" or property == "tone_levels":
+			# The count moves as the size of one step (0 when off): steps come in too fine to see and grow, or shrink
+			# away, and a step under 1/256 of the range, which shows nothing, counts as off.
+			var steps := func(size: float) -> void: set(property, 1.0 / size if size > 1.0 / 256.0 else 0.0)
+			_fade.tween_method(steps, _step_size(get(property)), _step_size(values[property]), seconds)
+		elif property == "pixel_size":
+			_fade.tween_method(func(size: float) -> void: pixel_size = roundf(size), pixel_size, values[property], seconds)
+		else:
+			_fade.tween_property(self, property, values[property], seconds)
+	_fade.chain().tween_callback(func() -> void:
+		# The fade ends here: setting the look it ends at must not stop it as one that another cuts short.
+		_fade = null
+		look = next)
+	return _fade
+
+
+## Stops the fade that runs, if any, where it is. A killed Tween does not finish by itself: its `finished` is emitted
+## once the call that stopped it is over, so that whoever waits for it goes on after that call and cannot run inside it.
+func _stop_fade() -> void:
+	if _fade == null:
+		return
+	var stopped := _fade
+	_fade = null
+	stopped.kill()
+	(func() -> void: stopped.finished.emit()).call_deferred()
+
+
+## The size of one step of `color_levels` or `tone_levels`, from its count: 0 when it is off.
+static func _step_size(steps: float) -> float:
+	return 1.0 / steps if steps >= 2.0 else 0.0
 
 
 func _pass(uniform_name: StringName, value: Variant) -> void:

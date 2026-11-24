@@ -2,7 +2,8 @@ extends Node3D
 ## Easy Vehicle Physics smoke test (render run on the Compatibility renderer): the four cars drive forward on the
 ## throttle, on a ground that is in a group of the level's own and in "Road"; the arcade car steers, brakes to a
 ## stop, reverses the way the guide's input lines do, and reports its speed, gear, and wheels; a car on "Grass"
-## reads that surface; the engine sound follows its car; and the cars show in the picture.
+## reads that surface, and back on a ground in no surface group the road's; the engine sound follows its car; and the
+## cars show in the picture.
 
 const ID := "easy-vehicle-physics"
 const CARS := ["arcade_car", "simcade_car", "drift_car", "monster_truck"]
@@ -75,6 +76,8 @@ func _run() -> void:
 	# A ground whose first group is the level's own, as levels often have, and that is a road.
 	_ground(Vector3.ZERO, ["level_ground", "Road"])
 	_ground(Vector3(1000, 0, 0), ["Grass"])
+	# A ground in a group of the level's own only, which names no surface.
+	_ground(Vector3(2000, 0, 0), ["level_floor"])
 	var cars: Array[Vehicle] = []
 	for index: int in CARS.size():
 		var car := (load("res://addons/gevp/scenes/%s.tscn" % [CARS[index]]) as PackedScene).instantiate() as Vehicle
@@ -163,5 +166,24 @@ func _run() -> void:
 		return _fail("on grass a wheel reads %s with grip %.2f, against %.2f on the road" % [rally.wheel_array[0].surface_type, rally.wheel_array[0].current_cof, arcade.wheel_array[0].current_cof])
 	if absf(sound.pitch_scale - rally.motor_rpm / 4000.0) > 0.05:
 		return _fail("the engine sound plays at %.2f for a motor at %.0f rpm" % [sound.pitch_scale, rally.motor_rpm])
+
+	# Set down as the guide says on the ground that names no surface, the car lands upright and drives like on the road
+	# again, although the simcade car names Dirt first among its surfaces.
+	rally.throttle_input = 0.0
+	rally.global_position = Vector3(2000, 1.0, 0)
+	rally.linear_velocity = Vector3.ZERO
+	rally.angular_velocity = Vector3.ZERO
+	rally.previous_global_position = rally.global_position
+	for wheel: Wheel in rally.wheel_array:
+		wheel.previous_global_position = wheel.global_position
+	var highest := rally.global_position.y
+	for _i: int in Engine.physics_ticks_per_second:
+		await get_tree().physics_frame
+		highest = maxf(highest, rally.global_position.y)
+	if highest > 1.5 or rally.global_basis.y.y < 0.95:
+		return _fail("a car set down 1 m above the ground rose to %.1f m and is upright %.2f" % [highest, rally.global_basis.y.y])
+	var road_cof: float = rally.coefficient_of_friction["Road"]
+	if rally.wheel_array[0].surface_type != "Road" or not is_equal_approx(rally.wheel_array[0].current_cof, road_cof):
+		return _fail("on a ground that names no surface a wheel reads %s with grip %.2f, against the road's %.2f" % [rally.wheel_array[0].surface_type, rally.wheel_array[0].current_cof, road_cof])
 	print("SMOKE_PASS ", ID)
 	get_tree().quit(0)

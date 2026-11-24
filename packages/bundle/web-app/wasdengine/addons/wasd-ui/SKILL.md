@@ -31,7 +31,7 @@ Build menus from containers (a `PanelContainer` with a `VBoxContainer` in it): t
 - `button.theme_type_variation = "AccentButton"`: the one button a screen is about, filled in the accent. One a screen.
 - Labels: `"HeaderLarge"`, `"HeaderMedium"`, `"HeaderSmall"`, `"MutedLabel"` for hints, and `"HudLabel"`, white with a dark outline, for text that stands over the game itself.
 
-Sizes follow the window: where the project stretches its window the scale is 1, and otherwise the window's height over 720. `WasdUi.scale_by` sets it by hand.
+Sizes follow the window: where the project stretches its window the scale is 1, and otherwise the window's height over 720, in steps of 0.05. `WasdUi.scale_by` sets it by hand.
 
 ## A menu over the game
 
@@ -40,13 +40,14 @@ WasdUi.open(pause_menu)      # centered over a dimmed game and HUD; its first bu
 WasdUi.close(pause_menu)     # frees it; close(pause_menu, true) keeps it for the next time
 ```
 
-Pausing stays the game's: set `get_tree().paused = true` and the menu's `process_mode` to `PROCESS_MODE_ALWAYS`. WasdUi itself runs while the game is paused.
+While menus are open, a mouse pointer that the game hid or captured shows. `close()` gives the focus back to what had it, and closing the last menu gives the pointer back as it was, except that a scene the game changes to after `close()`, such as a title screen, sets its own mouse mode, and in a browser a captured pointer stays shown until the game captures it again on a click. Pausing stays the game's: set `get_tree().paused = true` and the menu's `process_mode` to `PROCESS_MODE_ALWAYS`. WasdUi itself runs while the game is paused.
 
 ## HUD
 
 ```gdscript
 var health := WasdUi.bar("HP", Color(0.86, 0.2, 0.22))     # top left; bars in one corner stack
 health.max_value = 120.0
+health.value = 120.0     # after max_value: value stays between 0 and max_value
 health.value -= 25.0     # glides there, shows for a moment what was lost, flashes
 health.emptied.connect(_on_player_died)
 ```
@@ -71,12 +72,14 @@ crosshair.spread = 6.0                   # opens while moving or firing
 crosshair.hit()                          # a hit mark; hit(true) for a kill
 
 var radar := WasdRadar.new()
-radar.center = player                    # a Node3D or Node2D; the top of the radar is where it faces
+radar.center = player                    # a Node3D or Node2D, such as a WasdCharacter3D
 radar.reach = 40.0                       # meters to the rim
 WasdUi.place(radar, CORNER_TOP_RIGHT)
 radar.track(enemy)                       # a dot, gone when the node is freed
 radar.track(goal, Color(1.0, 0.85, 0.3), true)
 ```
+
+The radar turns so that what lies ahead is at its top: ahead of a WasdCharacter3D's camera, or else where the center faces. Its arrow points where the center faces, for a WasdCharacter3D where its model faces; `radar.turns = false` keeps north at the top.
 
 `WasdUi.values()` gives the look's colors and numbers (`panel`, `text`, `muted`, `accent`, `radius`, `edge`) for widgets of the game's own, and the signal `look_changed` tells when to draw them again.
 

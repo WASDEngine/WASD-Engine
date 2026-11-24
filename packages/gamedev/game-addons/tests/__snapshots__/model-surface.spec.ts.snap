@@ -1,0 +1,163 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pins the declaration that a Session's agent reads > session declaration 1`] = `
+{
+  "description": "Curated add-ons for the game, WASD Engine's own and third-party ones, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: lighting, sky, weather, terrain, water, grass, scattering, roads, and dungeons; materials, effects, light shafts, mirrors, trails, fur, surface marks, and screen looks; humans, rigs, animations, a character controller, and crowds; cloth, ropes, ragdolls, vehicles, and destruction; AI, state charts, dialogue, and inventories; cameras and shake; menus, HUD, loading screens, and button prompts; 2D levels; starter kits; texture baking; and tests. action search without words gives the catalog's index, a few words on every add-on by category; with an add-on's id, a category, or words it says when each match helps, when to skip it, and whether the project has it. guide shows an add-on's usage guide, or a guide that a search without words lists; install adds one to the project; remove takes one out of the project; list shows the project's add-ons. Install an add-on yourself, without asking the user first, when the game needs what it does and Godot or Blender alone would take much longer; then tell the user what you added and its license.",
+  "name": "game_addons",
+  "parameters": {
+    "properties": {
+      "action": {
+        "description": "search, guide, install, remove, or list.",
+        "enum": [
+          "search",
+          "guide",
+          "install",
+          "remove",
+          "list",
+        ],
+        "type": "string",
+      },
+      "category": {
+        "description": "For search: only add-ons of this category, as the index names it.",
+        "enum": [
+          "environment",
+          "rendering",
+          "characters",
+          "physics",
+          "gameplay",
+          "camera",
+          "interface",
+          "two-d",
+          "kits",
+          "assets",
+          "testing",
+        ],
+        "type": "string",
+      },
+      "host": {
+        "description": "For search: only Godot or only Blender add-ons.",
+        "enum": [
+          "godot",
+          "blender",
+        ],
+        "type": "string",
+      },
+      "id": {
+        "description": "For guide, install, and remove: the add-on id from search; for guide also the name of a guide that a search without words lists.",
+        "type": "string",
+      },
+      "project": {
+        "description": "Folder containing project.godot, relative to the working directory. Default: the nearest project.godot.",
+        "type": "string",
+      },
+      "query": {
+        "description": "For search: an add-on id, or what the game needs, such as "camera follow" or "dialogue"; naming Godot or Blender keeps to its add-ons. Default: the catalog's index.",
+        "type": "string",
+      },
+      "reference": {
+        "description": "For guide: a file that the guide links, such as references/asset-packs.md, when its result says the file did not fit there; the result is that file.",
+        "type": "string",
+      },
+      "replace": {
+        "description": "For install: replace a copy of the add-on that is already in addons/ without a WASD Engine record. Default: false.",
+        "type": "boolean",
+      },
+      "stage": {
+        "description": "For search: only add-ons for this stage of the game.",
+        "enum": [
+          "prototype",
+          "content",
+          "polish",
+          "ship",
+        ],
+        "type": "string",
+      },
+    },
+    "required": [
+      "action",
+    ],
+    "type": "object",
+  },
+}
+`;
+
+exports[`pins the declaration that connected agents read > connected declaration 1`] = `
+{
+  "description": "Curated add-ons for the game, WASD Engine's own and third-party ones, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: lighting, sky, weather, terrain, water, grass, scattering, roads, and dungeons; materials, effects, light shafts, mirrors, trails, fur, surface marks, and screen looks; humans, rigs, animations, a character controller, and crowds; cloth, ropes, ragdolls, vehicles, and destruction; AI, state charts, dialogue, and inventories; cameras and shake; menus, HUD, loading screens, and button prompts; 2D levels; starter kits; texture baking; and tests. action search without words gives the catalog's index, a few words on every add-on by category; with an add-on's id, a category, or words it says when each match helps, when to skip it, and whether the project has it. guide shows an add-on's usage guide, or a guide that a search without words lists; install adds one to the project; remove takes one out of the project; list shows the project's add-ons. Install an add-on yourself, without asking the user first, when the game needs what it does and Godot or Blender alone would take much longer; then tell the user what you added and its license. Before you plan a game, read the catalog's index with action search and no query.",
+  "name": "game_addons",
+  "parameters": {
+    "properties": {
+      "action": {
+        "description": "search, guide, install, remove, or list.",
+        "enum": [
+          "search",
+          "guide",
+          "install",
+          "remove",
+          "list",
+        ],
+        "type": "string",
+      },
+      "category": {
+        "description": "For search: only add-ons of this category, as the index names it.",
+        "enum": [
+          "environment",
+          "rendering",
+          "characters",
+          "physics",
+          "gameplay",
+          "camera",
+          "interface",
+          "two-d",
+          "kits",
+          "assets",
+          "testing",
+        ],
+        "type": "string",
+      },
+      "host": {
+        "description": "For search: only Godot or only Blender add-ons.",
+        "enum": [
+          "godot",
+          "blender",
+        ],
+        "type": "string",
+      },
+      "id": {
+        "description": "For guide, install, and remove: the add-on id from search; for guide also the name of a guide that a search without words lists.",
+        "type": "string",
+      },
+      "project": {
+        "description": "Absolute path of the folder that holds project.godot. Required for install, remove, and list; with search and guide it adds whether the project has each add-on.",
+        "type": "string",
+      },
+      "query": {
+        "description": "For search: an add-on id, or what the game needs, such as "camera follow" or "dialogue"; naming Godot or Blender keeps to its add-ons. Default: the catalog's index.",
+        "type": "string",
+      },
+      "reference": {
+        "description": "For guide: a file that the guide links, such as references/asset-packs.md, when its result says the file did not fit there; the result is that file.",
+        "type": "string",
+      },
+      "replace": {
+        "description": "For install: replace a copy of the add-on that is already in addons/ without a WASD Engine record. Default: false.",
+        "type": "boolean",
+      },
+      "stage": {
+        "description": "For search: only add-ons for this stage of the game.",
+        "enum": [
+          "prototype",
+          "content",
+          "polish",
+          "ship",
+        ],
+        "type": "string",
+      },
+    },
+    "required": [
+      "action",
+    ],
+    "type": "object",
+  },
+}
+`;

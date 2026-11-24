@@ -79,9 +79,13 @@ func floor_moved(by: float) -> void:
 		leg["wanted"] = float(leg["wanted"]) - by
 
 
-## Looks for the ground under each foot. The rays are cast in the physics step, where the physics space may be read
-## whatever thread it runs on, from where the animation last had the feet.
+## Looks for the ground under each foot while the modifier is active. The rays are cast in the physics step, where the
+## physics space may be read whatever thread it runs on, from where the animation last had the feet.
 func _physics_process(_delta: float) -> void:
+	if not active:
+		# Turned on again, the feet blend in from the pose the animation gives them.
+		_weight = 0.0
+		return
 	if body == null or _legs.is_empty() or not is_inside_tree():
 		return
 	# A WasdCharacter3D also stands while it rests on a stair's edge.

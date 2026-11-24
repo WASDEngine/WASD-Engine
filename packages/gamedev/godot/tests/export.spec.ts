@@ -7,10 +7,10 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   androidVersionCode, customBootSplash, DESKTOP_EXPORT_PRESETS, desktopFileName, EXPORT_SPLASH_PATH, exportDesktop,
-  exportMobile, exportWeb, FEATURE_SCAN_BYTES, GodotExportError, LARGE_PACK_BYTES, MOBILE_EXPORT_PRESETS, packNotes, pendingExportRestores,
-  replayExportRestore, textureImports, WASD_SPLASH_IMAGES, wasdSplash, WEB_EXPORT_PRESET, WEB_RENDERER_NOTE, WEB_SPLASH_FILE,
-  webFeatureNotes, webNotes, withDesktopPreset, withExportSplash, withMobilePreset, withoutPreset, withTextureImports, withWebPreset,
-  type WebExportOptions,
+  exportMobile, exportWarnings, exportWeb, FEATURE_SCAN_BYTES, GodotExportError, LARGE_PACK_BYTES, MOBILE_EXPORT_PRESETS, packNotes,
+  pendingExportRestores, replayExportRestore, textureImports, WASD_SPLASH_IMAGES, wasdSplash, WEB_EXPORT_PRESET, WEB_RENDERER_NOTE,
+  WEB_SPLASH_FILE, webFeatureNotes, webNotes, withDesktopPreset, withExportSplash, withMobilePreset, withoutPreset, withTextureImports,
+  withWebPreset, type WebExportOptions,
 } from '../src/export.ts'
 import { storedAppIdentifier, withAppIdentifier, type AppIdentifierPlatform } from '../src/identifiers.ts'
 import { IOS_SPLASH_SETTING_WARNING, UNSET_TEAM_ID } from '../src/ios.ts'
@@ -279,6 +279,24 @@ describe('webFeatureNotes', () => {
   })
 })
 
+describe('exportWarnings', () => {
+  const notes = (count: number): string[] => Array.from({ length: count }, (_, index) => `note ${String(index)}`)
+  const godot = (count: number): string[] => Array.from({ length: count }, (_, index) => `warning ${String(index)}`)
+
+  it('lists the notes, then Godot\'s warnings, ten at most, and keeps Godot\'s warnings five places when the notes would fill them', () => {
+    expect(exportWarnings([], [])).toEqual([])
+    expect(exportWarnings(notes(3), godot(2))).toEqual([...notes(3), ...godot(2)])
+    expect(exportWarnings(notes(8), godot(2))).toEqual([...notes(8), ...godot(2)])
+    // Past ten, Godot's warnings keep five places, or as many as they fill, and the notes the rest.
+    expect(exportWarnings(notes(8), godot(12))).toEqual([...notes(5), ...godot(5)])
+    expect(exportWarnings(notes(8), godot(3))).toEqual([...notes(7), ...godot(3)])
+    // Fewer notes leave Godot's warnings more places, and without Godot's warnings the notes take all ten.
+    expect(exportWarnings(notes(2), godot(12))).toEqual([...notes(2), ...godot(8)])
+    expect(exportWarnings([], godot(12))).toEqual(godot(10))
+    expect(exportWarnings(notes(12), [])).toEqual(notes(10))
+  })
+})
+
 describe('packNotes', () => {
   it('notes a pack larger than 100 MB', () => {
     expect(packNotes([{ path: 'index.pck', bytes: LARGE_PACK_BYTES }, { path: 'index.wasm', bytes: 1 }])).toEqual([])
@@ -357,6 +375,25 @@ posix('exportWeb', () => {
     const { outputDir, run } = await prepare({ export: { files: { 'index.html': '<html>' } } })
     await expect(run()).rejects.toBeInstanceOf(GodotExportError)
     expect(await readdir(outputDir)).toEqual(['index.html'])
+  })
+
+  it('keeps Godot\'s export warnings five places when the notes would fill the list', async () => {
+    const godot = Array.from({ length: 12 }, (_, index) => `Resource ${String(index)} uses a property that Godot 4.7 renamed.`)
+    const { run } = await prepare({ export: { files: BUILD, stderr: godot.map(line => `WARNING: ${line}\n`).join('') } }, async (dir) => {
+      await writeFile(join(dir, 'ship.blend'), 'blend')
+      await mkdir(join(dir, 'scenes'), { recursive: true })
+      await writeFile(join(dir, 'scenes', 'cloth.gd'), 'var rd: RenderingDevice\n')
+      await writeFile(join(dir, 'scenes', 'mist.gdshader'), 'shader_type fog;\n')
+      await writeFile(join(dir, 'scenes', 'night.tres'), '[resource]\nssr_enabled = true\n')
+      await writeFile(join(dir, 'scenes', 'alley.tscn'), '[node name="Puddle" type="Decal" parent="."]\n')
+      await writeFile(join(dir, 'scenes', 'sparks.tscn'), '[node name="Sparks" type="GPUParticles3D" parent="."]\ntrail_enabled = true\n')
+    })
+    // Seven notes: the Blender importer's, the renderer's, and five of what Web builds lack.
+    const { warnings } = await run()
+    expect(warnings).toHaveLength(10)
+    expect(warnings[0]).toContain('because of res://ship.blend')
+    expect(warnings.slice(1, 5)).toEqual([WEB_RENDERER_NOTE, deviceNote('scenes/cloth.gd'), fogNote('scenes/mist.gdshader'), screenNote('scenes/night.tres')])
+    expect(warnings.slice(5)).toEqual(godot.slice(0, 5))
   })
 
   it('turns off the Blender importer of a project that holds a .blend file and says so first', async () => {

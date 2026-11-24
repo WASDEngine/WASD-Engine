@@ -32,9 +32,9 @@ uniform float temperature : hint_range(-1.0, 1.0) = 0.0;
 // Tints of the dark and the bright tones, as the screen shows them; middle gray tints nothing.
 uniform vec3 shadows = vec3(0.5);
 uniform vec3 highlights = vec3(0.5);
-// Steps per color channel; 0 keeps every shade.
+// Steps per color channel, 2 or more; 0 keeps every shade.
 uniform float color_levels = 0.0;
-// Steps of brightness, with each color's own hue kept: the flat shades of a comic. 0 keeps every shade.
+// Steps of brightness, with each color's own hue kept: the flat shades of a comic. 2 or more; 0 keeps every shade.
 uniform float tone_levels = 0.0;
 
 // Frame.
@@ -117,7 +117,9 @@ void fragment() {
 	float edge = length(from_centre * vec2(1.0, pixel.x / pixel.y) * 1.2);
 	vec3 color;
 	// A drawn look works from a picture without the grain of its textures, and a misted lens loses detail toward its rim.
-	blur = max(blur, max(max(edges * 1.6, step(1.5, tone_levels) * 2.6), soften * 7.0 * smoothstep(0.1, 0.7, edge)));
+	// Steps of brightness finer than 16 need less of that, and those of a fade's first moments, too fine to see, none.
+	float flatten = step(2.0, tone_levels) * 2.6 * min(1.0, 16.0 / max(tone_levels, 1.0));
+	blur = max(blur, max(max(edges * 1.6, flatten), soften * 7.0 * smoothstep(0.1, 0.7, edge)));
 	if (aberration > 0.0) {
 		vec2 shift = from_centre * dot(from_centre, from_centre) * 4.0 * aberration * pixel;
 		color = vec3(wasd_soft(uv + shift, blur, pixel).r, wasd_soft(uv, blur, pixel).g, wasd_soft(uv - shift, blur, pixel).b);
@@ -160,12 +162,12 @@ void fragment() {
 	float bright = smoothstep(0.0, 1.0, dot(clamp(color, 0.0, 1.0), vec3(0.2126, 0.7152, 0.0722)));
 	color += (shadows - 0.5) * (1.0 - bright) * 0.5 + (highlights - 0.5) * bright * 0.5;
 	color = clamp(color, 0.0, 1.0);
-	if (color_levels > 1.0) {
+	if (color_levels >= 2.0) {
 		color = floor(color * (color_levels - 1.0) + 0.5) / (color_levels - 1.0);
 	}
 	// The patterns of the drawn looks are as large as on a window 720 pixels high, and never finer than on one.
 	vec2 at = FRAGCOORD.xy * min(1.0, 720.0 * pixel.y);
-	if (tone_levels > 1.0) {
+	if (tone_levels >= 2.0) {
 		// Between two shades, the dots of a printed comic: larger the closer the tone is to the lighter shade.
 		vec2 cell = fract(mat2(vec2(0.7071, 0.7071), vec2(-0.7071, 0.7071)) * at / 7.0) - 0.5;
 		float dots = (length(cell) * 1.4142 - 0.5) * 0.42;

@@ -49,6 +49,7 @@ for index: int in 600:
 | `crowd.set_member_color(member, color)` | tints it |
 | `crowd.tint_only(["suit", "shirt"])` | only surfaces whose names hold one of the words take tints, so clothes differ and skin does not; `crowd.surfaces()` lists the names |
 | `crowd.remove(member)`, `crowd.clear()`, `crowd.count()` | members leave; a freed number goes to the next member added |
+| `crowd.capacity = 800` | more room, or less: members stay, but a lower capacity drops those numbered from it up |
 | `crowd.data.names()` | the baked clips |
 
 Members that walk are moved by the game, a line each frame:
@@ -69,7 +70,7 @@ Make members differ: a tint on the clothes, a scale between 0.9 and 1.1 in the b
 
 - Not a node: it has no collision, no signals, and no children, and nothing can be attached to its hands. For someone the player meets up close, take the member out and put a `wasd-character` in its place.
 - Not blended: a new clip starts at once, without a cross-fade. At a crowd's distance that does not show.
-- Not culled one by one: the whole crowd is drawn or none of it, and it is never culled until its `custom_aabb`, set after `capacity`, holds the box its members stay in. Use several crowds, each with its box, for places far apart.
+- Not culled one by one: the whole crowd is drawn or none of it, and it is never culled until its `custom_aabb` holds the box its members stay in. Use several crowds, each with its box, for places far apart.
 - Every member casts a shadow. For a crowd of thousands, set `crowd.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF`.
 
 ## Birds, fish, butterflies: WasdFlock3D

@@ -2,7 +2,7 @@
   "id": "universal-animation-library",
   "title": "Universal Animation Library",
   "host": "godot",
-  "version": "2025.03.25",
+  "version": "2025.03.25+wasd.1",
   "category": "characters",
   "cue": "45 humanoid clips: move, jump, fight, die; retargeting",
   "summary": "45 humanoid clips by Quaternius (idle, walk, jog, sprint, crouch, jump, roll, swim, sit, punch, sword, pistol, spell, hit, death) and a script that retargets MPFB, Rigify, and Mixamo rigs to them.",

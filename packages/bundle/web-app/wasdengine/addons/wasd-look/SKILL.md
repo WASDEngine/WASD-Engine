@@ -32,7 +32,7 @@ In a `.tscn`: a `WorldEnvironment` node with the script `res://addons/wasd_look/
 | `studio` | Even backdrop, key light, strong fill: one model, a menu scene |
 | `interior` | No sun, dim even light: a room that its lamps light |
 
-`look.fade_to("night", 3.0)` moves everything to another look and returns the `Tween`. `look.set_values({"sky_top": Color(0.3, 0.2, 0.5), "fog": 0.01})` changes single values of the look that shows; `WasdLookPresets.BASE` in `look_presets.gd` names them all.
+`look.fade_to("night", 3.0)` moves everything to another look and returns the `Tween`; setting `look` or `hour`, or another fade, stops it where it is, and its `finished` comes right after. `look.set_values({"sky_top": Color(0.3, 0.2, 0.5), "fog": 0.01})` changes single values of the look that shows; `WasdLookPresets.BASE` in `look_presets.gd` names them all.
 
 ## Adjust
 
@@ -43,18 +43,18 @@ Setting `look` also sets the sun's place and `clouds`; change them after it.
 - `sun_strength`, `ambient_strength`, `fog_strength`, `exposure`: multiply the look's values; 1 keeps them. Dark shadows: raise `ambient_strength`. Everything too dark or bright: `exposure`.
 - `view_distance`: meters at which the world has faded into the sky. Set it to where the terrain or level ends (and the camera's `far` beyond it), or the world's edge shows as a line against the sky.
 - `look.get_horizon_color()` is the color the far world fades into, and the signal `applied` fires whenever the picture's values change, also at every step of a fade or a running day: hand the color on there to whatever fades by its own means, such as a WASD Light fog bank. `look.get_haze_range()` is where such a fade begins and ends to keep step with the fog; the guide of `lite-terrain` has the two lines for its ground.
-- `overcast` (0 to 1) clouds any look or hour over: gray sky, weak sun, closed clouds. `added_fog` thickens the fog by a density per meter: 0.005 veils the distance, 0.03 hides everything beyond 80 meters, sky included. The `wasd-weather` add-on sets both, and its wind turns the clouds (`look.set_wind(wind)`).
+- `overcast` (0 to 1) clouds any look or hour over: gray sky, weak sun, closed clouds. `added_fog` thickens the fog by a density per meter: 0.005 veils the distance, 0.03 hides everything beyond 80 meters, sky included. The `wasd-weather` add-on sets both, and its wind turns the clouds (`look.set_wind(wind)`); when it leaves, `cloud_drift` and `cloud_heading` apply again.
 - `shadows`, and `quality`: Fast, Balanced (default), Best set edge smoothing (off, 2x, 4x), shadow softness, and how far the sun's shadows reach (40, 80, 140 m; for more, set `look.sun.directional_shadow_max_distance` after `add_child` and after each change of `quality`). Balanced and Best keep shadows fine within 2 m of the camera, for faces in close-ups. "Leave as set" (3) keeps the project's settings.
 
 ## A day that runs
 
 ```gdscript
+look.night_changed.connect(func(is_night: bool) -> void: street_lamps.visible = is_night)
 look.hour = 8.0          # 0 to 24; -1 (default) is no clock
 look.day_minutes = 12.0  # a whole day in 12 minutes; 0 holds the hour
-look.night_changed.connect(func(is_night: bool) -> void: street_lamps.visible = is_night)
 ```
 
-The sun rises at 6 and sets at 18, the moon takes the other half; the looks blend through `day_looks`, pairs of an hour and a look. `day_peak_elevation` and `day_peak_azimuth` place the arc. `look.is_night()` tells which light is up. `clouds` stays as set. Setting `look` or calling `fade_to()` stops the clock (`hour` -1): set `hour` again to run it.
+The sun rises at 6 and sets at 18, the moon takes the other half; the looks blend through `day_looks`, pairs of an hour and a look. `day_peak_elevation` and `day_peak_azimuth` place the arc. `night_changed` fires at the clock's first hour and whenever the light changes, so connect it first; `look.is_night()` tells which light is up. `clouds` stays as set. Setting `look` or calling `fade_to()` stops the clock (`hour` -1): set `hour` again to run it.
 
 ## A photographed sky
 
@@ -66,7 +66,7 @@ look.panorama = load("res://skies/kloppenheim_06_2k.hdr")
 look.find_sun_in_panorama()                    # the sun takes the place of the picture's brightest spot
 ```
 
-The picture is shown as bright as the look's own sky whatever its exposure; `panorama_brightness` multiplies it and `panorama_turn` turns it (call `find_sun_in_panorama()` again). Under an overcast picture, with no sun to find, set the sun's place by hand. `look.panorama = null` brings the drawn sky back.
+A Web build reads the picture a frame after it is set, and the sun moves to its place then. The picture is shown as bright as the look's own sky whatever its exposure; `panorama_brightness` multiplies it and `panorama_turn` turns it (call `find_sun_in_panorama()` again). Under an overcast picture, with no sun to find, set the sun's place by hand. `look.panorama = null` brings the drawn sky back.
 
 ## Lamps
 

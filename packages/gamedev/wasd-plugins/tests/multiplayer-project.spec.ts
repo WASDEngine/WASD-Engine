@@ -1,9 +1,12 @@
 /** Multiplayer setup edits `project.godot` and `res://wasd_multiplayer.cfg`; local tests turn instance output into a measurement. */
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { GodotInstanceReport } from '@deepseek-ai/dsh-godot'
-import { parseMultiplayerConfig, renderMultiplayerConfig, withMultiplayerAddon, type MultiplayerConfig } from '../src/multiplayer-project.ts'
+import {
+  parseMultiplayerConfig, renderMultiplayerConfig, withMultiplayerAddon, withMultiplayerConfig, writeMultiplayerConfig,
+  type MultiplayerConfig,
+} from '../src/multiplayer-project.ts'
 import {
   clientConnected, estimateSizes, instanceProblems, instanceStats, MESSAGE_OVERHEAD_BYTES, planTest, readTestRecord, testRecord, TEST_FILE,
 } from '../src/multiplayer-test.ts'
@@ -20,6 +23,43 @@ describe('the multiplayer configuration', () => {
     expect(parseMultiplayerConfig(`[other]\nmode="player_hosted"\n\n${text}server_fps=20\n`)).toEqual(CONFIG)
     expect(parseMultiplayerConfig('[wasd]\r\nmode="player_hosted"\r\n')).toEqual({ mode: 'player_hosted', maxPlayers: 8, apiOrigin: '', appOrigin: '', gameId: '', version: 0 })
     expect(parseMultiplayerConfig('[wasd]\nmode="mmo"\n')).toBeUndefined()
+  })
+
+  it('sets the keys WASD Engine writes and keeps the file\'s other keys, sections, comments, and line ends', () => {
+    const text = [
+      '; Studio settings.', '[other]', 'mode="player_hosted"', '', '[wasd]', '', 'mode = "player_hosted"', 'max_players=40',
+      'site_origins=["https://play.studio.test", "https://studio.test"]', '; Quieter servers.', 'server_fps=20', 'count_traffic=false', '',
+      '[studio]', 'build="nightly"', '',
+    ].join('\r\n')
+    expect(withMultiplayerConfig(text, CONFIG)).toBe([
+      '; Studio settings.', '[other]', 'mode="player_hosted"', '', '[wasd]', '', 'mode="dedicated"', 'max_players=40',
+      'site_origins=["https://play.studio.test", "https://studio.test"]', '; Quieter servers.', 'server_fps=20', 'count_traffic=false',
+      'api_origin="https://site.test"', 'app_origin="https://app.test"', 'game_id="game-\\"1\\""', 'version=3', '',
+      '[studio]', 'build="nightly"', '',
+    ].join('\r\n'))
+    expect(parseMultiplayerConfig(withMultiplayerConfig(text, CONFIG))).toEqual(CONFIG)
+    // Written again, it holds the configuration already.
+    expect(withMultiplayerConfig(withMultiplayerConfig(text, CONFIG), CONFIG)).toBe(withMultiplayerConfig(text, CONFIG))
+  })
+
+  it('sets a key in every place the [wasd] section holds it, and adds the section to a file without one', () => {
+    expect(withMultiplayerConfig('[wasd]\ngame_id=""\n[wasd]\ngame_id="old"\nserver_fps=30', { ...CONFIG, gameId: 'new' })).toBe(
+      '[wasd]\ngame_id="new"\nmode="dedicated"\nmax_players=40\napi_origin="https://site.test"\napp_origin="https://app.test"\nversion=3\n[wasd]\ngame_id="new"\nserver_fps=30\n',
+    )
+    expect(withMultiplayerConfig('; Nothing yet.\n', CONFIG)).toBe(`; Nothing yet.\n\n${renderMultiplayerConfig(CONFIG).slice(renderMultiplayerConfig(CONFIG).indexOf('[wasd]'))}`)
+  })
+
+  it('writes a new file for a project without one or with an empty one, and edits an existing one', async () => {
+    const dir = await multiplayerProject()
+    const file = join(dir, 'wasd_multiplayer.cfg')
+    await writeMultiplayerConfig(dir, CONFIG)
+    expect(await readFile(file, 'utf8')).toBe(renderMultiplayerConfig(CONFIG))
+    await writeFile(file, ' \n')
+    await writeMultiplayerConfig(dir, CONFIG)
+    expect(await readFile(file, 'utf8')).toBe(renderMultiplayerConfig(CONFIG))
+    await writeFile(file, '[wasd]\nserver_idle_fps=2\n')
+    await writeMultiplayerConfig(dir, CONFIG)
+    expect(await readFile(file, 'utf8')).toBe('[wasd]\nserver_idle_fps=2\nmode="dedicated"\nmax_players=40\napi_origin="https://site.test"\napp_origin="https://app.test"\ngame_id="game-\\"1\\""\nversion=3\n')
   })
 })
 

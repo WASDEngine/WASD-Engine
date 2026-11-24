@@ -81,14 +81,14 @@ Rooms turn by quarter turns, so place things in the room's own space (`room.add_
 
 ## Rooms of the game's own
 
-A room made by hand is a scene whose root has the script `res://addons/SimpleDungeons/DungeonRoom3D.gd` (or one that extends it), is centered on its origin, and sets `size_in_voxels`, `min_count`, and `max_count`. Mark each place a door may be with a `Node3D` child named `DOOR?_…`, in the middle of an outer side of a cell; `DOOR_…` without the question mark must be joined. Save it as a `.tscn` and add `load("res://rooms/shrine.tscn")` to `room_scenes` beside the box rooms. To open its walls, connect the room's signal `dungeon_done_generating` and ask each `get_doors()` entry for `get_room_leads_to()`; that answer is right only inside that signal.
+A room made by hand is a scene whose root has the script `res://addons/SimpleDungeons/DungeonRoom3D.gd` (or one that extends it), is centered on its origin, and sets `size_in_voxels`, `min_count`, `max_count`, and `voxel_scale`, which must equal the dungeon's: a room left at the default, 10 m cells, is scaled to the dungeon's cells and comes out squashed. Build it `size_in_voxels * voxel_scale` metres large. Mark each place a door may be with a `Node3D` child named `DOOR?_…`, in the middle of an outer side of a cell; `DOOR_…` without the question mark must be joined. Save it as a `.tscn` and add `load("res://rooms/shrine.tscn")` to `room_scenes` beside the box rooms. To open its walls, connect the room's signal `dungeon_done_generating` and ask each `get_doors()` entry for `get_room_leads_to()`; that answer is right only inside that signal.
 
 ## Pitfalls
 
 - `generating_failed` means the rooms did not fit: enlarge `dungeon_size`, lower the `min_count`s, or raise `dungeon.max_retries` (1).
 - Leave `generate_threaded` off: a Web build has no threads.
 - Every wall is a box with its own collider and draw call: a dungeon of 40 rooms is near a thousand. For more, share one material per kind of surface, as above, and keep `"ceiling": false` where the camera looks down.
-- `"cell"` must be the same everywhere, or rooms overlap and doorways miss.
+- `"cell"`, a hand-made room's `voxel_scale`, and `dungeon.voxel_scale` must be the same everywhere, or rooms overlap and doorways miss.
 
 ## Check it
 

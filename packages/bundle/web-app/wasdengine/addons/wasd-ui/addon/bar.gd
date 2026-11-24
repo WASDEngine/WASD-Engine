@@ -7,7 +7,8 @@ extends Control
 ## The value fell to nothing.
 signal emptied
 
-## The most the bar holds, and how much it holds now. Setting `value` moves the bar there.
+## The most the bar holds, and how much it holds now. Setting `value` moves the bar there. `value` stays between 0 and
+## `max_value`, as a ProgressBar's does: set `max_value` first, and a lower one takes `value` down with it.
 @export var max_value := 100.0: set = _set_max_value
 @export var value := 100.0: set = _set_value
 ## The fill's color, and a word before the bar, such as "HP".
@@ -139,9 +140,11 @@ func _set_value(to: float) -> void:
 	var before := value
 	value = clampf(to, 0.0, max_value)
 	if value < before:
-		# A hit: what was lost stays in view for a moment, and the fill flashes.
-		_hold = 0.45
-		_flash = 0.8
+		# A hit: what was lost stays in view for a moment, and the fill flashes. A value given before the bar is in
+		# play, as by a scene, is where it starts.
+		if is_node_ready():
+			_hold = 0.45
+			_flash = 0.8
 		if value <= 0.0 and before > 0.0:
 			emptied.emit()
 	queue_redraw()
@@ -149,6 +152,8 @@ func _set_value(to: float) -> void:
 
 func _set_max_value(to: float) -> void:
 	max_value = maxf(to, 0.0001)
+	if value > max_value:
+		value = max_value
 	queue_redraw()
 
 

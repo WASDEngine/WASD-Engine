@@ -35,6 +35,12 @@ const AFTER = 'Pass subject, what the image shows and what it is for, and goal, 
 
 const SAVE = 'with save set to true, which keeps the capture out of the game and its exports, and pass the file its result names'
 
+/** One tool of each WASD Engine plugin that the reviewer may name, by the names a Session calls them. */
+const EVERY_TOOL = [
+  'polyhaven_search', 'ambientcg_search', 'image_generate', 'mcp__wasd_blender__execute_python', 'mcp__wasd_gimp__open_image', 'reference_search',
+  'game_addons',
+]
+
 /** A host for building the tool's declaration, which these specs read and never call. */
 const HOST = {
   limits: { maxBytes: 1, maxEdge: 1, maxPixels: 1, minPixels: 0 }, timeoutMs: 1000,
@@ -92,9 +98,14 @@ describe('the graphics review in the agents\' instructions', () => {
   })
 
   it('gives the reviewer the tools in the agents\' order of preference, the add-ons by id, and a reply of notes and tools with no rating', () => {
-    const prompt = reviewerPrompt([{ id: 'sky3d', host: 'godot', cue: 'day and night sky' }])
+    const prompt = reviewerPrompt([{ id: 'sky3d', host: 'godot', cue: 'day and night sky' }], EVERY_TOOL)
+    expect(prompt).toContain('each game is a Godot 4.7 project, and the agent also has a headless Blender, a headless GIMP, image generation, '
+      + 'and a catalog of tested add-ons. The agent sends you one image')
     expect(prompt).toContain('- Blender: model, sculpt, bevel, UV-unwrap, texture, rig, and animate 3D assets')
     expect(prompt).toContain('preferring an asset to download when one suits the game\'s art style, then generated 2D art over art drawn by hand or in code')
+    expect(prompt).toContain('- ambientcg_* (ambientCG): more than 2,000 free CC0 PBR materials, with decals, leaf atlases, and HDRI skies, for surfaces that Poly Haven lacks.')
+    expect(prompt).toContain('Prefer it to painting 2D art in GIMP or drawing it in code.')
+    expect(prompt).toContain('- reference_search: references for a style or subject before redoing art.')
     const order = ['- polyhaven_* (Poly Haven):', '- ambientcg_* (ambientCG):', '- image_generate (Nano Banana):', '- Blender:', '- GIMP:'].map(item => prompt.indexOf(item))
     expect(order.every((at, index) => at > 0 && (index === 0 || at > (order[index - 1] ?? 0)))).toBe(true)
     expect(prompt).toContain('- game_addons installs tested add-ons, by id:\n  - sky3d (Godot): day and night sky')
@@ -107,7 +118,43 @@ describe('the graphics review in the agents\' instructions', () => {
       + '**Tools and add-ons to consider:** each WASD Engine tool or add-on that would help, with what to do with it.\n'
       + 'Give no rating of any kind: no score, such as 6/10, no grade, and no verdict, such as pass or fail. Leave out praise and what already '
       + 'works; give only notes on how to do better.')
-    expect(reviewerPrompt([])).not.toContain('game_addons installs')
+    expect(reviewerPrompt([], EVERY_TOOL)).not.toContain('game_addons installs')
+  })
+
+  it('names only the tools the agent has, so a plugin switched off is never suggested', () => {
+    const bare = reviewerPrompt([], ['graphics_review', 'read', 'godot_screenshot'])
+    expect(bare).toContain('each game is a Godot 4.7 project. The agent sends you one image')
+    expect(bare).toContain('For each note, say how to make the change with WASD Engine\'s tools:\n- Godot: WorldEnvironment')
+    expect(bare).not.toMatch(/polyhaven|ambientcg|image_generate|Blender|GIMP|reference_search|preferring|game_addons/u)
+    // Without Poly Haven, ambientCG comes first, and without GIMP the image tool's line names no GIMP.
+    const some = reviewerPrompt([], ['ambientcg_search', 'ambientcg_download', 'image_generate'])
+    expect(some).toContain('each game is a Godot 4.7 project, and the agent also has image generation. The agent sends you')
+    expect(some).toContain('For each note, say how to make the change with WASD Engine\'s tools, preferring an asset to download when one suits '
+      + 'the game\'s art style, then generated 2D art over art drawn by hand or in code:\n- ambientcg_* (ambientCG): more than 2,000 free CC0 PBR '
+      + 'materials, with decals, leaf atlases, and HDRI skies, the first choice when one suits the game\'s art style.\n- image_generate (Nano Banana): '
+      + 'concept art, sprites, textures, UI pieces, icons, and backgrounds, made from references. Prefer it to painting 2D art or drawing it in code.\n- Godot:')
+    expect(some).not.toMatch(/polyhaven|Poly Haven lacks|Blender|GIMP|reference_search/u)
+    // Image generation alone sets the only preference; Blender and GIMP count by the names a Session calls their MCP tools.
+    expect(reviewerPrompt([], ['image_generate'])).toContain('WASD Engine\'s tools, preferring generated 2D art over art drawn by hand or in code:\n')
+    const apps = reviewerPrompt([{ id: 'sky3d', host: 'godot', cue: 'day and night sky' }], ['mcp__wasd_blender__execute_python', 'mcp__wasd_gimp__open_image', 'game_addons'])
+    expect(apps).toContain('the agent also has a headless Blender, a headless GIMP, and a catalog of tested add-ons.')
+    expect(apps).toContain('WASD Engine\'s tools:\n- Blender: model')
+    expect(apps).toContain('\n- GIMP: edit, recolor')
+  })
+
+  it('names the catalog add-ons only while the agent has game_addons, and Blender\'s only while it has the Blender tools', () => {
+    const addons = [{ id: 'sky3d', host: 'godot', cue: 'day and night sky' }, { id: 'sapling-tree-gen', host: 'blender', cue: 'parametric trees' }] as const
+    const withoutInstaller = reviewerPrompt(addons, ['mcp__wasd_blender__execute_python'])
+    expect(withoutInstaller).toContain('the agent also has a headless Blender. The agent sends you')
+    expect(withoutInstaller).not.toMatch(/catalog|game_addons|sky3d|sapling-tree-gen/u)
+    const godotOnly = reviewerPrompt(addons, ['game_addons'])
+    expect(godotOnly).toContain('each game is a Godot 4.7 project, and the agent also has a catalog of tested add-ons. The agent sends you')
+    expect(godotOnly).toContain('- game_addons installs tested add-ons, by id:\n  - sky3d (Godot): day and night sky\nName the tool')
+    expect(godotOnly).not.toContain('sapling-tree-gen')
+    expect(reviewerPrompt(addons, ['game_addons', 'mcp__wasd_blender__execute_python']))
+      .toContain('  - sky3d (Godot): day and night sky\n  - sapling-tree-gen (Blender): parametric trees\nName the tool')
+    // A catalog whose add-ons are all Blender's names nothing to an agent without Blender.
+    expect(reviewerPrompt([addons[1]], ['game_addons'])).not.toMatch(/catalog|game_addons installs/u)
   })
 
   it('puts the section in the Session\'s system prompt while the tool is registered, without the Godot capture sentence when Godot is absent', async () => {

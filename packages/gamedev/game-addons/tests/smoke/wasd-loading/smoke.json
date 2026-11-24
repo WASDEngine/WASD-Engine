@@ -1,1 +1,1 @@
-{ "run": "render", "path": "res://wasd_smoke/smoke.tscn", "expect": ["SMOKE_PASS wasd-loading"], "timeoutSeconds": 120 }
+{ "run": "render", "path": "res://wasd_smoke/smoke.tscn", "expect": ["SMOKE_PASS wasd-loading"], "timeoutSeconds": 120, "errors": ["there is no scene at res://wasd_smoke/level.gdshader", "res://wasd_smoke/broken.tscn"] }

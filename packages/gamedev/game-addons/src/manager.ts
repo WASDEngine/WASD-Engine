@@ -5,9 +5,9 @@
  * holding the record's lock, the installer checks the project again, moves the folder into `res://addons/<folder>/`,
  * enables it in `project.godot` the way the editor's plugin switch does, a setting whose value is a Dictionary by adding
  * its entries to the project's own, writes its license into the project's notices, and records it in
- * `.wasdengine/addons.json` with the values its settings replaced, and afterwards imports the project so the add-on's
- * errors show
- * at once. `project.godot` and the notices are read and written at the moment each changes, and a step that fails puts
+ * `.wasdengine/addons.json` with the values its settings replaced, which a note of the result names when the project
+ * had its own, and afterwards imports the project so the add-on's errors show at once. `project.godot` and the notices
+ * are read and written at the moment each changes, and a step that fails puts
  * back only what the change itself did, keeping what others changed meanwhile; what it cannot put back, it names. A
  * removal scans the project for files that use the add-on first, then, holding the record's lock, takes out only paths
  * in the add-on's own folder in the same way, and gives each setting it still holds the add-on's value the value it
@@ -29,6 +29,7 @@ import { basename, dirname, join, relative, sep } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { cachedArchive, readArchiveFile, unpackFolder, type ArchiveDownloads, type LocalArchive } from './archive.ts'
 import { searchCatalog, type CatalogQuery, type GameAddonCatalog } from './catalog.ts'
+import { GameAddonError } from './errors.ts'
 import { standardLicenseText } from './licenses.ts'
 import { NOTICES_FILE, noticeSection, readNotice, removeNotice, writeNotice } from './notices.ts'
 import { projectEntry, projectFolder, readProjectText } from './paths.ts'
@@ -144,11 +145,6 @@ interface StoreIndexEntry {
   readonly allowed?: false
   /** The refusal that workers raise for an add-on that is off. */
   readonly message?: string
-}
-
-/** A request that the manager refuses, with a message for the model or the user. */
-export class GameAddonError extends Error {
-  override name = 'GameAddonError'
 }
 
 /** Problems that one import of a project reported. */
@@ -381,6 +377,42 @@ function settingsBefore(
 }
 
 /**
+ * The settings whose own value a project had before an add-on's installation and now holds the add-on's: a setting
+ * whose remembered value differs from the one it holds now, or a Dictionary setting whose remembered entry of a key
+ * that the add-on sets differs from the entry it holds now. A setting that the project did not have, or a Dictionary
+ * entry that the add-on only adds, replaced nothing.
+ * @param project - `project.godot` once the installation enabled the add-on.
+ * @param settings - the add-on's settings.
+ * @param remembered - the values the settings held before the add-on's installation.
+ * @returns each replaced setting as `[section] key`, in the add-on's order.
+ */
+function replacedSettings(project: ProjectFile, settings: readonly GodotSetting[], remembered: readonly SettingBefore[]): string[] {
+  return settings.filter((setting) => {
+    const before = remembered.find(entry => entry.section === setting.section && entry.key === setting.key)?.before
+    const now = project.get(setting.section, setting.key)
+    if (before === undefined || now === undefined) return false
+    const own = dictionaryEntries(setting.value)
+    const earlier = dictionaryEntries(before)
+    const held = dictionaryEntries(now)
+    if (own === undefined || earlier === undefined || held === undefined) return !sameValue(before, now)
+    return own.some((entry) => {
+      const was = earlier.find(item => item.key === entry.key)
+      const is = held.find(item => item.key === entry.key)
+      return was !== undefined && is !== undefined && !sameValue(was.value, is.value)
+    })
+  }).map(setting => `[${setting.section}] ${setting.key}`)
+}
+
+/**
+ * The installation's note on the project's own setting values that the add-on's replaced, for the model.
+ * @param replaced - the settings as {@link replacedSettings} names them.
+ * @returns the note.
+ */
+function replacedNote(replaced: readonly string[]): string {
+  return `It replaced the project's own values of these project.godot settings: ${replaced.join(', ')}. Removing the add-on puts back each one that still holds the add-on's value.`
+}
+
+/**
  * Edit `project.godot` as it is now: read it, apply the edit, and write it when its text changed.
  * @param projectDir - absolute project folder.
  * @param edit - the edit.
@@ -468,7 +500,8 @@ class Rollback {
    * Undo every step, the last one first, going on past an undo that fails.
    * @param error - the failure of the change.
    * @param change - the change's name for the message, such as `installation`.
-   * @returns `error` when every step was undone, else a {@link GameAddonError} that adds what stays in the project.
+   * @returns `error` when every step was undone, else a {@link GameAddonError} with the code
+   *   `GAME_ADDON_UNDO_INCOMPLETE` and `error` as its cause, whose message adds what stays in the project.
    */
   async undo(error: unknown, change: string): Promise<unknown> {
     const stays: string[] = []
@@ -480,7 +513,7 @@ class Rollback {
       }
     }
     if (stays.length === 0) return error
-    return new GameAddonError(`${(error as Error).message} The ${change} could not be undone completely: ${stays.join('; ')}.`, { cause: error })
+    return new GameAddonError(`${(error as Error).message} The ${change} could not be undone completely: ${stays.join('; ')}.`, 'GAME_ADDON_UNDO_INCOMPLETE', { cause: error })
   }
 }
 
@@ -606,7 +639,7 @@ export class GameAddonManager {
    */
   entry(id: string): GameAddon {
     const addon = this.catalog.get(id)
-    if (addon === undefined) throw new GameAddonError(`No catalog add-on has the id ${JSON.stringify(id)}; search the catalog for its id.`)
+    if (addon === undefined) throw new GameAddonError(`No catalog add-on has the id ${JSON.stringify(id)}; search the catalog for its id.`, 'GAME_ADDON_NOT_FOUND')
     return addon
   }
 
@@ -618,7 +651,7 @@ export class GameAddonManager {
    */
   usableEntry(id: string): GameAddon {
     const addon = this.entry(id)
-    if (!this.options.allowed(addon.id)) throw new GameAddonError(turnedOffMessage(addon))
+    if (!this.options.allowed(addon.id)) throw new GameAddonError(turnedOffMessage(addon), 'GAME_ADDON_PERMISSION_DENIED')
     return addon
   }
 
@@ -785,17 +818,17 @@ export class GameAddonManager {
     const presence = await this.presenceOf(projectDir, entries)
     this.checkConflicts(addon, presence)
     const projectText = await readProjectText(projectDir, 'project.godot')
-    if (projectText === undefined) throw new GameAddonError(`No project.godot in ${projectDir}.`)
+    if (projectText === undefined) throw new GameAddonError(`No project.godot in ${projectDir}.`, 'GAME_ADDON_PROJECT_NOT_FOUND')
     const own = presence.get(addon.id) ?? { state: 'absent' }
     if (own.state === 'found' && options.replace !== true) {
       const version = own.version === undefined ? '' : ` (version ${own.version})`
-      throw new GameAddonError(`${folderPath}${version} is already in the project without a WASD Engine record. Install with replace: true to replace it with ${addon.title} ${addon.version}, or keep it: its guide is listed either way.`)
+      throw new GameAddonError(`${folderPath}${version} is already in the project without a WASD Engine record. Install with replace: true to replace it with ${addon.title} ${addon.version}, or keep it: its guide is listed either way.`, 'GAME_ADDON_ALREADY_EXISTS')
     }
     const project = new ProjectFile(projectText)
     for (const autoload of godot.autoloads ?? []) {
       const current = project.autoload(autoload.name)
       if (current !== undefined && current !== autoload.path) {
-        throw new GameAddonError(`The autoload ${autoload.name} already points to ${current}; ${addon.title} needs that name for ${autoload.path}. Rename or remove that autoload first.`)
+        throw new GameAddonError(`The autoload ${autoload.name} already points to ${current}; ${addon.title} needs that name for ${autoload.path}. Rename or remove that autoload first.`, 'GAME_ADDON_CONFLICT')
       }
     }
     // A recorded add-on whose folder was deleted installs again.
@@ -899,6 +932,8 @@ export class GameAddonManager {
     const rollback = new Rollback()
     // The add-on folder that the installation replaced, until it moves to the add-on's backup.
     let replaced: TakenEntry | undefined
+    // The settings whose own values in the project the add-on's replaced.
+    let displaced: string[] = []
     try {
       const addonsExisted = await projectEntry(projectDir, 'addons') !== undefined
       const addons = await projectFolder(projectDir, 'addons')
@@ -921,8 +956,9 @@ export class GameAddonManager {
       const enabled = await editProject(projectDir, (project) => {
         remember = settingsBefore(project, godot.settings ?? [], record.settings.get(addon.id), reinstall)
         this.enableInProject(project, addon)
+        displaced = remember === undefined ? [] : replacedSettings(project, godot.settings ?? [], remember)
       })
-      if (enabled === undefined) throw new GameAddonError(`No project.godot in ${projectDir}.`)
+      if (enabled === undefined) throw new GameAddonError(`No project.godot in ${projectDir}.`, 'GAME_ADDON_PROJECT_NOT_FOUND')
       rollback.add(async () => { await revertProject(projectDir, enabled) }, `project.godot enables ${addon.title}`)
       // A setting the project did not have goes at the removal whether or not it is remembered.
       if (remember !== undefined && remember.some(entry => entry.before !== undefined)) {
@@ -939,7 +975,10 @@ export class GameAddonManager {
     } catch (error) {
       throw await rollback.undo(error, 'installation')
     }
-    const notes = replaced === undefined ? [] : [await this.keepReplaced(projectDir, addon.id, replaced)]
+    const notes = [
+      ...replaced === undefined ? [] : [await this.keepReplaced(projectDir, addon.id, replaced)],
+      ...displaced.length === 0 ? [] : [replacedNote(displaced)],
+    ]
     return { addon: installed, unchanged: false, notes }
   }
 
@@ -954,7 +993,7 @@ export class GameAddonManager {
       await this.storeFolder(join(this.options.blenderStore, blender.module), addon, this.archiveSource(archive, signal), (files) => {
         if (!files.includes('blender_manifest.toml') && !files.includes('__init__.py')) {
           const root = archive.root === '' ? 'its root' : archive.root
-          throw new GameAddonError(`The archive of ${addon.title} has neither blender_manifest.toml nor __init__.py under ${root}.`)
+          throw new GameAddonError(`The archive of ${addon.title} has neither blender_manifest.toml nor __init__.py under ${root}.`, 'GAME_ADDON_CATALOG_INVALID')
         }
       }, signal)
     } else if (blender.files !== undefined) {
@@ -1016,7 +1055,7 @@ export class GameAddonManager {
       const state = presence.get(other)?.state
       if (state !== undefined && state !== 'absent') {
         const title = this.catalog.get(other)?.title ?? other
-        throw new GameAddonError(`${title} (${other}) is already in this project and does the same job as ${addon.title}; keep it, or remove it first.`)
+        throw new GameAddonError(`${title} (${other}) is already in this project and does the same job as ${addon.title}; keep it, or remove it first.`, 'GAME_ADDON_CONFLICT')
       }
     }
   }
@@ -1031,13 +1070,13 @@ export class GameAddonManager {
   private async removalPlan(projectDir: string, addon: GameAddon, entries: readonly InstalledGameAddon[]): Promise<TakenEntry[]> {
     const record = entries.find(item => item.id === addon.id)
     const presence = (await this.presenceOf(projectDir, entries)).get(addon.id)
-    if (record === undefined && presence?.state !== 'found') throw new GameAddonError(`${addon.title} is not in this project.`)
+    if (record === undefined && presence?.state !== 'found') throw new GameAddonError(`${addon.title} is not in this project.`, 'GAME_ADDON_NOT_INSTALLED')
     if (addon.godot === undefined) return []
     const folder = addonFolder(addon)
     const paths = record?.paths ?? [folder]
     const foreign = paths.filter(path => path !== folder && !path.startsWith(`${folder}/`))
     if (foreign.length > 0) {
-      throw new GameAddonError(`${STATE_DIR}/${RECORD_FILE} lists ${foreign.join(', ')} for ${addon.title}, outside its folder ${folder}, so nothing was removed. Fix or delete that entry of the record.`)
+      throw new GameAddonError(`${STATE_DIR}/${RECORD_FILE} lists ${foreign.join(', ')} for ${addon.title}, outside its folder ${folder}, so nothing was removed. Fix or delete that entry of the record.`, 'GAME_ADDON_RECORD_CORRUPT')
     }
     const taken: TakenEntry[] = []
     for (const path of outermost(paths)) {
@@ -1213,7 +1252,7 @@ export class GameAddonManager {
         await copyFile(join(entry.parentPath, entry.name), join(target, path), constants.COPYFILE_EXCL)
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-        throw new GameAddonError(`The catalog file ${overlay}/${path.split(sep).join('/')} would replace a file of the ${addon.title} archive.`)
+        throw new GameAddonError(`The catalog file ${overlay}/${path.split(sep).join('/')} would replace a file of the ${addon.title} archive.`, 'GAME_ADDON_CATALOG_INVALID')
       }
     }
   }

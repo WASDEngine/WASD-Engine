@@ -24,7 +24,7 @@ WasdSurface.paint($Level/Houses, bricks)    # every mesh and CSG shape under a n
 | Made | `plastic`, `rubber`, `fabric` |
 | Blocking out | `grid`: a line every meter, a stronger one every five |
 
-The surfaces need no texture files and no UV maps. One shader lays every pattern out in meters of the world, from three sides, so a brick is 24 by 7.5 cm on any wall, floor, or boulder, whatever the mesh's size or scale, and generated or CSG geometry looks finished. Nothing is downloaded: a Web build makes the one small picture all surfaces share in 67 ms, and a street of 24 houses in 11 surfaces runs at 60 fps there. Make each material once and give it to every mesh of that surface.
+One shader lays every pattern out in meters of the world, from three sides, so a brick is 24 by 7.5 cm on any wall, floor, or boulder, whatever the mesh's size or scale, and generated or CSG geometry looks finished. Nothing is downloaded: a Web build makes the one small picture all surfaces share in 67 ms, and a street of 24 houses in 11 surfaces runs at 60 fps there. Make each material once and give it to every mesh of that surface.
 
 Options, in a dictionary after the name:
 
@@ -70,7 +70,7 @@ puts that right, and returns what it took each mesh for. A `WasdFace3D` of `wasd
 - **Hair** (`hair`): solid where it is whole and thinning out lock by lock along the hairline, with a ragged band of light across its strands.
 - Cloth with holes is cut out; everything else is made solid.
 
-For a character of another make: `WasdSurface.skin(picture, {"relief": normal_map, "gloss": roughness_picture, "shade": occlusion_picture})`, `WasdSurface.eye(picture, 1.0, WasdSurface.eye_middles(mesh))`, `WasdSurface.mouth(picture)`, `WasdSurface.lashes(picture)` (brows: `lashes(picture, Color.WHITE, 0.5, 0.0)`), and `WasdSurface.hair(picture, tint)`. Hair thins out where the alpha of its vertices' color says so, and takes no band of light where their red is 0, as curls do not.
+For a character of another make: `WasdSurface.skin(picture, {"relief": normal_map, "gloss": roughness_picture, "shade": occlusion_picture})`, `WasdSurface.eye(picture, 1.0, WasdSurface.eye_middles(mesh))`, `WasdSurface.mouth(picture)`, `WasdSurface.lashes(picture)` (brows: `lashes(picture, Color.WHITE, 0.5, 0.0)`), and `WasdSurface.hair(picture, tint)`. Hair thins out where the alpha of its vertices' color says so; `{"straight": 0.0}` drops its band of light, for curls, as `human()` does for hair named "curl".
 
 ## Pitfalls
 
@@ -78,6 +78,7 @@ For a character of another make: `WasdSurface.skin(picture, {"relief": normal_ma
 - On a ball, bricks, tiles, and planks run as on the flat side that faces most. They are for walls, floors, and boxes; give round things `rock`, `metal`, or a plain surface.
 - A see-through surface sorts by its object's middle: two large glass panes that cross can draw in the wrong order. Keep panes apart or small.
 - A GridMap takes its materials from its MeshLibrary: set the surface on the library's meshes.
+- `paint()` skips what other WASD add-ons draw, such as halos, water, decals, and cloth, with all under it.
 
 ## Check it
 

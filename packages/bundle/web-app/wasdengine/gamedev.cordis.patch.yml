@@ -29,11 +29,11 @@
                 the source and license of every asset. The tested add-ons of game_addons and
                 the CC0 assets of polyhaven_* and ambientcg_* are the exception: add them
                 yourself when the game needs them. For each asset, first look for one to
-                download from Poly Haven, ambientCG, or a catalog add-on, and use it when it
-                suits the game's art style.
+                download from Poly Haven, ambientCG, or a catalog add-on, with whichever of
+                those tools you have, and use it when it suits the game's art style.
                 Otherwise generate 2D art with image_generate instead of drawing it yourself
                 in GIMP or code, and voices, sound effects, and music with the elevenlabs_*
-                tools instead of SuperCollider.
+                tools instead of SuperCollider, when you have those tools.
 
                 Finish the whole request before you end your turn. When it has several parts or
                 steps, list every one with todo_write before you start, keep the list current,

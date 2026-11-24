@@ -1,10 +1,10 @@
 extends Node3D
-## WASD Crowd smoke test (render run on the Compatibility renderer): a pole of two bones that waves is baked; the
-## baked textures hold the pole's tip where the skeleton puts it at each frame of each clip; the data saves to a file
-## and loads again; a crowd of two hundred shows red poles that wave, each in its own phase; members take other
-## clips, tints only on named surfaces, and leave; and a full crowd or an unknown clip is refused. Then a flock of
-## each kind, birds, fish, and butterflies, shows creatures that move, in one draw call, takes another count, and
-## flies apart from what startles it.
+## WASD Crowd smoke test (render run on the Compatibility renderer): a pole of two bones that waves is baked; the baked
+## textures hold the pole's tip where the skeleton puts it at each frame of each clip; the data saves to a file and
+## loads again; a crowd of two hundred shows red poles that wave, each in its own phase, and keeps them when its
+## capacity changes; members take other clips, tints only on named surfaces, and leave; a full crowd or an unknown clip
+## is refused, and a lower capacity drops the members it no longer holds. Then a flock of each kind, birds, fish, and
+## butterflies, shows creatures that move, in one draw call, takes another count, and flies apart from what startles it.
 
 const ID := "wasd-crowd"
 
@@ -189,6 +189,15 @@ func _run() -> void:
 			return _fail("member %d got the number %d" % [index, member])
 	if crowd.add(Transform3D.IDENTITY, "Still") != -1 or crowd.count() != 200:
 		return _fail("a full crowd took another member")
+	# More room, and then as much as before, keeps every member where it stands and in its clip.
+	var place := crowd.get_member_transform(137)
+	crowd.capacity = 260
+	if crowd.count() != 200 or crowd.get_member_transform(137) != place or crowd.add(Transform3D.IDENTITY, "Still") != 200:
+		return _fail("with room for 260, the crowd counts %d, member 137 stands at %s, not %s" % [crowd.count(), crowd.get_member_transform(137).origin, place.origin])
+	crowd.remove(200)
+	crowd.capacity = 200
+	if crowd.count() != 200 or crowd.add(Transform3D.IDENTITY, "Still") != -1:
+		return _fail("back to room for 200, the crowd counts %d or takes another member" % [crowd.count()])
 	var standing := _red(await _frame("standing.png"))
 	if standing < 1500:
 		return _fail("two hundred still poles show %d red samples" % [standing])
@@ -229,6 +238,10 @@ func _run() -> void:
 		return _fail("a new member got the number %d" % [again])
 	if crowd.set_member_clip(again, "NoSuchClip") or crowd.add(Transform3D.IDENTITY, "NoSuchClip") != -1:
 		return _fail("an unknown clip was taken")
+	# Room for 100 keeps the odd members under 100, of which there are 50, and drops the new one.
+	crowd.capacity = 100
+	if crowd.count() != 50 or crowd.add(Transform3D.IDENTITY, "Wave") != 98:
+		return _fail("with room for 100, the crowd counts %d" % [crowd.count()])
 	crowd.clear()
 	if crowd.count() != 0 or _red(await _frame("cleared.png")) > 20:
 		return _fail("clear() left members")

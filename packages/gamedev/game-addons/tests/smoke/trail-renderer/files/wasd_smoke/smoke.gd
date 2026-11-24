@@ -1,7 +1,8 @@
 extends Node3D
 ## TrailRenderer smoke test (render run on the Compatibility renderer): a trail follows a node that circles in front
 ## of the camera, draws its gradient's color, and fades out once it stops emitting; a LineRenderer draws the points
-## that code gives it.
+## that code gives it, and in its own space, where `alignment` does nothing, a line along -Z has width only when its
+## points face across it.
 
 const ID := "trail-renderer"
 
@@ -114,6 +115,24 @@ func _run() -> void:
 	var line_share := await _share(Color(1, 0, 0), "line.png")
 	if line_share < 0.01:
 		return _fail("the line does not show in the frame (share %f)" % [line_share])
-	print("points ", count, " trail ", drawn, " faded ", faded, " line ", line_share)
+
+	# In the node's own space each point faces its own alignment_vector, Vector3.FORWARD unless Point.new() is given one.
+	var beam := LineRenderer.new()
+	beam.world_space = false
+	beam.alignment = LineRenderer.Alignment.View
+	beam.curve = width
+	add_child(beam)
+	var beam_mesh := (beam.get_node("MeshInstance3D") as MeshInstance3D).mesh
+	beam.points = [Point.new(Vector3.ZERO), Point.new(Vector3(0, 0, -4))]
+	for _i: int in 2:
+		await get_tree().process_frame
+	var unfaced := beam_mesh.get_aabb().size.x
+	beam.points = [Point.new(Vector3.ZERO, Vector3.UP), Point.new(Vector3(0, 0, -4), Vector3.UP)]
+	for _i: int in 2:
+		await get_tree().process_frame
+	var faced := beam_mesh.get_aabb().size.x
+	if unfaced > 0.01 or absf(faced - 0.6) > 0.01:
+		return _fail("a line along -Z in its node's space is %.2f m wide with the default facing and %.2f m facing up" % [unfaced, faced])
+	print("points ", count, " trail ", drawn, " faded ", faded, " line ", line_share, " beam ", unfaced, " ", faced)
 	print("SMOKE_PASS ", ID)
 	get_tree().quit(0)

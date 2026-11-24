@@ -1,6 +1,8 @@
 extends Node3D
-## SimpleGrassTextured smoke test (render run on the Compatibility renderer): grass added from game code shows as a
-## green field that the wind moves, settles onto a slope's collider, and leaves a clearing where it is erased.
+## SimpleGrassTextured smoke test (render run on the Compatibility renderer): grass that game code plants, as the guide
+## does, with a grass node off the world's origin, settles onto a slope's collider when snapped a frame after planting,
+## shows as a green field that the wind moves, and loses exactly the tufts within the circle that erase() clears around
+## a world point given in the node's own space.
 
 const ID := "simple-grass-textured"
 const GRASS := preload("res://addons/simplegrasstextured/grass.gd")
@@ -74,22 +76,24 @@ func _run() -> void:
 	if bare > 0.01:
 		return _fail("the bare scene is green (share %f)" % [bare])
 
+	# The node stands off the world's origin, so that its own space is not the world's.
 	var grass := MultiMeshInstance3D.new()
 	grass.set_script(GRASS)
+	grass.position = Vector3(2, 0, -1)
 	add_child(grass)
 	var transforms: Array = []
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
 	for _i: int in 4000:
-		var at := Vector3(rng.randf_range(-12, 12), 5.0, rng.randf_range(-12, 4))
+		var at := Vector3(rng.randf_range(-14, 10), 5.0, rng.randf_range(-11, 5))
 		transforms.append(grass.eval_grass_transform(at, Vector3.UP, Vector3.ONE * rng.randf_range(0.7, 1.2), rng.randf() * TAU))
 	grass.add_grass_batch(transforms)
 	grass.set_process(true)
-	for _i: int in 4:
-		await get_tree().process_frame
+	# The guide's order on uneven ground: the node adds the planted tufts in its next _process, then they drop.
+	await get_tree().process_frame
+	await grass.snap_to_terrain()
 	if grass.multimesh.instance_count != 4000:
 		return _fail("%d grass instances after adding 4000" % [grass.multimesh.instance_count])
-	await grass.snap_to_terrain()
 	var worst := 0.0
 	for index: int in range(0, 4000, 97):
 		var origin := grass.to_global(grass.multimesh.get_instance_transform(index).origin)
@@ -118,12 +122,18 @@ func _run() -> void:
 	if float(moved) / float(total) < 0.02:
 		return _fail("the wind does not move the grass (share %f)" % [float(moved) / float(total)])
 
-	grass.erase(grass.to_global(grass.multimesh.get_instance_transform(0).origin), 3.0)
+	# A 3 m clearing around a world point, which erase() takes in the node's own space.
+	var center := grass.to_global(grass.multimesh.get_instance_transform(0).origin)
+	var inside := 0
+	for index: int in grass.multimesh.instance_count:
+		if grass.to_global(grass.multimesh.get_instance_transform(index).origin).distance_to(center) <= 3.0:
+			inside += 1
+	grass.erase(grass.to_local(center), 3.0)
 	for _i: int in 4:
 		await get_tree().process_frame
 	var left: int = grass.multimesh.instance_count
-	if left >= 4000 or left < 3000:
-		return _fail("%d instances left after erasing a 3 m circle" % [left])
+	if inside < 20 or left != 4000 - inside:
+		return _fail("%d instances left after erasing the %d within 3 m of a point" % [left, inside])
 	print("field ", field, " moved ", float(moved) / float(total), " left ", left)
 	print("SMOKE_PASS ", ID)
 	get_tree().quit(0)

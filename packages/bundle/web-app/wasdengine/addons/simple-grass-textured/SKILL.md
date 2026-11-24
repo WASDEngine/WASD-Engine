@@ -28,8 +28,8 @@ func plant(area: Rect2, count: int, ground_y: float) -> MultiMeshInstance3D:
 ```
 
 - `eval_grass_transform(position, ground_normal, scale, turn)` makes one tuft's transform in the grass node's space; a tuft is 1 m wide and 1 m tall at scale 1, so short lawn grass is `Vector3(0.6, 0.3, 0.6)`.
-- On uneven ground, give every tuft a height above the ground, then `await grass.snap_to_terrain()`: each tuft drops onto the collider under it (`collision_mask`, all layers by default). The ground needs a collision shape.
-- `grass.erase(world_position, radius)` clears a circle, for paths, buildings, and scorch marks; `erase_box(size, transform)` and `erase_cylinder(rx, height, rz, transform)` clear other areas.
+- On uneven ground, give every tuft a height above the ground, then `await get_tree().process_frame`, since the node adds planted tufts in its next `_process`, and `await grass.snap_to_terrain()`: each tuft drops onto the collider under it (`collision_mask`, all layers by default). The ground needs a collision shape.
+- `grass.erase(grass.to_local(world_position), radius)` clears a circle, for paths, buildings, and scorch marks: its point is in the grass node's own space. `erase_box(size, area_transform)` and `erase_cylinder(rx, height, rz, area_transform)`, which take the area's world transform, clear other areas.
 - Three to six tufts per square metre read as a meadow. Planting 12,000 at once took about a second in a browser: plant per area while a loading screen shows, or in batches across frames.
 - Keep one grass node per field or chunk of at most a few thousand tufts, so that fields outside the view are not drawn.
 

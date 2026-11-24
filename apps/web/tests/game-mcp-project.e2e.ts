@@ -91,8 +91,11 @@ it('creates a game project for a connected agent, which the window lists as a ga
   expect(textOf(await client.callTool({ name: 'game_addons', arguments: { action: 'guide', id: 'game-look' } }))).toContain('# The look of a 3D game')
   const mpfb = textOf(await client.callTool({ name: 'game_addons', arguments: { action: 'guide', id: 'mpfb' } }))
   expect(mpfb).toContain('wasd_addons.enable("mpfb")` with `blender_execute_python`')
-  expect(mpfb).toContain('The file references/asset-packs.md, which this guide links:\n\n# MakeHuman system assets')
+  expect(mpfb).toContain('The file references/asset-packs.md, which this guide links, did not fit in this result; read it with action guide, id mpfb, and reference references/asset-packs.md.')
   expect(mpfb).not.toContain('mcp__')
+  const packs = textOf(await client.callTool({ name: 'game_addons', arguments: { action: 'guide', id: 'mpfb', reference: 'references/asset-packs.md' } }))
+  expect(packs).toContain('The file references/asset-packs.md, which the guide mpfb links:\n\n# MakeHuman system assets')
+  expect(packs).not.toContain('mcp__')
 
   // The agent names the model it is, which WASD Engine cannot see, so the game's page can credit it.
   const result = await client.callTool({ name: 'create_game_project', arguments: { name: NAME, model: 'Claude Fable 5.2' } })

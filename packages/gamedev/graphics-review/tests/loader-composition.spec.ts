@@ -304,7 +304,8 @@ describe('graphics_review in a Loader-booted composition with the account route'
     expect(request?.headers['x-dsh-auth-token']).toBe(TOKEN)
     expect(request?.body).toMatchObject({
       model: 'deepseek-flash', stream: true, max_tokens: 16_384, thinking: { type: 'enabled' }, output_config: { effort: 'low' },
-      system: reviewerPrompt([]),
+      // The composition registers none of the tools that the reviewer names besides Godot.
+      system: reviewerPrompt([], []),
     })
     expect(request?.body).not.toHaveProperty('temperature')
     const [message, ...others] = request?.body.messages as { role: string; content: Record<string, unknown>[] }[]

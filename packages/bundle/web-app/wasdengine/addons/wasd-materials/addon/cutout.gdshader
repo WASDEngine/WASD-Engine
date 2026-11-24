@@ -29,9 +29,7 @@ void fragment() {
 	if (has_normal) {
 		NORMAL_MAP = texture(normal_map, at).rgb;
 	}
-	// Seen from behind, the surface faces the viewer too.
-	if (!FRONT_FACING) {
-		NORMAL = -NORMAL;
-	}
+	// Seen from behind, the surface faces the viewer too: with culling off, the renderers already turn NORMAL round
+	// on the back, so light from the viewer's side lights it and light from beyond it shines through.
 	BACKLIGHT = vec3(shine_through);
 }

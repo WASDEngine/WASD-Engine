@@ -3,7 +3,8 @@ extends Node3D
 ## changes to a scene behind its loading screen while frames go on being drawn, the bar only moves forward, the new
 ## scene wakes paused and runs once the screen has gone, what the game spawns later is shown once and stays loaded
 ## until the next change, a screen of the game's own is told the progress and a tip, a 2D scene loads the same
-## way, a second change is refused while one runs, and a resource loads in steps on its own.
+## way, a second change is refused while one runs, a path without a scene changes nothing, a scene that does not
+## load brings back the scene that was left, and a resource loads in steps on its own.
 
 const ID := "wasd-loading"
 
@@ -104,7 +105,20 @@ class Runner extends Node:
 		if again == null or int(tree.root.get_meta(&"guests_seen", 0)) != 2:
 			return _fail("the warm-up of a 2D scene showed the guest %s times" % [tree.root.get_meta(&"guests_seen", 0)])
 
-		# 5. A resource loads in steps on its own.
+		# 5. A path that holds no scene changes nothing; a scene that does not load brings back the one that was left.
+		var current := tree.current_scene
+		var refused: Node = await loader.change_scene("res://wasd_smoke/level.gdshader")
+		if refused != null or not is_instance_valid(current) or tree.current_scene != current or loader.is_loading():
+			return _fail("a change to a shader's path freed the scene %s, left %s current, and the loader busy %s" % [not is_instance_valid(current), tree.current_scene, loader.is_loading()])
+		var broken := FileAccess.open("res://wasd_smoke/broken.tscn", FileAccess.WRITE)
+		broken.store_string("[gd_scene format=3]\n\n[node name=\"Broken\" type=\"Node3D\"]\nposition = Vector3(1, 2\n")
+		broken.close()
+		var back: Node = await loader.change_scene("res://wasd_smoke/broken.tscn")
+		DirAccess.remove_absolute(ProjectSettings.globalize_path("res://wasd_smoke/broken.tscn"))
+		if back != null or tree.current_scene == null or tree.current_scene.scene_file_path != "res://wasd_smoke/flat.tscn" or is_instance_valid(current) or loader.is_loading():
+			return _fail("a scene that did not load left %s current, and the loader busy %s" % [tree.current_scene, loader.is_loading()])
+
+		# 6. A resource loads in steps on its own.
 		var packed := await loader.load_resource("res://wasd_smoke/level.tscn") as PackedScene
 		if packed == null or not packed.can_instantiate():
 			return _fail("load_resource gave %s" % [packed])

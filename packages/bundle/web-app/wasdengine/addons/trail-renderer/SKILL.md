@@ -48,11 +48,11 @@ func add_trail(parent: Node3D, half_width: float, color: Color, seconds := 0.3) 
 
 ## Which way the ribbon faces
 
-`alignment` picks the axis the flat ribbon faces:
+`alignment` picks the axis the flat ribbon faces while `world_space` is true, as it is by default:
 
 - `Alignment.View`: toward the camera. Use it for tracers, streaks, lasers, lightning.
 - `Alignment.TransformZ` (default): toward the node's own Z axis. Use it for a sword swing: put the trail at the middle of the blade, turn it so its Z axis points out of the blade's flat side, and make the curve's width half the blade's length, so the ribbon spans the blade.
-- `Alignment.Static`: each point keeps the direction it was made with.
+- `Alignment.Static`: each point faces its own `alignment_vector`: for a trail, the node's X axis when the point was made; for a line, the `facing` of `Point.new(position, facing)`, `Vector3.FORWARD` when left out.
 
 ## A line through points
 
@@ -65,7 +65,7 @@ add_child(beam)
 beam.points = [Point.new(from), Point.new(to)]        # world positions; set again whenever they move
 ```
 
-`world_space = false` reads the points in the node's own space, so the line moves with it. Lightning is a line whose points are re-made with random offsets every few frames; a rope or cable is a line through the positions of its segments.
+`world_space = false` reads the points in the node's own space, so the line moves with it (keep it true on a trail). `alignment` then does nothing: each point faces its own `alignment_vector`, as with `Static`, so give every point a facing across the line, such as `Point.new(position, Vector3.UP)` for a level beam that is seen from above; with the default facing, a line along the node's -Z has no width. Lightning is a line whose points are re-made with random offsets every few frames; a rope or cable is a line through the positions of its segments.
 
 ## Cost
 

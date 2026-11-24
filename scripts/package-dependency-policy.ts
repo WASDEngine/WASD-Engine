@@ -119,8 +119,9 @@ const PEER_REQUIRED_HOST_EXPORTS = {
   '@deepseek-ai/dsh-session-persistence': ['SessionPersistenceNotFoundError'],
   // Readers recognize a deadline's TimeoutReason only by `instanceof` against their own copy.
   '@deepseek-ai/dsh-timeout': ['deadline'],
-  // A definition must carry the ToolDefinition fields that the Host's own dsh-tools copy reads.
-  '@deepseek-ai/dsh-tools': ['defineTool'],
+  // A definition must carry the ToolDefinition fields that the Host's own dsh-tools copy reads, and a ToolArgsError
+  // must extend the Host's own HarnessError, which the tool pipeline matches by `instanceof`.
+  '@deepseek-ai/dsh-tools': ['defineTool', 'ToolArgsError'],
   // Add-ons and releases resolve projects as the installed Godot plugin does, then hand them to that plugin's service.
   '@deepseek-ai/dsh-godot': ['resolveGodotProject'],
   // A refused release defers its screenshot as a message to the Host's agent loop, which reads it with its own dsh-llm copy.

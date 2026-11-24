@@ -34,10 +34,21 @@ var camera := Camera3D.new()
 var _arm := SpringArm3D.new()
 var _yaw := 0.0
 var _pitch := deg_to_rad(-15.0)
+## Where the rig came to in the last two physics steps, when its target moves in them.
+var _was := Vector3.ZERO
+var _is := Vector3.ZERO
+## Where the target was in the last frame, whether a physics step has run since, and whether something moved the
+## target in the last frame that had no physics step, as a Tween or an AnimationPlayer does: then the rig follows it in
+## every frame.
+var _last := Vector3.ZERO
+var _stepped := false
+var _between_steps := false
 
 
 func _init() -> void:
 	top_level = true
+	# The rig is placed in every frame, so physics interpolation must not move it as well.
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	var ball := SphereShape3D.new()
 	ball.radius = 0.2
 	_arm.shape = ball
@@ -50,9 +61,9 @@ func _init() -> void:
 
 func _ready() -> void:
 	camera.current = current
+	reset_smoothing()
 	var followed := _followed()
 	if followed != null:
-		global_position = followed.global_position + Vector3.UP * height
 		# Start behind the target, looking the way it faces.
 		_yaw = followed.global_rotation.y + PI
 		if followed is CollisionObject3D:
@@ -63,6 +74,17 @@ func _ready() -> void:
 ## The way the camera looks, flat on the ground: forward for whoever moves relative to the camera.
 func get_forward() -> Vector3:
 	return Vector3(-sin(_yaw), 0.0, -cos(_yaw))
+
+
+## Puts the rig where it follows its target at once, without easing there: after the target was moved at once, as by a
+## teleport, so that the view does not sweep across what lies between.
+func reset_smoothing() -> void:
+	var followed := _followed()
+	if followed != null:
+		global_position = followed.global_position + Vector3.UP * height
+		_last = followed.global_position
+	_was = global_position
+	_is = global_position
 
 
 ## Turns the view to look along a direction, as after a cutscene or a respawn.
@@ -93,9 +115,45 @@ func _process(delta: float) -> void:
 		_pitch = clampf(_pitch - stick.y * stick_speed * 0.7 * delta, deg_to_rad(pitch_limits.x), deg_to_rad(pitch_limits.y))
 	var followed := _followed()
 	if followed != null:
-		var to := followed.global_position + Vector3.UP * height
-		global_position = to if follow_speed <= 0.0 else global_position.lerp(to, 1.0 - exp(-follow_speed * delta))
+		var at := followed.global_position
+		if not _stepped:
+			_between_steps = at != _last
+		_stepped = false
+		_last = at
+		if _moves_in_steps(followed) and not _between_steps:
+			# Drawn as the target is: between the last two physics steps with physics interpolation, else where the
+			# last step left it.
+			global_position = _was.lerp(_is, Engine.get_physics_interpolation_fraction()) if followed.is_physics_interpolated_and_enabled() else _is
+		else:
+			global_position = _eased(global_position, followed.get_global_transform_interpolated().origin, delta)
+			_was = global_position
+			_is = global_position
 	_turn()
+
+
+func _physics_process(delta: float) -> void:
+	_stepped = true
+	var followed := _followed()
+	if followed != null and _moves_in_steps(followed) and not _between_steps:
+		_was = _is
+		_is = _eased(_is, followed.global_position, delta)
+
+
+func _eased(from: Vector3, at: Vector3, delta: float) -> Vector3:
+	var to := at + Vector3.UP * height
+	return to if follow_speed <= 0.0 else from.lerp(to, 1.0 - exp(-follow_speed * delta))
+
+
+## Whether the target moves in physics steps: a physics body, or a node under one. Unless something also moves it between
+## steps, the rig then eases after it in those steps, so that the two keep together on the screen however many frames
+## are drawn for each step.
+func _moves_in_steps(followed: Node3D) -> bool:
+	var node: Node = followed
+	while node != null:
+		if node is PhysicsBody3D:
+			return true
+		node = node.get_parent()
+	return false
 
 
 func _followed() -> Node3D:

@@ -57,5 +57,24 @@ jobs:
       - name: Cache bpy 5.2.3 for the Blender add-ons
         run: uv run --python 3.13 --no-project --with bpy==5.2.3 python -I -c 'import bpy'
 
+      # The suite skips the add-ons whose runtime it cannot find, and its global-class check passes without any add-on,
+      # so the job also fails when a test did not run or the suite passed none.
       - name: Install and smoke-test every add-on
-        run: pnpm exec vitest run --config vitest.e2e.config.ts packages/gamedev/game-addons/tests/catalog.e2e.ts
+        run: |
+          report="$RUNNER_TEMP/catalog-report.json"
+          pnpm exec vitest run --config vitest.e2e.config.ts --reporter=default --reporter=json --outputFile.json="$report" \
+            packages/gamedev/game-addons/tests/catalog.e2e.ts
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs"
+            const { testResults } = JSON.parse(readFileSync(process.argv[1], "utf8"))
+            let missed = testResults.length === 0 ? 1 : 0
+            if (missed > 0) console.log("::error::the catalog suite ran no test file")
+            for (const result of testResults) {
+              const passed = result.assertionResults.filter(test => test.status === "passed").length
+              const idle = result.assertionResults.filter(test => test.status !== "passed" && test.status !== "failed")
+              console.log(`${result.name}: ${passed} tests passed, ${idle.length} did not run`)
+              if (passed === 0) { console.log(`::error::${result.name} passed no test: it found no runtime`); missed += 1 }
+              for (const test of idle) { console.log(`::error::${test.fullName} did not run (${test.status}): its runtime is missing`); missed += 1 }
+            }
+            process.exit(missed === 0 ? 0 : 1)
+          ' "$report"

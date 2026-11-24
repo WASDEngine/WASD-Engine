@@ -129,7 +129,8 @@ void light() {
 	// The highlight of oily skin: small and bright where the skin is glossy, wide and faint where it is matte.
 	float shiny = 2.0 / max(pow(ROUGHNESS, 4.0), 0.0005) - 2.0;
 	float facing = clamp(dot(NORMAL, normalize(LIGHT + VIEW)), 0.0, 1.0);
-	float glint = pow(facing, shiny) * (shiny + 8.0) / 25.0;
+	// Matte skin (ROUGHNESS 1) has a power of 0, and pow(0, 0) has no value: the power is at least 1, the base above 0.
+	float glint = pow(max(facing, 0.0001), max(shiny, 1.0)) * (shiny + 8.0) / 25.0;
 	SPECULAR_LIGHT += glint * 0.04 * shine * clamp(toward, 0.0, 1.0) * ATTENUATION * LIGHT_COLOR;
 	// The sheen: light that grazes the skin on the side it comes from.
 	float edge = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);

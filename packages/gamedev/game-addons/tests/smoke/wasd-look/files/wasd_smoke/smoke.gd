@@ -2,7 +2,9 @@ extends Node3D
 ## WASD Look smoke test (render run on the Compatibility renderer, the one every Web build uses): the sky lights the
 ## scene as brightly as it looks, also when it is dark; every look applies; the sun casts a shadow and gets the lower
 ## energy this renderer needs; the day's clock, fades, the view distance, a photographed sky, and the lamp helper do
-## what they say.
+## what they say; values given as whole numbers fade; a look, an hour, or a fade stops a running fade, whose waiters
+## go on; a sky with no light above 1, as Web builds hand every picture back, is read whole through a pass of its
+## own; and when the wind stops, the clouds drift as they did before it.
 
 const ID := "wasd-look"
 
@@ -148,7 +150,8 @@ func _run() -> void:
 	if look.sun.light_energy > 0.001:
 		return _fail("at hour 18 the light still has energy %f" % [look.sun.light_energy])
 	look.hour = 9.0
-	if changes != ["night", "day"]:
+	# The clock's first hour tells which light is up, then each change.
+	if changes != ["day", "night", "day"]:
 		return _fail("night_changed told %s" % [changes])
 	look.day_minutes = 0.01
 	await get_tree().create_timer(0.2).timeout
@@ -156,11 +159,47 @@ func _run() -> void:
 	if look.hour <= 9.5:
 		return _fail("the clock did not run: hour %f" % [look.hour])
 
-	# 5. A fade ends at its look and stops the clock.
+	# 5. A fade ends at its look and stops the clock; the clock's next start tells which light is up again.
 	var tween := look.fade_to("sunset", 0.2)
 	await tween.finished
 	if look.look != "sunset" or look.hour >= 0.0 or absf(look.sun_elevation - 5.0) > 0.01:
 		return _fail("fade_to ended at look %s, hour %f, sun at %f" % [look.look, look.hour, look.sun_elevation])
+	look.hour = 9.0
+	if changes != ["day", "night", "day", "day"]:
+		return _fail("after a fade the clock's first hour told %s" % [changes])
+	# Values given as whole numbers fade like the rest: halfway from no fog to night's, the fog is half night's.
+	look.look = "noon"
+	look.set_values({"fog": 0, "stars": 0, "sun": 1})
+	var halfway := look.fade_to("night", 10.0)
+	halfway.pause()
+	halfway.custom_step(5.0)
+	var half_fog := look.environment.fog_density
+	var half_stars := float(material.get_shader_parameter(&"stars"))
+	if absf(half_fog - 0.002) > 0.0002 or absf(half_stars - 0.5) > 0.01:
+		return _fail("halfway from whole numbers to night the fog is %f and the stars %f" % [half_fog, half_stars])
+	# A look, a running hour, or another fade stops a fade where it is, and code that waits for the stopped fade to
+	# finish goes on.
+	for stop: String in ["look", "hour", "fade"]:
+		look.look = "noon"
+		var running := look.fade_to("night", 10.0)
+		var resumed: Array[bool] = [false]
+		(func() -> void:
+			await running.finished
+			resumed[0] = true).call()
+		await get_tree().process_frame
+		var other: Tween = null
+		if stop == "look":
+			look.look = "golden_hour"
+		elif stop == "hour":
+			look.hour = 12.0
+		else:
+			other = look.fade_to("sunset", 0.1)
+			await other.finished
+		for _i: int in 3:
+			await get_tree().process_frame
+		var wanted := {"look": 13.0, "hour": 60.0, "fade": 5.0}[stop] as float
+		if running.is_valid() or not resumed[0] or absf(look.sun_elevation - wanted) > 0.01:
+			return _fail("a %s during a fade left it running %s, its waiter resumed %s, the sun at %f" % [stop, running.is_valid(), resumed[0], look.sun_elevation])
 
 	# 6. Single values change, and a view distance ends the fog there.
 	look.look = "noon"
@@ -204,6 +243,21 @@ func _run() -> void:
 	var under_picture := await _frame("panorama.png", 30)
 	if _mean(under_picture, floor_part) < 0.3 or _mean(under_picture, sky_part) < 0.3:
 		return _fail("under the photographed sky the floor shows %f and the sky %f" % [_mean(under_picture, floor_part), _mean(under_picture, sky_part)])
+	# A sky with no light above 1, as a Web build hands every picture back, is read whole through a pass of its own a
+	# frame later: until then the sun stays, then it moves to the picture's, and the horizon keeps the sky's blue.
+	var dim := Image.create(256, 128, false, Image.FORMAT_RGBF)
+	for y: int in 128:
+		for x: int in 256:
+			dim.set_pixel(x, y, picture.get_pixel(x, y) * (0.0003 if picture.get_pixel(x, y).r > 100.0 else 0.1))
+	look.sun_azimuth = 0.0
+	look.sun_elevation = 60.0
+	look.panorama = ImageTexture.create_from_image(dim)
+	var waiting := look.find_sun_in_panorama()
+	for _i: int in 3:
+		await get_tree().process_frame
+	var far := look.get_horizon_color()
+	if waiting != Vector2(0.0, 60.0) or absf(look.sun_azimuth - 40.0) > 2.0 or absf(look.sun_elevation - 30.0) > 2.0 or far.b < far.r * 1.15:
+		return _fail("a dim photographed sky left the sun at %s, then at (%f, %f), and the horizon %s" % [waiting, look.sun_azimuth, look.sun_elevation, far])
 	look.panorama = null
 	if look.environment.sky.sky_material != material:
 		return _fail("panorama = null did not bring the drawn sky back")
@@ -241,9 +295,17 @@ func _run() -> void:
 	if not is_equal_approx(look.environment.fog_depth_end, 1000.0) or look.environment.fog_sky_affect > 0.01:
 		return _fail("without added fog the fog ends at %f and takes %f of the sky" % [look.environment.fog_depth_end, look.environment.fog_sky_affect])
 	look.view_distance = 0.0
+	look.cloud_drift = 2.0
+	var own_drift := Vector2(look.cloud_drift, look.cloud_heading)
 	look.set_wind(Vector3(6, 0, 0))
 	if not is_equal_approx(look.cloud_heading, 90.0) or not is_equal_approx(look.cloud_drift, 3.0) or not look.is_in_group(&"wasd_look") or not look.is_in_group(&"wasd_wind"):
 		return _fail("a wind toward +X left cloud heading %f and drift %f" % [look.cloud_heading, look.cloud_drift])
+	# No wind, as a weather that leaves tells, gives the clouds back their own drift.
+	look.set_wind(Vector3(0, 0, 8))
+	look.set_wind(Vector3.ZERO)
+	if not Vector2(look.cloud_drift, look.cloud_heading).is_equal_approx(own_drift):
+		return _fail("after the wind stopped the clouds drift %f toward %f, not %s" % [look.cloud_drift, look.cloud_heading, own_drift])
+	look.cloud_drift = 0.0
 
 	# 10. Clouds drift.
 	look.look = "noon"

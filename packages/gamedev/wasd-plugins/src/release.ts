@@ -23,7 +23,8 @@
  * into that file before the export once the project is linked, and after its first release, so builds know their game
  * and their site where no URL names them. Before the export, a project's WASD Multiplayer add-on older than this WASD
  * Engine's becomes this one, unless the game changed the add-on's own code, and the result says which happened
- * ({@link addonNote}). In `dedicated` mode, the release then exports the Linux dedicated server
+ * ({@link addonNote}), as does the failure of a later step after an update. The upload names the project's mode and
+ * the version of the add-on its builds carry. In `dedicated` mode, the release then exports the Linux dedicated server
  * build into `.wasdengine/server/`, zips `server.x86_64` with any GDExtension libraries the export wrote next to it,
  * and stores it on the site with the new version's number, which updates the game's servers; a server build that
  * fails leaves the version released and becomes a warning.
@@ -39,7 +40,9 @@ import { creditNames, type GameCredits } from './credits.ts'
 import { folderOf, type ReleaseFolders } from './folders.ts'
 import { accountGame, copyQuestion, linksTo, projectName, readLinks, rememberGame, siteGames, Visibility, type AccountGame } from './game-link.ts'
 import { MultiplayerApi } from './multiplayer-api.ts'
-import { readMultiplayerConfig, updateMultiplayerAddon, writeMultiplayerConfig, type AddonUpdate, type MultiplayerConfig } from './multiplayer-project.ts'
+import {
+  multiplayerAddonVersion, readMultiplayerConfig, updateMultiplayerAddon, writeMultiplayerConfig, type AddonUpdate, type MultiplayerConfig,
+} from './multiplayer-project.ts'
 import { fileDigest, savedPreview, type PreviewFiles } from './preview.ts'
 import { STATE_DIR } from './state.ts'
 import type { WasdDownload, WasdMultiplayerMode, WasdRelease, WasdServerBuild, WasdVisibility } from './types.ts'
@@ -79,19 +82,34 @@ export const MAX_DESCRIPTION = 2000
 /** The format characters the site keeps in a description: the zero-width joiner and non-joiner, and flags' tag characters. */
 const KEPT_FORMAT = /[\u200c\u200d\u{E0020}-\u{E007F}]/u
 
-/** Any control, format, surrogate, private-use, or unassigned character. */
-const OTHER = /\p{C}/u
+/**
+ * The control, format, surrogate, and private-use characters, which the site drops from a description but for
+ * {@link KEPT_FORMAT}, line breaks, and tabs. Unassigned code points stay, on the site too: its Unicode version may be
+ * older or newer than this WASD Engine's, and a newer one assigns some of them, such as new emoji.
+ */
+const DROPPED = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}]/u
 
 /**
- * A description as the site stores it: NFC, line breaks as LF, tabs as spaces, no other control or format character
- * but those {@link KEPT_FORMAT} names, no spaces at line ends, at most one blank line in a row, trimmed. A release
- * compares the site's copy with this, so it sends a description only when it changed.
+ * Whether a code point is a noncharacter, which the site drops from a description: U+FDD0 to U+FDEF, and the last two
+ * code points of every plane.
+ * @param char - one code point.
+ * @returns true for a noncharacter.
+ */
+function isNoncharacter(char: string): boolean {
+  const code = char.codePointAt(0) as number
+  return (code >= 0xfdd0 && code <= 0xfdef) || (code & 0xfffe) === 0xfffe
+}
+
+/**
+ * A description as the site stores it: NFC, line breaks as LF, tabs as spaces, no other control, format, surrogate, or
+ * private-use character but those {@link KEPT_FORMAT} names, no noncharacter, no spaces at line ends, at most one blank
+ * line in a row, trimmed. A release compares the site's copy with this, so it sends a description only when it changed.
  * @param text - the description as given.
  * @returns the description as the site keeps it.
  */
 export function siteDescription(text: string): string {
   const kept = Array.from(text.normalize('NFC').replace(/\r\n?/gu, '\n'))
-    .filter(char => char === '\n' || char === '\t' || !OTHER.test(char) || KEPT_FORMAT.test(char))
+    .filter(char => char === '\n' || char === '\t' || ((!DROPPED.test(char) || KEPT_FORMAT.test(char)) && !isNoncharacter(char)))
     .map(char => char === '\t' ? ' ' : char)
     .join('')
   return kept.split('\n').map(line => line.trimEnd()).join('\n').replace(/\n{3,}/gu, '\n\n').trim()
@@ -191,12 +209,14 @@ class SiteApi {
 
   async release(
     id: string, archive: string, notes: string, visibility: WasdVisibility | undefined, multiplayer: WasdMultiplayerMode | undefined,
+    addon: string | undefined,
   ): Promise<z.infer<typeof ReleaseJson> | undefined> {
     const params = new URLSearchParams({
       ...notes === '' ? {} : { notes },
       ...visibility === undefined ? {} : { visibility },
-      // An online version plays on the site only while it is the latest, which the site learns here.
-      ...multiplayer === undefined ? {} : { multiplayer },
+      // An online version plays on the site only while it is the latest, which the site learns here, and its builds
+      // sign players in as the WASD Multiplayer add-on they carry does.
+      ...multiplayer === undefined ? {} : { multiplayer, ...addon === undefined ? {} : { multiplayer_addon: addon } },
     })
     const query = params.size === 0 ? '' : `?${params.toString()}`
     const response = await this.site.call('POST', `/api/v1/games/${encodeURIComponent(id)}/releases${query}`, { data: await openAsBlob(archive), type: 'application/zip' })
@@ -364,7 +384,7 @@ export interface ReleaseDependencies {
 
 /**
  * What a release's result says of the project's WASD Multiplayer add-on, once the release updated it or found it older
- * and changed by the game.
+ * and changed by the game, and what the release's failure says after an update.
  * @param update - what the release did.
  * @returns the note.
  */
@@ -375,7 +395,25 @@ export function addonNote(update: AddonUpdate): string {
     return `This project's WASD Multiplayer add-on ${was}; the release updated it to ${update.to} before the export.${kept}`
   }
   const is = update.from === undefined ? 'names no version' : `is ${update.from}`
-  return `This project's WASD Multiplayer add-on ${is}, older than WASD Engine's ${update.to}, and the game changed the add-on's own code (${update.changed.join(', ')}), so the release built the game with it as it is. Ask the user whether to call wasd_multiplayer_setup, which replaces those files with ${update.to}'s and keeps the example files the game changed; then apply the game's changes again where ${update.to} still needs them.`
+  return `This project's WASD Multiplayer add-on ${is}, older than WASD Engine's ${update.to}, and the game changed the add-on's own code (${update.changed.join(', ')}), so the release built the game with it as it is. Ask the user whether to call wasd_multiplayer_setup, which replaces the add-on's own files with ${update.to}'s, first keeping the ones the game changed in a backup folder that its result names, and keeps the files the game added and the example files it changed; then apply the game's changes again from that backup where ${update.to} still needs them.`
+}
+
+/** The add-on versions the site takes with an online release: `major.minor.patch`. */
+const SITE_ADDON_VERSION = /^\d+\.\d+\.\d+$/u
+
+/** The longest add-on version the site takes with an online release. */
+const MAX_ADDON_VERSION = 16
+
+/**
+ * The version of a multiplayer project's WASD Multiplayer add-on that its release names to the site, which keeps
+ * sending players of a version whose add-on cannot sign them in on every hostname of the site to one that can.
+ * @param projectDir - absolute project folder.
+ * @returns the version the add-on's `plugin.cfg` names, or undefined when the project has no add-on or it names no
+ *   `major.minor.patch` of at most {@link MAX_ADDON_VERSION} characters.
+ */
+async function siteAddonVersion(projectDir: string): Promise<string | undefined> {
+  const version = await multiplayerAddonVersion(projectDir)
+  return version !== undefined && version.length <= MAX_ADDON_VERSION && SITE_ADDON_VERSION.test(version) ? version : undefined
 }
 
 async function isFile(path: string): Promise<boolean> {
@@ -560,7 +598,8 @@ async function exportServerArchive(
  * @throws {ReleaseError} while signed out, for unusable arguments, for a folder that shares its game with another one
  * and has not said which game it releases ({@link copyQuestion}, before the export), for a private release to a site
  * without private games (before the upload), for a dedicated game whose server build cannot be exported (before the
- * upload), and when the site refuses or fails.
+ * upload), and when the site refuses or fails. Any failure but a cancellation after the release updated the project's
+ * add-on is a ReleaseError whose message ends with the update's note ({@link addonNote}), with the failure as its cause.
  * @throws {WebCheckRefusal} when the Web check found problems that stop a release, before anything reaches the site.
  */
 export async function releaseGame(request: ReleaseRequest, dependencies: ReleaseDependencies, signal: AbortSignal): Promise<WasdRelease> {
@@ -629,21 +668,23 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     requireVisibility(created, request.visibility)
     return created
   }
-  // A dedicated game's server build names its game, so its first release makes the game before the builds export.
-  if (multiplayer?.mode === 'dedicated' && game === undefined) {
-    game = await create()
-    multiplayer = await pointConfig(request.projectDir, multiplayer, game.id, access.origin)
-  }
-  const exported = await dependencies.exportWeb(request.projectDir, join(request.projectDir, STATE_DIR, WEB_BUILD_DIR), signal)
-  // The Web check watches the build while the desktop builds export, and ends before anything reaches the site; a
-  // release that fails before then stops it.
   const stopCheck = new AbortController()
-  const checking = request.check === false || dependencies.checkWeb === undefined
-    ? undefined
-    : webCheckOutcome(dependencies.checkWeb(exported.outputDir, AbortSignal.any([signal, stopCheck.signal])))
   const archive = join(dependencies.tempDir, `wasd-release-${randomUUID()}.zip`)
   let serverArchive: ServerArchive | undefined
   try {
+    // A dedicated game's server build names its game, so its first release makes the game before the builds export.
+    if (multiplayer?.mode === 'dedicated' && game === undefined) {
+      game = await create()
+      multiplayer = await pointConfig(request.projectDir, multiplayer, game.id, access.origin)
+    }
+    // The add-on as the builds carry it.
+    const addonVersion = multiplayer === undefined ? undefined : await siteAddonVersion(request.projectDir)
+    const exported = await dependencies.exportWeb(request.projectDir, join(request.projectDir, STATE_DIR, WEB_BUILD_DIR), signal)
+    // The Web check watches the build while the desktop builds export, and ends before anything reaches the site; a
+    // release that fails before then stops it.
+    const checking = request.check === false || dependencies.checkWeb === undefined
+      ? undefined
+      : webCheckOutcome(dependencies.checkWeb(exported.outputDir, AbortSignal.any([signal, stopCheck.signal])))
     // Desktop builds come before anything reaches the site, so a build that fails publishes nothing.
     const builds: GodotDesktopExport[] = []
     for (const platform of DESKTOP_PLATFORMS.filter(platform => request.desktop?.includes(platform) === true)) {
@@ -694,11 +735,11 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
         warnings.push(`The game has no preview GIF: recording one failed: ${(error as Error).message}`)
       }
     }
-    let released = await api.release(game.id, archive, notes, request.visibility, multiplayer?.mode)
+    let released = await api.release(game.id, archive, notes, request.visibility, multiplayer?.mode, addonVersion)
     if (released === undefined) {
       // The game was removed between the lookup and the upload: release to a new one.
       game = await create()
-      released = await api.release(game.id, archive, notes, request.visibility, multiplayer?.mode)
+      released = await api.release(game.id, archive, notes, request.visibility, multiplayer?.mode, addonVersion)
       if (released === undefined) throw new ReleaseError('WASD Engine could not store the release: the new game disappeared. Try again.')
     }
     // Digests describe what this project uploaded to the game they name; a different game has none of its files.
@@ -745,6 +786,11 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
       warnings,
       ...checked,
     }
+  } catch (error) {
+    // The next release finds the add-on up to date and says nothing of the update, so this failure says it; a Web check
+    // refusal says it already.
+    if (addon?.outcome !== 'updated' || signal.aborted || error instanceof WebCheckRefusal) throw error
+    throw new ReleaseError(`${(error as Error).message}\n${addonNote(addon)}`, { cause: error })
   } finally {
     stopCheck.abort()
     await rm(archive, { force: true })

@@ -1,6 +1,6 @@
 ---
 name: mirror3d
-description: Mirror3D 1.9 is installed in this project. The Mirror3D scene is a flat mirror that shows a true reflection of the scene from a second camera, on walls and as a polished floor or still pool, and it draws in Web builds. Load before adding a mirror, a reflective floor, or a reflecting window.
+description: Mirror3D 1.9 is installed in this project. The Mirror3D scene is a flat mirror that shows a true reflection of the scene from a second camera, on walls and as a polished floor, and it draws in Web builds. Load before adding a mirror, a reflective floor, or a reflecting window.
 ---
 
 # Mirror3D 1.9
@@ -24,7 +24,7 @@ func add_wall_mirror(at: Vector3, facing_degrees: float) -> Mirror3D:
 	return mirror
 ```
 
-In a `.tscn`, instance `Mirror3D.tscn` and set the same properties on the instance. A polished floor or a still pool is the same mirror lying flat: `mirror.rotation_degrees.x = -90`, one centimetre above the floor mesh so the two do not flicker.
+In a `.tscn`, instance `Mirror3D.tscn` and set the same properties on the instance. A polished or wet floor is the same mirror lying flat: `mirror.rotation_degrees.x = -90`, one centimetre above the floor mesh so the two do not flicker. Water, still or moving, is wasd-water's, which mirrors the scene itself.
 
 It reflects for the camera that `get_viewport().get_camera_3d()` returns, so it follows the active camera of the main viewport.
 
@@ -34,7 +34,7 @@ It reflects for the camera that `get_viewport().get_camera_3d()` returns, so it 
 - `pixels_per_unit` (200): the reflection's texture is `size * pixels_per_unit` pixels. A 1.2 x 2 m mirror at 256 is 307 x 512 pixels; a 10 x 10 m floor needs 64 to 100, not 200.
 - `color`: tints the reflection, and its alpha blends the mirror over what lies behind it. `Color(0.9, 0.97, 0.94)` is clean glass; alpha 0.3 to 0.5 over a floor mesh reads as polished stone or a wet street.
 - `mask_texture`: a texture whose color and alpha multiply the reflection: a round mirror, puddles on a street, dirt at the edges.
-- `distortion` (0 to 100) with `distortion_texture`: bends the reflection by a noise texture, for old glass or a rippled pool.
+- `distortion` (0 to 100) with `distortion_texture`: bends the reflection by a noise texture, for old or warped glass.
 - `cull_mask`: the render layers the mirror draws. Leave out layers that hold what need not reflect, such as distant scenery, particles, or first-person arms.
 - `cull_near` (0.05), `cull_far` (50): how close to and how far behind the mirror plane things still reflect. Lower `cull_far` to the size of the room.
 - `freeze_distance` (50): farther away than this, the mirror keeps its last picture.

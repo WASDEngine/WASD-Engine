@@ -1,13 +1,16 @@
 """Point MPFB at the MakeHuman system assets that WASD Engine installs with it, as MPFB's preferences panel does, and
 offer the module wasd_mpfb: human() makes a dressed human whose face looks natural in a game, add_face() gives it a
 face that a game can move, and export() writes it as a .glb."""
+import functools
 import importlib
 import math
+import numbers
 import os
 import random
 import sys
 import types
 import zlib
+from collections.abc import Mapping
 
 import bpy
 import numpy as np
@@ -91,6 +94,18 @@ HEAD_BONES = ('head', 'jaw', 'levator', 'oculi', 'orbicularis', 'oris', 'risoriu
 
 # The parts that MPFB fits to the face, by its object types; hair and clothes keep their shape.
 FACE_PARTS = ('Proxymeshes', 'Eyelashes', 'Eyebrows', 'Teeth', 'Tongue')
+
+# MakeHuman's base mesh, hm08, as MPFB makes it: its count of vertices with the helper geometry, and the vertex
+# groups that the face is read by besides the vertex numbers above, which on any other mesh are other places.
+BASE_VERTICES = 19158
+BASE_GROUPS = ('body', 'helper-l-eye', 'helper-r-eye', 'joint-mouth', 'helper-upper-teeth', 'helper-lower-teeth')
+
+# MakeHuman's body values that human() takes in build, each from 0 to 1; gender, age, and ethnicity are arguments of
+# their own.
+BUILD = ('muscle', 'weight', 'height', 'proportions', 'cupsize', 'firmness')
+
+# The kinds of datablock that making a human adds to the .blend: what a human that fails to be made leaves behind.
+MADE = ('objects', 'meshes', 'armatures', 'materials', 'images', 'node_groups', 'textures', 'collections', 'actions')
 
 # The two rows of teeth that the base mesh carries as helper geometry, by their vertex groups.
 TEETH_ROWS = ('helper-upper-teeth', 'helper-lower-teeth')
@@ -283,6 +298,8 @@ LOPSIDED = (('asym/asym-brown-1', 0.12), ('asym/asym-eye-5', 0.5), ('asym/asym-e
 AT_EASE = (0.3, 0.15, 0.5)
 
 # The words in a hair asset's name that tell of curls, which take light as a mass and not in a band across strands.
+# Curly hair's material is named with "_curly" at its end, by which a game's material fix-up, such as
+# WasdSurface.human, knows to lay no band of light across it.
 CURLY = ('afro', 'curl', 'dread', 'braid')
 
 # What a human wears and carries on its head unless told otherwise, by gender; and the hair of those of MakeHuman's
@@ -340,72 +357,154 @@ def setup(module, assets):
     sys.modules['wasd_mpfb'] = helper
 
 
+def _whole(make):
+    """Wrap a function that makes things in the .blend so that a call of it that fails removes what it made: a human
+    that fails to be made leaves nothing in the scene, and the next one is named Human again."""
+
+    @functools.wraps(make)
+    def whole(*args, **kwargs):
+        before = {block.session_uid for kind in MADE for block in getattr(bpy.data, kind)}
+        try:
+            return make(*args, **kwargs)
+        except BaseException:
+            active = bpy.context.view_layer.objects.active
+            if active is not None and active.mode != 'OBJECT':
+                bpy.ops.object.mode_set(mode='OBJECT')
+            bpy.data.batch_remove([block for kind in MADE for block in getattr(bpy.data, kind) if block.session_uid not in before])
+            raise
+
+    return whole
+
+
+@_whole
 def human(module, assets, gender='female', age=25, ethnicity='caucasian', *, looks=1.0, seed=0, build=None, skin=None,
           eyes='brown', hair=None, hair_color=None, brows=None, lashes=None, makeup=None, outfit=None, detail='high',
           rig='game_engine'):
     """Make a dressed human with a good-looking face that looks natural in a game, and return its base mesh; its
     parent is the rig.
 
-    gender is 'female' or 'male' (or MakeHuman's 0 to 1), age is in years from 12, and ethnicity is 'caucasian',
-    'asian', or 'african' (or their shares as a dict). looks, from 0 to 1, is how far the face is brought to what
-    good-looking faces of its kind measure: eyes of the right size and distance, open and a little tilted, a mouth
-    as wide as mouths are, with lips that taper to corners that lie level, cheekbones, and a jaw and a chin to match;
-    0 leaves MakeHuman's own plain face, and a half suits a face in a crowd. seed draws the features in which this face differs from others
-    of its kind; None draws none. build sets MakeHuman's body values, such as
+    gender is 'female' or 'male' (or MakeHuman's 0 to 1), age is in years from 12 to 90, and ethnicity is
+    'caucasian', 'asian', or 'african' (or their shares as a dict). looks, from 0 to 1, is how far the face is
+    brought to what good-looking faces of its kind and age measure: eyes of the right size and distance, open and a
+    little tilted, a mouth as wide as mouths are, with lips that taper to corners that lie level, cheekbones, and a
+    jaw and a chin to match; 0 keeps MakeHuman's own measures, and a half suits a face in a crowd. seed, any
+    integer, draws the features in which this face differs from others of its kind, its skin's tone, and its brows,
+    at any looks; None draws none, and with looks 0 leaves MakeHuman's own plain face. build sets MakeHuman's body
+    values from 0 to 1, of muscle, weight, height, proportions, cupsize, and firmness, such as
     {'muscle': 0.7, 'weight': 0.4, 'height': 0.6}.
     eyes is a name of EYE_COLORS, hair a hair asset's name or False, hair_color a name of HAIR_COLORS or an sRGB
-    color, lashes an asset's name or False, and outfit the names of clothes assets; what is left out follows the
-    gender. brows left out are painted for this face, full and in its hair's color: an eyebrow asset's name takes
-    that asset's picture instead, and False leaves the face without. makeup, from 0 to 1, is how groomed the face is:
-    lashes that line the lids, color on the lips and the cheeks, and brows drawn clean; left out, a woman's is a
-    half and a man's none. skin names a skin asset; left out, it follows gender, age, and ethnicity.
+    color, lashes an asset's name or False, and outfit the names of clothes assets, or one name; what is left out
+    follows the gender. brows left out are painted for this face, full and in its hair's color: an eyebrow asset's
+    name takes that asset's picture instead, and False leaves the face without. makeup, from 0 to 1, is how groomed
+    the face is: lashes that line the lids, color on the lips and the cheeks, and brows drawn clean; left out, a
+    woman's is a half and a man's none. skin names a skin asset; left out, it follows gender, age, and ethnicity.
 
     detail 'high' keeps MakeHuman's own head, with teeth and a tongue, for a human seen up close: follow it with
     add_face(). 'low' is a human for a crowd or the distance: the 1,460-triangle proxy without brows, lashes, or
     teeth, whose face is too coarse to be seen up close or to move.
+
+    Every argument is checked before anything is made, and a human that fails to be made leaves nothing in the scene.
     """
     services = importlib.import_module(module + '.services')
     people, targets = services.HumanService, services.TargetService
-    male = gender == 'male' if isinstance(gender, str) else float(gender) >= 0.5
-    kind = 'male' if male else 'female'
-    if isinstance(gender, str) and gender not in ('female', 'male'):
-        raise ValueError('gender is "female" or "male", or a number from 0 (female) to 1 (male).')
-    if eyes not in EYE_COLORS:
-        raise ValueError(f'Unknown eye color {eyes!r}; the colors are {", ".join(EYE_COLORS)}.')
-    if isinstance(hair_color, str) and hair_color not in HAIR_COLORS:
-        raise ValueError(f'Unknown hair color {hair_color!r}; the colors are {", ".join(HAIR_COLORS)}, or give an sRGB color.')
-    if detail not in ('high', 'low'):
-        raise ValueError('detail is "high" or "low".')
+    if gender in ('female', 'male'):
+        manly = 1.0 if gender == 'male' else 0.0
+    else:
+        manly = _number('gender', gender, 0.0, 1.0, '"female" or "male", or a number from 0 (female) to 1 (male)')
+    kind = 'male' if manly >= 0.5 else 'female'
+    years = _number('age', age, 12.0, 90.0, 'a number of years from 12 to 90')
     races = {'asian': 0.0, 'caucasian': 0.0, 'african': 0.0}
     if isinstance(ethnicity, str):
         if ethnicity not in races:
             raise ValueError(f'Unknown ethnicity {ethnicity!r}; it is "caucasian", "asian", or "african", or their shares as a dict.')
         races[ethnicity] = 1.0
-    else:
-        total = sum(float(share) for share in ethnicity.values()) or 1.0
+    elif isinstance(ethnicity, Mapping):
         for name, share in ethnicity.items():
             if name not in races:
                 raise ValueError(f'Unknown ethnicity {name!r}; the shares are of "caucasian", "asian", and "african".')
-            races[name] = float(share) / total
-    years = max(12.0, min(float(age), 90.0))
+            races[name] = _number(f'The share of {name}', share, 0.0, math.inf, 'a number of 0 or more')
+        total = sum(races.values())
+        if total <= 0.0:
+            raise ValueError('The shares of ethnicity add up to nothing: give "caucasian", "asian", or "african" a share above 0.')
+        races = {name: share / total for name, share in races.items()}
+    else:
+        raise ValueError('ethnicity is "caucasian", "asian", or "african", or their shares as a dict, such as {"asian": 1, "caucasian": 1}.')
+    looks = _number('looks', looks, 0.0, 1.0)
+    if seed is not None:
+        if isinstance(seed, bool) or not isinstance(seed, numbers.Integral):
+            raise ValueError(f'seed is an integer, such as 7 or zlib.crc32(name.encode()), or None, not {seed!r}.')
+        seed = int(seed)
+    if build is not None and not isinstance(build, Mapping):
+        raise ValueError(f'build is a dict of MakeHuman\'s body values, such as {{"muscle": 0.7}}; its names are {", ".join(BUILD)}.')
+    for name in (build or {}):
+        if name not in BUILD:
+            raise ValueError(f'Unknown body value {name!r}; build takes {", ".join(BUILD)}, each from 0 to 1, and gender, age, and '
+                             'ethnicity are arguments of their own.')
+    shape = {name: _number(f'build[{name!r}]', value, 0.0, 1.0) for name, value in (build or {}).items()}
+    if not isinstance(eyes, str) or eyes not in EYE_COLORS:
+        raise ValueError(f'Unknown eye color {eyes!r}; the colors are {", ".join(EYE_COLORS)}.')
+    if isinstance(hair_color, str):
+        if hair_color not in HAIR_COLORS:
+            raise ValueError(f'Unknown hair color {hair_color!r}; the colors are {", ".join(HAIR_COLORS)}, or give an sRGB color.')
+        tint = HAIR_COLORS[hair_color]
+    elif hair_color is None:
+        tint = None
+    else:
+        try:
+            channels = [float(channel) for channel in hair_color]
+        except (TypeError, ValueError):
+            channels = []
+        if len(channels) not in (3, 4) or not all(0.0 <= channel <= 1.0 for channel in channels):
+            raise ValueError(f'hair_color is one of {", ".join(HAIR_COLORS)}, or an sRGB color (r, g, b) of numbers from 0 to 1, '
+                             f'not {hair_color!r}.')
+        tint = tuple(channels[:3])
+    if detail not in ('high', 'low'):
+        raise ValueError('detail is "high" or "low".')
+    groom = 0.5 * (1.0 - manly) if makeup is None else _number('makeup', makeup, 0.0, 1.0)
+    wear = DEFAULTS[kind]
+    stage = 'young' if years < 40.0 else 'middleage' if years < 62.0 else 'old'
+    files = {
+        'skin': _asset(assets, 'skins', skin or f'{stage}_{max(races, key=races.get)}_{kind}', 'skin', '.mhmat'),
+        'eyes': _asset(assets, 'eyes', 'low-poly' if detail == 'low' else 'high-poly', 'eyes'),
+        'teeth': _asset(assets, 'teeth', 'teeth_base', 'teeth'),
+        'tongue': _asset(assets, 'tongue', 'tongue01', 'tongue'),
+        'proxy': _asset(assets, 'proxymeshes', 'proxy741', 'proxymeshes', '.proxy'),
+    }
+    hair = GROUP_HAIR.get(max(races, key=races.get), {}).get(kind, wear['hair']) if hair is None else hair
+    if hair is not False:
+        files['hair'] = _asset(assets, 'hair', hair, 'hair')
+    if brows is not False:
+        files['brows'] = _asset(assets, 'eyebrows', BROW_CARD if brows is None else brows, 'eyebrows')
+    lashes = wear['lashes'] if lashes is None else lashes
+    if lashes is not False:
+        files['lashes'] = _asset(assets, 'eyelashes', lashes, 'eyelashes')
+    outfit = wear['outfit'] if outfit is None else (outfit,) if isinstance(outfit, str) else outfit
+    try:
+        outfit = tuple(outfit)
+    except TypeError:
+        raise ValueError(f'outfit is the names of clothes assets, such as ("male_worksuit01", "shoes02"), or () for none, not {outfit!r}.') from None
+    clothes = [_asset(assets, 'clothes', name, 'clothes') for name in outfit]
+    _check_rig(services, rig)
+
     macro = targets.get_default_macro_info_dict()
     macro.update(
-        gender=(1.0 if male else 0.0) if isinstance(gender, str) else float(gender),
+        gender=manly,
         # MakeHuman's age runs from a child of ten at 0.1875 over a young adult of twenty-five at 0.5 to ninety at 1.
         age=0.1875 + (years - 10.0) / 15.0 * 0.3125 if years < 25.0 else 0.5 + (years - 25.0) / 65.0 * 0.5,
         race=races, muscle=0.55, weight=0.45, proportions=0.5 + 0.4 * looks)
-    macro.update(build or {})
+    macro.update(shape)
     body = people.create_human(macro_detail_dict=macro)
+    _check_base(body, 'human')
     # The face's own shape goes on before the rig and the parts, which are fitted to the body as it then is. The
     # body's shape so far becomes its rest shape: the face is measured and shaped as it stands.
     if targets.has_any_shapekey(body):
         targets.bake_targets(body)
-    manly = float(macro['gender'])
     # What makes a face good-looking is taken back by half on an old one, which is to stay old: its lids hang a
-    # little, its lips are thinner, and the skin under its eyes is not a child's.
+    # little, its lips are thinner, and the skin under its eyes is not a child's. A face that is still growing is
+    # smaller than a young adult's: at twelve its lengths are nine tenths of those it has from eighteen.
     aged = float(_ease(40.0, 75.0, years))
-    lid = _shape_face(services, body, kind, manly, races, looks, seed, aged) + 0.14 * aged
-    groom = min(max(0.5 * (1.0 - manly) if makeup is None else float(makeup), 0.0), 1.0)
+    grown = 1.0 - 0.09 * (1.0 - float(_ease(12.0, 18.0, years)))
+    lid = _shape_face(services, body, kind, manly, races, looks, seed, aged, grown) + 0.14 * aged
     # No two skins are of one tone: this one is a little lighter or darker than its kind's, and warmer by more than
     # it may be cooler, since a face with a little gold and red in it is a healthy one and a cool one is pale.
     tone = random.Random(1000003 * seed + 17) if seed is not None else None
@@ -431,62 +530,49 @@ def human(module, assets, gender='female', age=25, ethnicity='caucasian', *, loo
             _rest_face(head, lid, looks, (ease.uniform(0.5, 1.5), ease.uniform(0.0, 3.5)) if ease is not None else (1.0, 0.0))
     people.add_builtin_rig(body, rig)
 
-    def part(folder, name, sort):
-        path = os.path.join(assets, folder, name, name + ('.proxy' if sort == 'Proxymeshes' else '.mhclo'))
-        if not os.path.exists(path):
-            there = ', '.join(sorted(os.listdir(os.path.join(assets, folder))))
-            raise ValueError(f'No {folder} asset {name!r}; there are {there}.')
+    def part(path, sort):
         return people.add_mhclo_asset(path, body, asset_type=sort, subdiv_levels=0)
 
-    stage = 'young' if years < 40.0 else 'middleage' if years < 62.0 else 'old'
-    skin = skin or f'{stage}_{max(races, key=races.get)}_{kind}'
-    material = os.path.join(assets, 'skins', skin, skin + '.mhmat')
-    if not os.path.exists(material):
-        raise ValueError(f'No skin asset {skin!r}; there are {", ".join(sorted(os.listdir(os.path.join(assets, "skins"))))}.')
     if detail == 'low':
-        part('proxymeshes', 'proxy741', 'Proxymeshes')
-    people.set_character_skin(material, body, skin_type='GAMEENGINE', material_instances=False)
+        part(files['proxy'], 'Proxymeshes')
+    people.set_character_skin(files['skin'], body, skin_type='GAMEENGINE', material_instances=False)
     for mesh in [body, *_fitted(services, body, ('Proxymeshes',))]:
         for slot in mesh.material_slots:
             _tone_skin(_own_picture(slot.material))
-    balls = part('eyes', 'low-poly' if detail == 'low' else 'high-poly', 'Eyes')
+    balls = part(files['eyes'], 'Eyes')
     _natural_eyes(balls, eyes)
-    wear = DEFAULTS[kind]
-    tint = HAIR_COLORS[hair_color] if isinstance(hair_color, str) else hair_color
     card = None
     if detail == 'high':
         if brows is None:
             # The widest of MakeHuman's eyebrow cards, for this face's own brows, which are painted once its hair
             # has told their color.
-            card = part('eyebrows', BROW_CARD, 'Eyebrows')
+            card = part(files['brows'], 'Eyebrows')
         elif brows:
-            picture = _own_picture(part('eyebrows', brows, 'Eyebrows').material_slots[0].material)
+            picture = _own_picture(part(files['brows'], 'Eyebrows').material_slots[0].material)
             _recolor(picture, None if tint is None else _brow_color(tint))
-        lashes = wear['lashes'] if lashes is None else lashes
-        if lashes:
-            fringe = part('eyelashes', lashes, 'Eyelashes')
+        if 'lashes' in files:
+            fringe = part(files['lashes'], 'Eyelashes')
             _recolor(_own_picture(fringe.material_slots[0].material), None)
             _taper_lashes(fringe, balls, min(0.8 + 0.4 * groom, 1.0))
-        teeth = part('teeth', 'teeth_base', 'Teeth')
+        teeth = part(files['teeth'], 'Teeth')
         _whiten(_own_picture(teeth.material_slots[0].material))
-        _shade_mouth([teeth, part('tongue', 'tongue01', 'Tongue')])
-    hair = GROUP_HAIR.get(max(races, key=races.get), {}).get(kind, wear['hair']) if hair is None else hair
-    locks = part('hair', hair, 'Hair') if hair else None
+        _shade_mouth([teeth, part(files['tongue'], 'Tongue')])
+    locks = part(files['hair'], 'Hair') if 'hair' in files else None
     # A bald head keeps MakeHuman's stubble, in the hair's color where one was given.
     roots = tint
     if locks is not None:
         picture = _own_picture(locks.material_slots[0].material)
         _recolor(picture, tint)
         roots = tint or _middle_color(picture)
-        # A name with "hair" in it, by which a game's material fix-up, such as WasdSurface.human, knows what it holds.
-        locks.material_slots[0].material.name = f'{body.name}.hair_{hair}'
-        # Curls lie every way: no band of light runs across them.
-        locks['wasd_straight'] = 0.0 if any(word in hair for word in CURLY) else 1.0
+        # A name with "hair" in it, by which a game's material fix-up, such as WasdSurface.human, knows what it holds,
+        # and with "_curly" at its end where curls lie every way, and no band of light runs across them.
+        curly = any(word in hair for word in CURLY)
+        locks.material_slots[0].material.name = f'{body.name}.hair_{hair}' + ('_curly' if curly else '')
         _hang_hair(locks)
         full = next((share for word, share in HAIR_TIGHT.items() if word in hair), 1.0)
         _lift_hair(locks, body, *(full * (pair[0] * (1.0 - manly) + pair[1] * manly) for pair in HAIR_LIFT))
-    for name in (wear['outfit'] if outfit is None else outfit):
-        part('clothes', name, 'Clothes')
+    for path in clothes:
+        part(path, 'Clothes')
     if card is not None:
         _paint_brows(card, body, _mirrors(services), manly, _brow_color(roots or HAIR_COLORS['dark']), groom, seed, 1.0 - 0.2 * aged)
     if detail == 'high':
@@ -495,14 +581,52 @@ def human(module, assets, gender='female', age=25, ethnicity='caucasian', *, loo
     return body
 
 
-def _shape_face(services, body, kind, manly, races, looks, seed, aged=0.0):
+def _number(name, value, low, high, what=None):
+    """An argument that is a number from low to high, as a float; a ValueError that says what it takes otherwise."""
+    if isinstance(value, numbers.Real) and not isinstance(value, bool) and low <= float(value) <= high:
+        return float(value)
+    raise ValueError(f'{name} is {what or f"a number from {low:g} to {high:g}"}, not {value!r}.')
+
+
+def _asset(assets, folder, name, kind, ending='.mhclo'):
+    """The file of an asset of the pack by its folder and its name; a ValueError that lists the folder otherwise."""
+    path = os.path.join(assets, folder, name, name + ending) if isinstance(name, str) and name else None
+    if path is None or not os.path.isfile(path):
+        there = ', '.join(sorted(os.listdir(os.path.join(assets, folder))))
+        raise ValueError(f'No {kind} asset {name!r}; there are {there}.')
+    return path
+
+
+def _check_rig(services, rig):
+    """Refuse a rig that MPFB does not have, before a human is made to carry it. MPFB keeps each rig as
+    rigs/standard/rig.<name>.json, and a Rigify rig `rigify.<name>` as rigs/rigify/rig.<name>.json."""
+    rigs = os.path.join(os.path.dirname(services.__file__), '..', 'data', 'rigs')
+    known = [prefix + file[4:-5] for folder, prefix in (('standard', ''), ('rigify', 'rigify.'))
+             for file in sorted(os.listdir(os.path.join(rigs, folder))) if file.startswith('rig.') and file.endswith('.json')]
+    if not isinstance(rig, str) or rig not in known:
+        raise ValueError(f'Unknown rig {rig!r}; the rigs are {", ".join(known)}.')
+    if rig.startswith('rigify.') and not services.SystemService.check_for_rigify():
+        raise ValueError(f'The rig {rig!r} needs Blender\'s Rigify add-on, which is not enabled.')
+
+
+def _check_base(body, call):
+    """Refuse a body that is not MakeHuman's base mesh with its helper geometry, before anything shapes it."""
+    missing = [name for name in BASE_GROUPS if name not in body.vertex_groups]
+    if len(body.data.vertices) != BASE_VERTICES or missing:
+        lacks = f' and lacks the vertex groups {", ".join(missing)}' if missing else ''
+        raise ValueError(f'{call} needs MakeHuman\'s base mesh with its helper geometry, of {BASE_VERTICES:,} vertices and the '
+                         f'vertex groups {", ".join(BASE_GROUPS)}; this one has {len(body.data.vertices):,} vertices{lacks}.')
+
+
+def _shape_face(services, body, kind, manly, races, looks, seed, aged=0.0, grown=1.0):
     """Give a human's face its features and bring it to the measures of a good-looking face, by MakeHuman's detail
     targets, on a body whose shape is its rest shape. The style of its kind goes on as far as looks says, and the
     features that the seed draws; then the handles are set to what brings the face's measures as near to its canon
     as they reach, which also undoes what the style and the features did to those measures; and last the seed draws
     what makes one side of the face differ from the other. manly is 0 for a woman and 1 for a man, races the shares
-    of MakeHuman's three groups, and aged 0 for a face under forty and 1 for one over seventy-five. Returns how much
-    of the iris's upper half the face's upper lids are to cover."""
+    of MakeHuman's three groups, aged 0 for a face under forty and 1 for one over seventy-five, and grown the share
+    of a young adult's lengths that a face still growing has. Returns how much of the iris's upper half the face's
+    upper lids are to cover."""
     import gzip
     rest = _coords(body)
     root = os.path.join(os.path.dirname(services.__file__), '..', 'data', 'targets')
@@ -560,6 +684,10 @@ def _shape_face(services, body, kind, manly, races, looks, seed, aged=0.0):
     canon = {name: sum(share * blend(CANON[race][name]) for race, share in races.items()) for name in OWN}
     for name in ('upper_lip', 'lower_lip'):
         canon[name] *= 1.0 - 0.12 * aged
+    # A young face's lengths are a young adult's made smaller; the tilt of its eyes and its lids' cover are an adult's.
+    for name in canon:
+        if name not in ('tilt', 'lid'):
+            canon[name] *= grown
     if looks <= 0.0:
         _set_coords(body, rest)
         return canon['lid']
@@ -707,7 +835,8 @@ def _paint_brows(brows, body, mirrors, manly, color, groom, seed, full=1.0, size
     centers = {side: rest[_in_group(body, f'helper-{side}-eye')].mean(axis=0) for side in 'lr'}
     mm = float(numpy.linalg.norm(centers['l'] - centers['r'])) / 62.0
     blend = lambda pair: pair[0] * (1.0 - manly) + pair[1] * manly
-    draw = numpy.random.default_rng(11 if seed is None else 11 + seed)
+    # numpy draws from seeds of 0 and more: a negative one is taken as 2 ** 64 more.
+    draw = numpy.random.default_rng(11 if seed is None else (11 + seed) % 2 ** 64)
     own = draw.uniform(-1.0, 1.0, 4) if seed is not None else numpy.zeros(4)
     lift, arch, wide = 1.2 * own[0], 1.0 * own[1] + 0.4 * groom, 1.0 + 0.12 * own[2] - 0.06 * groom
     heights = [blend(pair) + lift + (arch if at == 2 else 0.0) for at, pair in enumerate(BROW_HEIGHTS)]
@@ -1050,8 +1179,8 @@ def _soften_edge(hair, skin):
     there, none on an open edge that lies on the skin and whole a finger's width in. A game that reads it, as
     WasdSurface.human does, draws a hairline that thins out into the skin instead of a wig's cut edge. An open edge
     that stands free of the skin, as the end of a lock does, stays solid: behind it lies more hair, not skin. skin
-    is a search tree of the head's skin. The red of the color says how straight the hair is, 1 unless it was set:
-    light lies in a band across straight hair and in none across curls."""
+    is a search tree of the head's skin. The color itself is white, since a game's stock material multiplies it into
+    the hair's picture; curls are told by their material's name."""
     import bmesh
     data = bmesh.new()
     data.from_mesh(hair.data)
@@ -1079,14 +1208,13 @@ def _soften_edge(hair, skin):
         front = nearer
     data.free()
     colors = hair.data.color_attributes.get('Color') or hair.data.color_attributes.new('Color', 'FLOAT_COLOR', 'POINT')
-    straight = float(hair.get('wasd_straight', 1.0))
     for index, entry in enumerate(colors.data):
         # No hairline is ruled: the hair thins out over a finger's width here and half of one there, by a wave
         # that runs along the head.
         spot = world @ hair.data.vertices[index].co
         waver = 0.75 + 0.35 * math.sin(spot.x * 310.0 + 1.3 * math.sin(spot.z * 170.0)) * math.sin(spot.y * 140.0 + 0.7)
         solid = min(away.get(index, reach) / (reach * waver), 1.0)
-        entry.color = (straight, 1.0, 1.0, solid * solid * (3.0 - 2.0 * solid))
+        entry.color = (1.0, 1.0, 1.0, solid * solid * (3.0 - 2.0 * solid))
     hair.data.color_attributes.active_color = colors
     hair.data.color_attributes.render_color_index = hair.data.color_attributes.find('Color')
 
@@ -1828,6 +1956,7 @@ def add_face(module, body, shapes=None, eye_bones=True):
     if any(row not in body.vertex_groups or not _in_group(body, row) for row in TEETH_ROWS):
         raise ValueError('add_face needs the base mesh with its helper geometry, from which it builds the mouth: call it '
                          'in place of bake_targets and bake_modifiers_remove_helpers, not after them.')
+    _check_base(body, 'add_face')
     # The body's shape so far becomes its rest shape, so that the face shapes are the only shape keys a game gets.
     if targets.has_any_shapekey(body):
         targets.bake_targets(body)
@@ -1898,7 +2027,7 @@ def add_face(module, body, shapes=None, eye_bones=True):
 
 
 def export(module, body, path, texture_size=1024):
-    """Write a human as a .glb for a game, and return its size and each mesh's triangles.
+    """Write a human as a .glb for a game, to a path that ends in .glb, and return its size and each mesh's triangles.
 
     The rig goes with every mesh on it, the proxy in place of the base mesh where the human has one. Skin, eyes, teeth,
     and tongue are written solid: MPFB makes every material see-through, and a game then draws a face's inside through
@@ -1907,6 +2036,10 @@ def export(module, body, path, texture_size=1024):
     shape baked in.
     """
     services = importlib.import_module(module + '.services')
+    # Given a path of another ending, the exporter writes the file with .glb in place of that ending, not where asked.
+    if not isinstance(path, (str, os.PathLike)) or not os.fspath(path).lower().endswith('.glb'):
+        raise ValueError(f'export writes a .glb file: give it a path that ends in .glb, not {path!r}.')
+    path = os.fspath(path)
     if body is None or not services.ObjectService.object_is_basemesh(body):
         raise ValueError('export takes the base mesh that wasd_mpfb.human or HumanService.create_human returned.')
     rig = body.parent if body.parent is not None and body.parent.type == 'ARMATURE' else None
@@ -2047,8 +2180,12 @@ class _Head:
         self.eyes = {'l': self.rest[_in_group(body, 'helper-l-eye')].mean(axis=0), 'r': self.rest[_in_group(body, 'helper-r-eye')].mean(axis=0)}
         # Every length is for a head whose pupils are 62 mm apart, and scales with the head.
         self.mm = float(np.linalg.norm(self.eyes['l'] - self.eyes['r'])) / 62.0
-        # A face leans to one side in what it shows, by about a tenth: which side is this face's own.
-        self.lean = 0.11 if zlib.crc32(self.rest.astype(np.float32).tobytes()) & 1 else -0.11
+        # A face leans to one side in what it shows, by about a tenth. Which side is this face's own is drawn from its
+        # shape when its first head is made, and kept on the body, so that the face that human() sets at rest and the
+        # shapes that add_face() makes lean alike.
+        if 'wasd_lean' not in body:
+            body['wasd_lean'] = 0.11 if zlib.crc32(self.rest.astype(np.float32).tobytes()) & 1 else -0.11
+        self.lean = float(body['wasd_lean'])
         # The jaw turns about the point where MakeHuman's rig hinges it.
         self.hinge = self.rest[_in_group(body, 'joint-mouth')].mean(axis=0)
         self.jaw = self._bones(JAW_BONES)

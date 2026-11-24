@@ -109,8 +109,10 @@ var _was_on_floor := true
 var _fall_speed := 0.0
 var _acting := ""
 var _acting_holds := false
+## Where in its clip the action was at the last physics step: a clip that loops has played through once when it is
+## back at an earlier place.
+var _acting_at := 0.0
 var _landing := 0.0
-var _heading := 0.0
 var _hips := 1.0
 ## How far the model still lags behind a step the body took, and the height it rests at.
 var _lag := 0.0
@@ -137,7 +139,6 @@ func _ready() -> void:
 				model = child
 				break
 	if model != null:
-		_heading = model.rotation.y - deg_to_rad(model_turn)
 		_model_y = model.position.y
 	_find_animations()
 	if face == null and model != null and ResourceLoader.exists(FACE):
@@ -146,14 +147,17 @@ func _ready() -> void:
 		camera_rig = WasdOrbitCamera3D.new()
 		camera_rig.height = body_size.x * 0.85
 		add_child(camera_rig)
+		if model != null:
+			# Behind the model, looking the way it faces.
+			var facing := _facing()
+			camera_rig.look_along(Vector3(sin(facing), 0.0, cos(facing)))
 	floor_snap_length = 0.3
-	if animation_player != null and not animation_player.animation_finished.is_connected(_on_clip_finished):
-		animation_player.animation_finished.connect(_on_clip_finished)
 
 
-## Leaves the ground now if the character may jump: for code that steers it. Returns whether it jumped.
+## Leaves the ground now if the character may jump: for code that steers it. An action that holds the character keeps
+## it from jumping; a jump ends one that does not. Returns whether it jumped.
 func jump() -> bool:
-	if jump_height <= 0.0:
+	if jump_height <= 0.0 or (_acting != "" and _acting_holds):
 		return false
 	if _jumps == 0 and _since_floor > coyote_time:
 		# Walked off an edge: the jump from the ground is spent, and only a second jump is left.
@@ -164,25 +168,36 @@ func jump() -> bool:
 	_jumps += 1
 	_since_floor = coyote_time + 1.0
 	_since_press = jump_buffer + 1.0
-	jumped.emit()
+	_acting = ""
 	_play("jump", 0.08)
+	# After the jump's clip, so that an action begun on the signal plays.
+	jumped.emit()
 	return true
 
 
 ## Plays a clip of the model once, such as an attack, a wave, or picking something up, and goes back to moving when
-## it ends. `hold` keeps the character where it stands meanwhile. `clip` is a clip's name or the end of one.
+## it ends; a clip that loops plays through once. `hold` keeps the character where it stands meanwhile, and from
+## jumping. `clip` is a clip's name, with or without its library prefix. Returns whether the model has the clip.
 func play_action(clip: String, hold := true) -> bool:
 	var found := _find_clip([clip])
 	if found == "":
 		return false
 	_acting = found
 	_acting_holds = hold
+	_acting_at = 0.0
+	_landing = 0.0
 	animation_player.speed_scale = 1.0
 	animation_player.play(found, blend)
 	return true
 
 
-## Puts the character somewhere at rest: a respawn, a door to another level.
+## Ends the action that plays, if one does: the character goes back to moving, and the clip of its movement blends in.
+func stop_action() -> void:
+	_acting = ""
+
+
+## Puts the character somewhere at rest, with its camera: a respawn, a door to another level. `facing` is a direction in
+## the world.
 func teleport(to: Vector3, facing := Vector3.ZERO) -> void:
 	global_position = to
 	velocity = Vector3.ZERO
@@ -190,15 +205,15 @@ func teleport(to: Vector3, facing := Vector3.ZERO) -> void:
 		face_toward(facing)
 		if camera_rig != null:
 			camera_rig.look_along(facing)
+	if camera_rig != null:
+		camera_rig.reset_smoothing()
 	reset_physics_interpolation()
 
 
-## Turns the model to look along a direction at once.
+## Turns the model to look along a direction in the world at once.
 func face_toward(direction: Vector3) -> void:
-	if Vector2(direction.x, direction.z).length() > 0.001:
-		_heading = atan2(direction.x, direction.z)
-		if model != null:
-			model.rotation.y = _heading + deg_to_rad(model_turn)
+	if model != null and Vector2(direction.x, direction.z).length() > 0.001:
+		_face(atan2(direction.x, direction.z))
 
 
 ## Meters a second over the ground.
@@ -213,6 +228,12 @@ func is_grounded() -> bool:
 
 
 func _physics_process(delta: float) -> void:
+	if _acting != "":
+		# An action ends with its clip: when the clip ends, another replaces it, or one that loops comes round again.
+		if animation_player.current_animation != _acting or animation_player.current_animation_position < _acting_at:
+			_acting = ""
+		else:
+			_acting_at = animation_player.current_animation_position
 	var wish := wish_direction
 	var gait := wish_gait
 	var wants_jump := false
@@ -280,16 +301,32 @@ func _physics_process(delta: float) -> void:
 
 	if is_grounded() and not _was_on_floor:
 		landed.emit(_fall_speed)
-		if _fall_speed > 3.0 and clips.has("land"):
+		# A hard landing shows, unless an action plays.
+		if _fall_speed > 3.0 and clips.has("land") and _acting == "":
 			_landing = 0.25
 			_play("land", 0.08)
 		_fall_speed = 0.0
 	_was_on_floor = is_grounded()
 
 	if model != null and flat.length() > 0.3:
-		_heading = lerp_angle(_heading, atan2(flat.x, flat.z), 1.0 - exp(-turn_speed * delta))
-		model.rotation.y = _heading + deg_to_rad(model_turn)
+		_face(lerp_angle(_facing(), atan2(flat.x, flat.z), 1.0 - exp(-turn_speed * delta)))
 	_animate(delta)
+
+
+## Which way the model faces in the world, as a turn about the up axis, without `model_turn`.
+func _facing() -> float:
+	return _parent_yaw() + model.rotation.y - deg_to_rad(model_turn)
+
+
+## Turns the model to face a heading in the world, whatever turn the body or another node above the model has.
+func _face(heading: float) -> void:
+	model.rotation.y = heading - _parent_yaw() + deg_to_rad(model_turn)
+
+
+## The turn about the up axis, in the world, of the node that holds the model.
+func _parent_yaw() -> float:
+	var parent := model.get_parent_node_3d()
+	return parent.global_rotation.y if parent != null and parent.is_inside_tree() else 0.0
 
 
 ## Moves the body onto a step that blocks its way and is no higher than `step_height`: the body goes the way it was
@@ -393,11 +430,6 @@ func _play(kind: String, over := -1.0, pace := 1.0) -> void:
 		animation_player.play(clip, blend if over < 0.0 else over)
 
 
-func _on_clip_finished(clip: StringName) -> void:
-	if String(clip) == _acting:
-		_acting = ""
-
-
 ## Finds the model's animation player and the clip for each kind of movement. A humanoid retargeted for the
 ## Universal Animation Library that has no clips of its own gets a player with that library.
 func _find_animations() -> void:
@@ -434,15 +466,19 @@ func _find_animations() -> void:
 			clips[pair[0]] = clips[pair[1]]
 
 
-## The first clip of the player whose name is, or ends in, one of the wanted names, without regard to case.
+## The first clip of the player that has one of the wanted names, or that name with `_Loop` after it, without regard
+## to case. A wanted name without a library prefix is compared with the clips' names after theirs.
 func _find_clip(wanted: Array) -> String:
 	if animation_player == null:
 		return ""
 	var all := animation_player.get_animation_list()
 	for want: String in wanted:
+		var sought := want.to_lower()
 		for clip: String in all:
-			var bare := clip.get_slice("/", clip.get_slice_count("/") - 1).to_lower()
-			if bare == want.to_lower() or bare == want.to_lower() + "_loop":
+			var named := clip.to_lower()
+			if not sought.contains("/"):
+				named = named.get_slice("/", named.get_slice_count("/") - 1)
+			if named == sought or named == sought + "_loop":
 				return clip
 	return ""
 
@@ -479,8 +515,8 @@ func _camera_forward() -> Vector3:
 	return forward.normalized()
 
 
-## Adds the actions the project lacks: WASD and the arrow keys, Space, Shift, Ctrl, and a gamepad's left stick, its
-## bottom button, and its left stick's click.
+## Adds the actions the project lacks: WASD and the arrow keys, Space, Shift, C, and a gamepad's left stick, its
+## bottom button, and its left stick's click. C walks rather than Ctrl, with which W closes a browser's tab.
 func _add_missing_actions() -> void:
 	var usual := {
 		"left": {"keys": [KEY_A, KEY_LEFT], "axis": [JOY_AXIS_LEFT_X, -1.0]},
@@ -489,7 +525,7 @@ func _add_missing_actions() -> void:
 		"back": {"keys": [KEY_S, KEY_DOWN], "axis": [JOY_AXIS_LEFT_Y, 1.0]},
 		"jump": {"keys": [KEY_SPACE], "button": JOY_BUTTON_A},
 		"sprint": {"keys": [KEY_SHIFT], "button": JOY_BUTTON_LEFT_STICK},
-		"walk": {"keys": [KEY_CTRL]},
+		"walk": {"keys": [KEY_C]},
 	}
 	for role: String in usual:
 		var action := StringName(actions.get(role, ""))

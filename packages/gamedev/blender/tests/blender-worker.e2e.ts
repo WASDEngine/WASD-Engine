@@ -17,15 +17,20 @@ import type { AppWorkerScope, JsonLineWorkerSpec } from '@deepseek-ai/dsh-app-mc
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { BlenderWorkers, childEnvironment, findBlender, findShippedBpy, findUv, nodeBlenderSetupHost, resolveWorkerLaunch } from '../src/environment.ts'
 import type { WorkerLaunch } from '../src/environment.ts'
+import { Config } from '../src/index.ts'
 import { BlenderScripts } from '../src/scripts.ts'
 import { blenderTools } from '../src/tools.ts'
 import type { BlenderBackend, BlenderServerOptions } from '../src/types.ts'
 
 const WORKER = fileURLToPath(new URL('../py/wasd_blender_worker.py', import.meta.url))
-const BPY_VERSION = '5.2.3'
+/**
+ * The plugin's default bpy and Python versions. The plugin runs the shipped runtime only when its bpy is this version,
+ * and a drift spec of the Desktop app ties the default to the version that `wasdengine/blender/build.sh` builds.
+ */
+const { bpyVersion: BPY_VERSION, pythonVersion: PYTHON_VERSION } = Config({ dataRoot: tmpdir() })
 const host = nodeBlenderSetupHost(64 * 1024)
 const uv = await findUv({ uvPath: '' }, host)
-const uvRun = (uvPath: string): string[] => [uvPath, 'run', '--offline', '--python', '3.13', '--no-project', '--with', `bpy==${BPY_VERSION}`, 'python', '-I']
+const uvRun = (uvPath: string): string[] => [uvPath, 'run', '--offline', '--python', PYTHON_VERSION, '--no-project', '--with', `bpy==${BPY_VERSION}`, 'python', '-I']
 const bpyCached = uv !== undefined && spawnSync(uv, [...uvRun(uv).slice(1), '-c', 'import bpy'], { stdio: 'ignore', timeout: 300_000 }).status === 0
 const blender = await findBlender({ blenderPath: '' }, host)
 /** This package's `runtime` folder, where `wasdengine/blender/build.sh --install` puts the runtime that the Desktop app ships. */
@@ -33,7 +38,7 @@ const BUNDLED_ROOT = shippedRuntimeRoot(fileURLToPath(new URL('..', import.meta.
 const shipped = await findShippedBpy(BUNDLED_ROOT, host)
 
 const OPTIONS: Omit<BlenderServerOptions, 'dataRoot'> = {
-  backend: 'app', bpyVersion: BPY_VERSION, pythonVersion: '3.13', uvPath: '', blenderPath: '',
+  backend: 'app', bpyVersion: BPY_VERSION, pythonVersion: PYTHON_VERSION, uvPath: '', blenderPath: '',
   startupTimeoutMs: 120_000, requestTimeoutMs: 120_000, toolCallTimeoutMs: 300_000, graceMs: 3000, maxLogBytes: 64 * 1024,
   maxWorkers: 4, workerMemoryBytes: 0, workerCores: 0, minAvailableMemoryBytes: 0, workerIdleTimeoutMs: 600_000, addonStore: '',
   maxScripts: 4, scriptMemoryBytes: 0, scriptCores: 0, keptScriptResults: 20, scriptLogBytes: 16 * 1024 ** 2,

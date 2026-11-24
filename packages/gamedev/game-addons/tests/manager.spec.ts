@@ -32,6 +32,14 @@ const STAMP = '2026-11-11T12-00-00.000Z'
 /** A change that another writer, such as a teammate or the user, makes to `project.godot`. */
 const DISPLAY = '\n[display]\n\nwindow/size/viewport_width=1920\n'
 
+/**
+ * The installation's note on the project's own setting values that the add-on's replaced.
+ * @param settings - the settings it names, joined as the note joins them.
+ */
+function replacedNote(settings: string): string {
+  return `It replaced the project's own values of these project.godot settings: ${settings}. Removing the add-on puts back each one that still holds the add-on's value.`
+}
+
 /** What installing the camera add-on adds at the end of `project.godot`. */
 const CAMERA_ENTRIES = '\n[editor_plugins]\n\nenabled=PackedStringArray("res://addons/test_camera/plugin.cfg")\n\n[autoload]\n\nTestCameraManager="*res://addons/test_camera/manager.gd"\n\n[test_camera]\n\ngeneral/smoothing=true\n'
 
@@ -116,6 +124,15 @@ async function tree(root: string): Promise<string[]> {
   return entries.filter(entry => entry.isFile()).map(entry => join(entry.parentPath, entry.name).slice(root.length + 1)).sort()
 }
 
+/**
+ * The failure of a call that must fail.
+ * @param call - the call.
+ * @returns its error.
+ */
+async function failure(call: Promise<unknown>): Promise<Error> {
+  return await call.then(() => { throw new Error('The call succeeded.') }, (error: unknown) => error as Error)
+}
+
 /** Symbolic links need a privilege on Windows, so the specs that make them run elsewhere. */
 const linking = it.skipIf(process.platform === 'win32')
 
@@ -187,7 +204,7 @@ describe('GameAddonManager.install for Godot', () => {
   it('refuses an overlay file that would replace a file of the archive, leaving the project as it was', async () => {
     const { manager, project } = await setup(undefined, overlayEntries(), { ...OVERLAY_FILES, 'camera-tools/plugin.cfg': '[plugin]\n' })
     await expect(manager.install(project, 'test-camera', {}, signal))
-      .rejects.toThrow('The catalog file camera-tools/plugin.cfg would replace a file of the Test Camera archive.')
+      .rejects.toMatchObject({ name: 'GameAddonError', code: 'GAME_ADDON_CATALOG_INVALID', message: 'The catalog file camera-tools/plugin.cfg would replace a file of the Test Camera archive.' })
     expect(await readdir(project)).toEqual(['.wasdengine', 'project.godot'])
     expect(await readdir(join(project, '.wasdengine'))).toEqual([])
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
@@ -221,6 +238,7 @@ describe('GameAddonManager.install for Godot', () => {
     await writeFile(join(project, 'addons', 'test_camera', 'old.gd'), 'extends Node\n')
     expect((await manager.presence(project)).get('test-camera')).toEqual({ state: 'found', version: '0.9' })
     await expect(manager.install(project, 'test-camera', {}, signal)).rejects.toThrow(/addons\/test_camera \(version 0\.9\) is already in the project without a WASD Engine record/u)
+    await expect(manager.install(project, 'test-camera', {}, signal)).rejects.toMatchObject({ name: 'GameAddonError', code: 'GAME_ADDON_ALREADY_EXISTS' })
     const replaced = await manager.install(project, 'test-camera', { replace: true }, signal)
     expect(await tree(join(project, 'addons', 'test_camera'))).not.toContain('old.gd')
     expect((await manager.presence(project)).get('test-camera')).toEqual({ state: 'installed', version: '1.2.0' })
@@ -234,10 +252,13 @@ describe('GameAddonManager.install for Godot', () => {
     const { manager, project } = await setup()
     await manager.install(project, 'other-camera', {}, signal)
     await expect(manager.install(project, 'test-camera', {}, signal)).rejects.toThrow(/Other Camera \(other-camera\) is already in this project/u)
+    await expect(manager.install(project, 'test-camera', {}, signal)).rejects.toMatchObject({ name: 'GameAddonError', code: 'GAME_ADDON_CONFLICT' })
     await manager.remove(project, 'other-camera', signal)
     await writeFile(join(project, 'project.godot'), `${PROJECT_GODOT}\n[autoload]\n\nTestCameraManager="*res://mine.gd"\n`)
     await expect(manager.install(project, 'test-camera', {}, signal)).rejects.toThrow(/autoload TestCameraManager already points to res:\/\/mine\.gd/u)
+    await expect(manager.install(project, 'test-camera', {}, signal)).rejects.toMatchObject({ name: 'GameAddonError', code: 'GAME_ADDON_CONFLICT' })
     await expect(manager.install(project, 'nope', {}, signal)).rejects.toThrow(/No catalog add-on has the id "nope"/u)
+    await expect(manager.install(project, 'nope', {}, signal)).rejects.toMatchObject({ name: 'GameAddonError', code: 'GAME_ADDON_NOT_FOUND' })
   })
 
   it('puts the previous folder and project.godot back when a step fails', async () => {
@@ -294,7 +315,9 @@ describe('GameAddonManager beside other writers', () => {
     await writeFile(join(state.project, 'project.godot'), start)
     // A folder where the notices file belongs makes the notice step fail after project.godot enabled the add-on.
     await mkdir(join(state.project, NOTICES_FILE))
-    await expect(state.manager.install(state.project, 'test-camera', {}, signal)).rejects.toThrow(/THIRD_PARTY_NOTICES\.md in .* is not a regular file/u)
+    const refused = await failure(state.manager.install(state.project, 'test-camera', {}, signal))
+    expect(refused.message).toMatch(/THIRD_PARTY_NOTICES\.md in .* is not a regular file/u)
+    expect(refused).toMatchObject({ name: 'GameAddonPathError', code: 'GAME_ADDON_NOT_REGULAR_FILE' })
     expect(await readFile(join(state.project, 'project.godot'), 'utf8')).toBe(`${start}${DISPLAY}`)
     await expect(lstat(join(state.project, 'addons'))).rejects.toThrow(/ENOENT/u)
     expect(await readRecord(state.project)).toEqual([])
@@ -366,7 +389,7 @@ describe('GameAddonManager.remove', () => {
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
     await expect(readFile(join(project, NOTICES_FILE), 'utf8')).rejects.toThrow(/ENOENT/u)
     expect((await readRecord(project)).map(addon => addon.id)).toEqual(['test-trees'])
-    await expect(manager.remove(project, 'test-camera', signal)).rejects.toThrow(/Test Camera is not in this project/u)
+    await expect(manager.remove(project, 'test-camera', signal)).rejects.toMatchObject({ code: 'GAME_ADDON_NOT_INSTALLED', message: 'Test Camera is not in this project.' })
   })
 
   it('removes a catalog add-on found in addons/ without a record', async () => {
@@ -407,7 +430,7 @@ describe('GameAddonManager.remove', () => {
     const { manager, project } = await setup({ issues: [] }, entries)
     const own = '\n[filesystem]\n\nimport/blender/enabled=true\n\n[importer_defaults]\n\nscene={\n"meshes/generate_lods": false,\n"import_script/path": "res://tools/mine.gd",\n"animation/fps": 30.0\n}\n'
     await writeFile(join(project, 'project.godot'), PROJECT_GODOT + own)
-    await manager.install(project, 'test-camera', {}, signal)
+    expect((await manager.install(project, 'test-camera', {}, signal)).notes).toEqual([replacedNote('[importer_defaults] scene, [filesystem] import/blender/enabled')])
     const installed = new ProjectFile(await readFile(join(project, 'project.godot'), 'utf8'))
     // The project's other import defaults stay, in their order, and the add-on's entry takes the place of the project's.
     expect(installed.get('importer_defaults', 'scene')).toBe('{\n"meshes/generate_lods": false,\n"import_script/path": "res://addons/test_camera/hints.gd",\n"animation/fps": 30.0\n}')
@@ -428,12 +451,39 @@ describe('GameAddonManager.remove', () => {
     await expect(readFile(join(project, '.wasdengine', 'addon-settings.json'), 'utf8')).rejects.toThrow(/ENOENT/u)
   })
 
+  it('names the settings whose own values the installation replaced, again at an update, and gives them back at the removal', async () => {
+    const entries = catalogEntries()
+    const camera = entries['test-camera'] as { godot: { settings?: readonly unknown[] } }
+    // As a starter kit sets its input actions and Extra Import Hints its scene import script.
+    camera.godot.settings = [
+      { section: 'input', key: 'jump', value: '{"deadzone": 0.5, "events": [Object(InputEventKey,"physical_keycode":32)]}' },
+      { section: 'input', key: 'crouch', value: '{"deadzone": 0.5, "events": []}' },
+      { section: 'importer_defaults', key: 'scene', value: '{"import_script/path": "res://addons/test_camera/hints.gd"}' },
+      { section: 'filesystem', key: 'import/blender/enabled', value: 'false' },
+    ]
+    const { manager, project } = await setup({ issues: [] }, entries)
+    // The project has its own jump, import defaults without an import script, and the add-on's Blender importer value.
+    const start = `${PROJECT_GODOT}\n[filesystem]\n\nimport/blender/enabled=false\n\n[importer_defaults]\n\nscene={\n"animation/fps": 30.0\n}\n`
+    await writeFile(join(project, 'project.godot'), start)
+    expect((await manager.install(project, 'test-camera', {}, signal)).notes).toEqual([replacedNote('[input] jump')])
+    // An update of the add-on, here from the version that the record names, holds the add-on's value there again.
+    const recorded = join(project, '.wasdengine', 'addons.json')
+    await writeFile(recorded, (await readFile(recorded, 'utf8')).replace('"version": "1.2.0"', '"version": "1.1.0"'))
+    expect((await manager.install(project, 'test-camera', {}, signal)).notes).toEqual([
+      `The addons/test_camera folder it replaced is kept in ${BACKUPS_DIR}/test-camera/${STAMP}/addons/test_camera.`,
+      replacedNote('[input] jump'),
+    ])
+    await manager.remove(project, 'test-camera', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(start)
+  })
+
   it('takes out of a project without such settings only the entries the add-on added, and keeps entries changed since', async () => {
     const entries = catalogEntries()
     const camera = entries['test-camera'] as { godot: { settings?: readonly unknown[] } }
     camera.godot.settings = [{ section: 'importer_defaults', key: 'scene', value: '{"import_script/path": "res://addons/test_camera/hints.gd"}' }]
     const { manager, project } = await setup({ issues: [] }, entries)
-    await manager.install(project, 'test-camera', {}, signal)
+    // Entries that the add-on only adds replace nothing of the project's.
+    expect((await manager.install(project, 'test-camera', {}, signal)).notes).toEqual([])
     await manager.remove(project, 'test-camera', signal)
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
     // An entry added after the installation stays at the removal, and so does the add-on's entry once changed.
@@ -514,6 +564,7 @@ describe('GameAddonManager changes stay inside the project', () => {
     const record = await readFile(join(project, '.wasdengine', 'addons.json'), 'utf8')
     await expect(manager.remove(project, 'test-camera', signal))
       .rejects.toThrow('.wasdengine/addons.json lists home/Documents for Test Camera, outside its folder addons/test_camera, so nothing was removed.')
+    await expect(manager.remove(project, 'test-camera', signal)).rejects.toMatchObject({ name: 'GameAddonError', code: 'GAME_ADDON_RECORD_CORRUPT' })
     expect(await tree(documents)).toEqual(['keep.txt'])
     expect(await readFile(join(project, '.wasdengine', 'addons.json'), 'utf8')).toBe(record)
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
@@ -526,6 +577,7 @@ describe('GameAddonManager changes stay inside the project', () => {
     const { manager, project } = await setup()
     await writeRecordWith(project, 'test-camera', [path])
     await expect(manager.remove(project, 'test-camera', signal)).rejects.toThrow(GameAddonRecordError)
+    await expect(manager.remove(project, 'test-camera', signal)).rejects.toMatchObject({ code: 'GAME_ADDON_RECORD_CORRUPT' })
     expect(isProjectPath(path)).toBe(false)
   })
 
@@ -537,6 +589,7 @@ describe('GameAddonManager changes stay inside the project', () => {
     expect((await manager.presence(project)).get('test-camera')).toEqual({ state: 'found', version: '0.9' })
     await expect(manager.remove(project, 'test-camera', signal)).rejects.toThrow(GameAddonPathError)
     await expect(manager.install(project, 'test-camera', { replace: true }, signal)).rejects.toThrow(/addons in .* leads outside the project/u)
+    await expect(manager.install(project, 'test-camera', { replace: true }, signal)).rejects.toMatchObject({ name: 'GameAddonPathError', code: 'GAME_ADDON_OUTSIDE_PROJECT' })
     expect(await tree(dirname(elsewhere))).toEqual(['test_camera/keep.txt', 'test_camera/plugin.cfg'])
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
     expect(await readRecord(project)).toEqual([])
@@ -557,7 +610,9 @@ describe('GameAddonManager changes stay inside the project', () => {
     const secrets = await outsideFolder(dir!.root, 'ssh')
     await writeFile(join(secrets, 'id_ed25519'), 'PRIVATE KEY\n')
     await symlink(join(secrets, 'id_ed25519'), join(project, NOTICES_FILE))
-    await expect(manager.install(project, 'test-camera', {}, signal)).rejects.toThrow(/THIRD_PARTY_NOTICES\.md in .* is a symbolic link/u)
+    const refused = await failure(manager.install(project, 'test-camera', {}, signal))
+    expect(refused.message).toMatch(/THIRD_PARTY_NOTICES\.md in .* is a symbolic link/u)
+    expect(refused).toMatchObject({ name: 'GameAddonPathError', code: 'GAME_ADDON_NOT_REGULAR_FILE' })
     expect((await lstat(join(project, NOTICES_FILE))).isSymbolicLink()).toBe(true)
     expect(await readFile(join(secrets, 'id_ed25519'), 'utf8')).toBe('PRIVATE KEY\n')
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)

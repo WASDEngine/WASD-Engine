@@ -106,6 +106,9 @@ export const MULTIPLAYER_MCP_INSTRUCTIONS = 'Multiplayer: a game goes online pla
 /** Description of the `project` parameter for agents connected through WASD Engine's MCP server. */
 const MCP_PROJECT = 'Absolute path of the folder that holds project.godot.'
 
+/** Description of the `project` parameter for a Session's agent, whose paths are relative to its working directory. */
+export const SESSION_PROJECT = 'Folder containing project.godot, relative to the working directory. Default: the nearest one.'
+
 /** How connected agents confirm: their own user, then the site's confirmation page; WASD Engine opens no page for them. */
 export const MCP_SURFACE: MultiplayerSurface = {
   channel: 'mcp',

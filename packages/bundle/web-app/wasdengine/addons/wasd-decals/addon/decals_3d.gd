@@ -8,6 +8,10 @@ class_name WasdDecals3D
 extends MultiMeshInstance3D
 
 const SHADER := preload("res://addons/wasd_decals/decals.gdshader")
+## Seconds after which the pool's clock starts again from 0, and every mark's end moves with it. The Compatibility
+## renderer, which every Web build uses, keeps a mark's custom data as half floats, which are a second off past 2,048
+## and hold nothing past 65,504: the end times stay small numbers however long the game runs.
+const CLOCK_SPAN := 64.0
 ## The marks drawn in code, each with the size in meters, the tint, and the shine that suit it.
 const MARKS := {
 	"bullet_hole": {"kind": 1, "size": 0.16, "tint": Color(1, 1, 1), "shine": 0.0},
@@ -45,6 +49,9 @@ var _material := ShaderMaterial.new()
 var _next := 0
 var _used := 0
 var _clock := 0.0
+## What each slot's custom data holds: when its mark ends on the pool's clock (0 for a mark that stays, -1 for one
+## that has ended), its frame, and the number of its shape.
+var _custom := PackedColorArray()
 
 
 func _init() -> void:
@@ -70,6 +77,8 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_clock += delta
+	if _clock >= CLOCK_SPAN:
+		_restart_clock()
 	_material.set_shader_parameter(&"clock", _clock)
 
 
@@ -112,7 +121,8 @@ func _place(at: Vector3, up: Vector3, basis: Basis, side: float, frame: int) -> 
 	var ends := _clock + lifetime if lifetime > 0.0 else 0.0
 	# A drawn mark's own number: its frame when one is given, so that a game can ask for the same shape twice.
 	var shape := float(frame) if frame >= 0 else float(randi() % 500) * 2.0 + 0.37
-	multimesh.set_instance_custom_data(slot, Color(ends, float(frame if frame >= 0 else randi() % count), shape, 0.0))
+	_custom[slot] = Color(ends, float(frame if frame >= 0 else randi() % count), shape, 0.0)
+	multimesh.set_instance_custom_data(slot, _custom[slot])
 	return slot
 
 
@@ -128,9 +138,21 @@ func clear() -> void:
 	multimesh.visible_instance_count = 0
 
 
+## Starts the pool's clock again from 0 and moves the end of every mark with a lifetime along with it.
+func _restart_clock() -> void:
+	for slot: int in _used:
+		var custom := _custom[slot]
+		if custom.r > 0.0:
+			custom.r = custom.r - _clock if custom.r > _clock else -1.0
+			_custom[slot] = custom
+			multimesh.set_instance_custom_data(slot, custom)
+	_clock = 0.0
+
+
 func _resize() -> void:
 	multimesh.instance_count = capacity
 	multimesh.visible_instance_count = 0
+	_custom.resize(capacity)
 	_next = 0
 	_used = 0
 	# Marks may lie anywhere, so the pool is never culled as a whole.

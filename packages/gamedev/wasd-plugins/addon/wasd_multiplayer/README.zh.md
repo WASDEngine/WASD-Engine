@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-WASD Multiplayer 是把游戏接入 WASD Engine 联机功能的 Godot 4 插件：为玩家提供 WASD 登录、玩家主机大厅和 WASD 专用服务器。WASD Engine 的多人游戏设置会把此文件夹复制到游戏的 `res://addons/wasd_multiplayer/`，注册 `WasdMultiplayer` autoload（自动加载），并写入 `res://wasd_multiplayer.cfg`。WASD Engine 发布游戏时会用自带的插件替换较旧的副本，除非游戏改动过插件的脚本；设置和发布都不会覆盖游戏改动过的示例文件，因此可以随意改写 `examples/`，其余文件请保持原样。插件只使用 GDScript，因此 Web 版本可以照常运行；其文件采用 CC0-1.0 许可，可以随任何游戏一起分发。
+WASD Multiplayer 是把游戏接入 WASD Engine 联机功能的 Godot 4 插件：为玩家提供 WASD 登录、玩家主机大厅和 WASD 专用服务器。WASD Engine 的多人游戏设置会把此文件夹复制到游戏的 `res://addons/wasd_multiplayer/`，注册 `WasdMultiplayer` autoload（自动加载），并写入 `res://wasd_multiplayer.cfg`。WASD Engine 发布游戏时会用自带的插件替换较旧的副本，除非游戏改动过插件的脚本；设置和发布都不会覆盖游戏改动过的示例文件或 Markdown 文件，也不会经由此文件夹中的链接写入，因此可以随意改写 `examples/`，其余文件请保持原样。设置会替换插件自身的文件，无论它们是否被改动过，但会先把游戏改动过的文件保留到 `.wasdengine/backups/wasd_multiplayer/<time>/` 中。插件只使用 GDScript，因此 Web 版本可以照常运行；其文件采用 CC0-1.0 许可，可以随任何游戏一起分发。
 
 ## 模式
 
@@ -64,7 +64,7 @@ func _ready() -> void:
 
 ## 配置
 
-`res://wasd_multiplayer.cfg` 的 `[wasd]` 段会覆盖项目设置中 `wasd_multiplayer/config/` 下的同名键：
+`res://wasd_multiplayer.cfg` 的 `[wasd]` 段会覆盖项目设置中 `wasd_multiplayer/config/` 下的同名键；WASD Engine 的设置和发布会向其中写入 `mode`、`max_players`、`api_origin`、`app_origin`、`game_id` 和 `version`，并保留该文件的其他键、段和注释：
 
 | 键 | 默认值 | 含义 |
 |---|---|---|

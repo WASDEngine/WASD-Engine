@@ -87,7 +87,7 @@ ambientCG 的素材采用 CC0 许可，游戏可以使用它们，包括商业�
 
 下载 URL 会重定向到 ambientCG 的文件主机。游戏工具 kit 中共用的客户端（[`asset-library.ts`](../game-mcp/src/asset-library.ts)）只访问所配置 `apiUrl` 的主机（使用其协议）以及 `ambientcg.com` 和 `struffelproductions.com` 的 HTTPS 主机，并自行跟随最多五次重定向，每次都只到这样的主机，因此素材列表和重定向都不会把请求发往别处。JSON 响应最多读取 64 MiB，预览图最多 8 MiB，HTTP 429 会变成说明何时重试的消息。kit 还包含两类调用方的预览图、连接的 agent 调用的工具，以及要么全部写入要么一个也不写入的文件写入，Poly Haven 插件与本插件共用它们。
 
-压缩包把每张图片命名为 `<id>_<archive>_<Map>.<extension>`，例如 `Bricks097_1K-JPG_Color.jpg`。插件取压缩包根目录下名称以素材 id 开头、以 `_<Map>` 加图片扩展名结尾的文件，因此预览图 `<id>.png` 以及 `.blend`、`.usdc`、`.mtlx` 和 `.tres` 文件永远不会写入。当压缩包的大小与素材列表不符时，例如 ambientCG 更新了该素材之后，下载会中止，忘掉该素材和该压缩包的目录，并要求再调用一次，以读取新的列表。
+压缩包把每张图片命名为 `<id>_<archive>_<Map>.<extension>`，例如 `Bricks097_1K-JPG_Color.jpg`。插件取压缩包根目录下名称以素材 id 开头、以 `_<Map>` 加图片扩展名结尾、两者之间只有字母、数字、`-` 和 `_` 的文件，因此预览图 `<id>.png` 以及 `.blend`、`.usdc`、`.mtlx` 和 `.tres` 文件永远不会写入。名称只有大小写不同的两张图片在 macOS 和 Windows 的磁盘上是同一个文件，它们会在写入任何内容之前中止下载。当压缩包的大小与素材列表不符时，例如 ambientCG 更新了该素材之后，下载会中止，忘掉该素材和该压缩包的目录，并要求再调用一次，以读取新的列表。
 
 | 文件 | 作用 |
 |---|---|

@@ -27,12 +27,13 @@ export interface GraphicsReviewHost {
   image(requested: string, exec: ToolRunContext): Promise<string>
   /**
    * Review one image.
-   * @param request - the image and what the agent says about it, without the add-ons, which the host adds.
-   * @param signal - cancellation.
+   * @param request - the image and what the agent says about it, without the add-ons and tools, which the host adds.
+   * @param exec - the call's execution: its agent and step admission tell which tools the agent has, and its signal
+   * cancels the review.
    * @returns the review.
    * @throws ReviewFailure with the message for the agent.
    */
-  review(request: Omit<ReviewRequest, 'addons'>, signal: AbortSignal): Promise<string>
+  review(request: Omit<ReviewRequest, 'addons' | 'tools'>, exec: ToolRunContext): Promise<string>
 }
 
 /** How one surface's description names the image file. */
@@ -122,7 +123,7 @@ export function graphicsReviewToolDefinition(host: GraphicsReviewHost, wording: 
         ...focus === undefined || focus === '' ? {} : { focus },
         ...previous === undefined || previous === '' ? {} : { previous },
         ...exec.agent === undefined ? {} : { sessionId: exec.agent.session.id },
-      }, exec.signal)
+      }, exec)
       // The pieces of work reviewed longest ago leave first, so a long Session's counts stay bounded.
       const count = (given.get(work) ?? 0) + 1
       given.delete(work)

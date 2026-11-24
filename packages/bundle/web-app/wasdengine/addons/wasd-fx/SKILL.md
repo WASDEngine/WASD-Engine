@@ -42,7 +42,7 @@ var fire := WasdFx.play("fire", $Campfire.global_position)
 fire.stop()          # fades out over 0.6 seconds; stop(2.0) takes longer
 ```
 
-`play()` returns a `WasdFxInstance3D` (a Node3D): move it, or keep it to stop it. A running effect that is never stopped runs until the game ends, also across scene changes, unless it has a `parent` in the scene.
+`play()` returns a `WasdFxInstance3D` (a Node3D): move it, or keep it to stop it. Its signal `finished` fires when it is over; the node then waits for a later play of the same effect, which starts without the connections made for this one, so connect for each play. A running effect that is never stopped runs until the game ends, also across scene changes, unless it has a `parent` in the scene.
 
 ## Options
 
@@ -57,7 +57,7 @@ fire.stop()          # fades out over 0.6 seconds; stop(2.0) takes longer
 
 ## On things
 
-Three effects on a thing itself, each on every mesh under the node it is given:
+Three effects on a thing itself, each on every mesh under the node it is given, except what WASD packs draw by their own means: blob shadows, halos, light shafts, gobos, fog banks, water, and ropes. WASD Cloth's sheets take them like any mesh.
 
 ```gdscript
 WasdFx.flash(enemy)                                  # white for a tenth of a second: a hit that registers
@@ -68,7 +68,7 @@ await WasdFx.dissolve(enemy, 0.8, {"free": true})    # eaten away from the botto
 await WasdFx.appear(ally, 0.8)                       # the other way round, for a thing that is hidden
 ```
 
-`dissolve` and `appear` take `{"color": Color(0.3, 0.9, 1.0)}` for the edge's glow. For their seconds each mesh wears a plain material in its own color and picture, so a surface with a shader of its own looks plainer while it goes; CSG shapes do not dissolve. The outline wants smooth normals: on a plain box it opens at the corners.
+`dissolve` and `appear` take `{"color": Color(0.3, 0.9, 1.0)}` for the edge's glow. For their seconds each mesh wears a plain material in its own color and picture with nothing drawn over it, so a surface with a shader of its own looks plainer while it goes; CSG shapes do not dissolve. A `dissolve` or `appear` of a thing before its last one ends takes over: `dissolve` here and `appear` there is a teleport. A flash shows over an outline, which comes back after it; the wet and snowy cover of `wasd-weather` waits under all three. The outline wants smooth normals: on a plain box it opens at the corners.
 
 ## The first effect
 

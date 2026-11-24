@@ -2,7 +2,7 @@
   "id": "universal-animation-library-2",
   "title": "Universal Animation Library 2",
   "host": "godot",
-  "version": "2026.01.22",
+  "version": "2026.01.22+wasd.1",
   "category": "characters",
   "cue": "42 more clips: sword and shield, climb, farm, zombie",
   "summary": "42 more humanoid clips by Quaternius: sword and shield combos, climbing, sliding, ninja jumps, throwing, farming, chopping, carrying, zombie moves; retargeted like universal-animation-library.",

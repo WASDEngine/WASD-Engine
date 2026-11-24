@@ -130,12 +130,14 @@ static func make(look := "clean", accent: Variant = null, scale := 1.0, font: Fo
 	var button_edge: Color = v["button_edge"]
 	var lifts := Color(1, 1, 1, 0.1) if text.get_luminance() > 0.5 else Color(0, 0, 0, 0.08)
 	var button_pad := Vector2(roundi(18.0 * scale), roundi(9.0 * scale))
+	# The ring that keyboard and gamepad focus draws round a control, in this and every kind below.
+	var ring := maxi(edge, roundi(2.0 * scale))
 	for kind: String in ["Button", "OptionButton", "MenuButton"]:
 		theme.set_stylebox("normal", kind, _drop(_box(button, button_edge, edge, radius, button_pad), drop, button_edge))
 		theme.set_stylebox("hover", kind, _drop(_box(button.blend(lifts), main, edge, radius, button_pad), drop, button_edge))
 		theme.set_stylebox("pressed", kind, _box(Color(main, 0.35) if button.a < 0.5 else main.lerp(button, 0.4), main, edge, radius, button_pad))
 		theme.set_stylebox("disabled", kind, _box(Color(button, button.a * 0.4), Color(button_edge, button_edge.a * 0.4), edge, radius, button_pad))
-		theme.set_stylebox("focus", kind, _box(Color(0, 0, 0, 0), main, maxi(edge, roundi(2.0 * scale)), radius, button_pad))
+		theme.set_stylebox("focus", kind, _focus(main, ring, radius, button_pad, 0.0))
 		theme.set_font("font", kind, heavy if v["caps"] else regular)
 		theme.set_color("font_color", kind, text)
 		theme.set_color("font_hover_color", kind, text)
@@ -148,7 +150,7 @@ static func make(look := "clean", accent: Variant = null, scale := 1.0, font: Fo
 	theme.set_stylebox("normal", "AccentButton", _drop(_box(main, accent_edge, edge, radius, button_pad), drop, button_edge))
 	theme.set_stylebox("hover", "AccentButton", _drop(_box(main.lightened(0.12), accent_edge if edge > 1 else main.lightened(0.12), edge, radius, button_pad), drop, button_edge))
 	theme.set_stylebox("pressed", "AccentButton", _box(main.darkened(0.15), main.darkened(0.3), edge, radius, button_pad))
-	theme.set_stylebox("focus", "AccentButton", _box(Color(0, 0, 0, 0), text, maxi(edge, roundi(2.0 * scale)), radius, button_pad))
+	theme.set_stylebox("focus", "AccentButton", _focus(text, ring, radius, button_pad, 0.0))
 	theme.set_font("font", "AccentButton", heavy)
 	for state: String in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
 		theme.set_color(state, "AccentButton", on_main)
@@ -175,6 +177,11 @@ static func make(look := "clean", accent: Variant = null, scale := 1.0, font: Fo
 	theme.set_stylebox("background", "ProgressBar", bar_back)
 	theme.set_stylebox("fill", "ProgressBar", _box(main, Color(0, 0, 0, 0), 0, mini(radius, roundi(9.0 * scale)), 0))
 	theme.set_color("font_color", "ProgressBar", text)
+	# A slider's knob keeps room round it, where focus, or the pointer over the slider, lights a halo in the accent.
+	var knob_fill := text if text.get_luminance() > 0.5 else main
+	var knob_rim: Color = v["panel_edge"] if edge > 1 else Color(0, 0, 0, 0.25)
+	var knob := _disc(roundi(20.0 * scale), knob_fill, knob_rim, radius == 0 and not _cut, 1.0, roundi(5.0 * scale))
+	var lit_knob := _disc(roundi(20.0 * scale), knob_fill, knob_rim, radius == 0 and not _cut, 1.0, roundi(5.0 * scale), Color(main, 0.5))
 	for kind: String in ["HSlider", "VSlider"]:
 		var rail := track.duplicate() as StyleBoxFlat
 		var done := filled.duplicate() as StyleBoxFlat
@@ -191,9 +198,8 @@ static func make(look := "clean", accent: Variant = null, scale := 1.0, font: Fo
 		theme.set_stylebox("slider", kind, rail)
 		theme.set_stylebox("grabber_area", kind, done)
 		theme.set_stylebox("grabber_area_highlight", kind, done)
-		var knob := _disc(roundi(20.0 * scale), text if text.get_luminance() > 0.5 else main, v["panel_edge"] if edge > 1 else Color(0, 0, 0, 0.25), radius == 0 and not _cut)
 		theme.set_icon("grabber", kind, knob)
-		theme.set_icon("grabber_highlight", kind, knob)
+		theme.set_icon("grabber_highlight", kind, lit_knob)
 		theme.set_icon("grabber_disabled", kind, knob)
 	for kind: String in ["HScrollBar", "VScrollBar"]:
 		theme.set_stylebox("scroll", kind, _box(Color(text, 0.05), Color(0, 0, 0, 0), 0, mini(radius, thin / 2), roundi(3.0 * scale)))
@@ -201,16 +207,22 @@ static func make(look := "clean", accent: Variant = null, scale := 1.0, font: Fo
 		theme.set_stylebox("grabber_highlight", kind, _box(Color(text, 0.45), Color(0, 0, 0, 0), 0, mini(radius, thin / 2), roundi(3.0 * scale)))
 		theme.set_stylebox("grabber_pressed", kind, _box(main, Color(0, 0, 0, 0), 0, mini(radius, thin / 2), roundi(3.0 * scale)))
 
-	# Check boxes and switches, drawn here: an empty box and one with a check, a switch off and on.
+	# Check boxes and switches, drawn here: an empty box and one with a check, a switch off and on. They stand on no
+	# box, so focus rings and lightly washes the whole control in the accent, with room inside.
 	var mark := roundi(22.0 * scale)
+	var toggle_focus := _focus(main, ring, radius, Vector2(roundi(6.0 * scale), roundi(4.0 * scale)), 0.12)
+	var toggle_room := StyleBoxEmpty.new()
+	for side: int in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+		toggle_room.set_content_margin(side, toggle_focus.get_content_margin(side))
 	for kind: String in ["CheckBox", "CheckButton"]:
 		theme.set_color("font_color", kind, text)
 		theme.set_color("font_hover_color", kind, text)
 		theme.set_color("font_pressed_color", kind, text)
 		theme.set_color("font_focus_color", kind, text)
 		theme.set_constant("h_separation", kind, roundi(10.0 * scale))
-		for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
-			theme.set_stylebox(state, kind, StyleBoxEmpty.new())
+		for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+			theme.set_stylebox(state, kind, toggle_room)
+		theme.set_stylebox("focus", kind, toggle_focus)
 	theme.set_icon("unchecked", "CheckBox", _tick(mark, Color(text, 0.5), main, on_main, false, radius == 0 and not _cut))
 	theme.set_icon("checked", "CheckBox", _tick(mark, main, main, on_main, true, radius == 0 and not _cut))
 	theme.set_icon("radio_unchecked", "CheckBox", _disc(mark, Color(0, 0, 0, 0), Color(text, 0.5), false, 0.0))
@@ -228,7 +240,10 @@ static func make(look := "clean", accent: Variant = null, scale := 1.0, font: Fo
 		theme.set_stylebox("tab_selected", kind, chosen)
 		theme.set_stylebox("tab_unselected", kind, _box(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0, radius, tab_pad))
 		theme.set_stylebox("tab_hovered", kind, _box(Color(text, 0.06), Color(0, 0, 0, 0), 0, radius, tab_pad))
-		theme.set_stylebox("tab_focus", kind, StyleBoxEmpty.new())
+		var focused := _focus(main, ring, radius, tab_pad, 0.12)
+		focused.corner_radius_bottom_left = 0
+		focused.corner_radius_bottom_right = 0
+		theme.set_stylebox("tab_focus", kind, focused)
 		theme.set_color("font_selected_color", kind, text)
 		theme.set_color("font_unselected_color", kind, muted)
 		theme.set_color("font_hovered_color", kind, text)
@@ -286,6 +301,14 @@ static func _box(fill: Color, edge_color: Color, edge: int, radius: int, room: V
 	return box
 
 
+## The box over a control that keyboard or gamepad focus is on: a ring in `color`, crisp in every look, over a
+## wash of that color as opaque as `wash`.
+static func _focus(color: Color, width: int, radius: int, room: Variant, wash: float) -> StyleBoxFlat:
+	var box := _box(Color(color, wash), color, width, radius, room)
+	box.border_blend = false
+	return box
+
+
 ## Gives a box a hard shadow below and to the right, as under a sticker: nothing where the offset is 0.
 static func _drop(box: StyleBoxFlat, offset: int, color: Color) -> StyleBoxFlat:
 	if offset > 0:
@@ -296,19 +319,22 @@ static func _drop(box: StyleBoxFlat, offset: int, color: Color) -> StyleBoxFlat:
 
 
 ## A small picture of a disc (or a square, for looks with hard corners), with a rim; `dot` fills only that share of
-## it and leaves a ring.
-static func _disc(side: int, fill: Color, rim: Color, square := false, dot := 1.0) -> ImageTexture:
-	var image := Image.create_empty(side, side, false, Image.FORMAT_RGBA8)
-	var middle := (side - 1) * 0.5
+## it and leaves a ring. `halo` pixels of room surround it on every side, lit in `glow` unless that is transparent.
+static func _disc(side: int, fill: Color, rim: Color, square := false, dot := 1.0, halo := 0, glow := Color(0, 0, 0, 0)) -> ImageTexture:
+	var wide := side + halo * 2
+	var image := Image.create_empty(wide, wide, false, Image.FORMAT_RGBA8)
+	var middle := (wide - 1) * 0.5
 	var reach := side * 0.5 - 1.0
-	for y: int in side:
-		for x: int in side:
+	for y: int in wide:
+		for x: int in wide:
 			var away := maxf(absf(x - middle), absf(y - middle)) if square else Vector2(x - middle, y - middle).length()
 			var inside := clampf(reach - away + 0.5, 0.0, 1.0)
 			var ring := clampf(away - (reach - maxf(side * 0.1, 1.5)) + 0.5, 0.0, 1.0)
 			var color := fill if dot >= 1.0 or away <= reach * dot else Color(fill, 0.0)
 			color = color.lerp(rim, ring * rim.a) if rim.a > 0.0 else color
-			image.set_pixel(x, y, Color(color, color.a * inside if rim.a == 0.0 else maxf(color.a, ring * rim.a) * inside))
+			var disc := Color(color, color.a * inside if rim.a == 0.0 else maxf(color.a, ring * rim.a) * inside)
+			var lit := Color(glow, glow.a * clampf(reach + halo - away + 0.5, 0.0, 1.0))
+			image.set_pixel(x, y, lit.blend(disc) if lit.a > 0.0 else disc)
 	return ImageTexture.create_from_image(image)
 
 

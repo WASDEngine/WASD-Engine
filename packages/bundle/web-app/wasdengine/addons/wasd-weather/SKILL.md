@@ -40,8 +40,8 @@ weather.weather = "rain"     # comes over weather.change_seconds (8)
 - `weather.wetness` and `weather.snow_cover` run from 0 to 1. Rain and snow raise them over `settle_seconds` (40 of the heaviest), and they dry and melt `clear_slowness` (3) times slower. Set them to begin soaked or snowed in: `weather.snow_cover = 1.0`.
 - Wet: everything darkens and shines. From a wetness of about 0.3, puddles stand on level ground, a third of it when soaked; they mirror the sky and the lamps, and rain ruffles them.
 - Snow: on what faces up, first in patches, then closed; walls stay bare.
-- Left bare: see-through materials, also shaders that write ALPHA, such as `wasd-materials`' cut-outs and glass, the nodes of other WASD packs (water, effects, light, marks), and every node in the group `wasd_weather_bare` with all under it. `weather.uncover(root)` takes the cover off.
-- With `lite-terrain` and `simple-grass-textured` the snow buries the grass by itself. A GridMap, and a mesh whose own shader moves its vertices, cannot take the cover: tint or swap those from `weather.snow_cover` in your own code.
+- Left bare: see-through materials, also shaders that write ALPHA, such as `wasd-materials`' cut-outs and glass, the meshes other WASD packs draw (water, light, marks, cloth) with all under them, every node in the group `wasd_weather_bare` with all under it, and a mesh while the game's own `material_overlay` is on it. `weather.uncover(root)` takes the cover off; so does removing the weather node, and buried grass stands up again. A WASD FX flash, outline, or dissolve shows over the cover and gives it back after.
+- A `wasd-character` character's model takes the cover like any mesh. With `lite-terrain` and `simple-grass-textured` the snow buries the grass by itself. A GridMap, and a mesh whose own shader moves its vertices, cannot take the cover: tint or swap those from `weather.snow_cover` in your own code.
 
 ## Rain on level ground
 
@@ -67,7 +67,9 @@ The pack has no sounds. Make a rain loop and thunder with `elevenlabs_sound_effe
 
 `wind_heading` is the compass direction the wind blows toward (0 toward -Z, 90 toward +X), `wind_strength` multiplies every weather's wind. It moves by itself: the rain's and the snow's slant, the clouds of WASD Look, the smoke, steam, and flames of WASD FX, and the grass of SimpleGrassTextured.
 
-Whatever else should feel it joins the group `wasd_wind` and is told through `set_wind(wind: Vector3)`, in meters a second along the world's axes, whenever the wind changes. `WasdClothWind3D`, `WasdDust3D`, and `WasdFogBank3D` have the method: `$Flags/Wind.add_to_group("wasd_wind")`. A node of the game's own needs only the method. `weather.get_wind()` is the wind this moment with its gusts, for sails and other forces the game applies itself.
+Whatever else should feel it joins the group `wasd_wind` and is told through `set_wind(wind: Vector3)`, in meters a second along the world's axes, whenever the wind changes and within half a second of joining. `WasdClothWind3D`, `WasdDust3D`, and `WasdFogBank3D` have the method: `$Flags/Wind.add_to_group("wasd_wind")`. A node of the game's own needs only the method. `weather.get_wind()` is the wind this moment with its gusts, for sails and other forces the game applies itself.
+
+When the weather node leaves the tree, as at a scene change, the wind goes with it: every node it told is told `Vector3.ZERO`, so WasdFx's smoke stands straight in the next scene and a look's clouds go back to their own drift, and SimpleGrassTextured gets back the wind it had before.
 
 ## With WASD Look
 

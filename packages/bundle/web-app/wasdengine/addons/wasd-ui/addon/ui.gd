@@ -28,7 +28,7 @@ var accent: Variant = null: set = _set_accent
 ## A font of the game's own for all text; null keeps Godot's.
 var font: Font = null: set = _set_font
 ## What text and widgets are multiplied by. 0 works it out: 1 where the project stretches its window, and
-## otherwise the window's height over 720.
+## otherwise the window's height over 720, in steps of 0.05.
 var scale_by := 0.0: set = _set_scale_by
 
 var _root := Control.new()
@@ -47,8 +47,17 @@ var _cover_fade: Tween
 var _dim := ColorRect.new()
 var _menus := CenterContainer.new()
 var _scale := 1.0
+## What the look on the game was last built from: the look, the accent, the font, and the scale.
+var _built := []
 ## Godot's own default theme as it was, to give back when the look is taken off.
 var _godot_theme: Theme
+## The instance id of the control that had the focus before each open menu took it, by the menu's instance id.
+var _focus_before := {}
+## Whether menus show a mouse pointer that the game had hidden or captured, until it goes back after the last one
+## closes; the mode the game had; and the mode that shows the pointer.
+var _pointer_shown := false
+var _pointer_before := Input.MOUSE_MODE_VISIBLE
+var _pointer_while := Input.MOUSE_MODE_VISIBLE
 
 
 func _init() -> void:
@@ -111,13 +120,14 @@ func _init() -> void:
 	row.add_child(_prompt_text)
 	_prompt.add_child(row)
 	_root.add_child(_prompt)
-	# Menus stand over a dimmed game and over the HUD.
+	# Menus stand over a dimmed game and over the HUD, and no click on them, even between their buttons, reaches the
+	# game.
 	_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	_dim.visible = false
 	_root.add_child(_dim)
 	_menus.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_menus.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_menus.mouse_filter = Control.MOUSE_FILTER_STOP
 	_menus.visible = false
 	_root.add_child(_menus)
 	_root.add_child(_cover)
@@ -170,22 +180,28 @@ func place(control: Control, corner := CORNER_TOP_LEFT) -> void:
 func toast(text: String, options := {}) -> void:
 	var card := PanelContainer.new()
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# A toast is a panel of the look with a bar of the accent down its left side.
-	var plate := (card.get_theme_stylebox(&"panel") as StyleBoxFlat).duplicate() as StyleBoxFlat
-	plate.border_width_left = maxi(roundi(4.0 * _scale), 3)
-	plate.border_color = values()["accent"]
-	plate.border_blend = false
-	plate.content_margin_left = roundi(14.0 * _scale)
-	plate.content_margin_right = roundi(14.0 * _scale)
-	plate.content_margin_top = roundi(7.0 * _scale)
-	plate.content_margin_bottom = roundi(7.0 * _scale)
-	card.add_theme_stylebox_override(&"panel", plate)
 	var line := Label.new()
 	line.text = text
 	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if options.has("color"):
 		line.add_theme_color_override(&"font_color", options["color"])
 	card.add_child(line)
+	# A toast is a panel of the look with a bar of the accent down its left side. A panel of a Theme of the game's
+	# own that is not a flat box, such as one drawn from a texture, stays as the game drew it; over one that draws
+	# nothing, the line is a HudLabel, which reads over the game.
+	var panel := card.get_theme_stylebox(&"panel")
+	if panel is StyleBoxFlat:
+		var plate := panel.duplicate() as StyleBoxFlat
+		plate.border_width_left = maxi(roundi(4.0 * _scale), 3)
+		plate.border_color = values()["accent"]
+		plate.border_blend = false
+		plate.content_margin_left = roundi(14.0 * _scale)
+		plate.content_margin_right = roundi(14.0 * _scale)
+		plate.content_margin_top = roundi(7.0 * _scale)
+		plate.content_margin_bottom = roundi(7.0 * _scale)
+		card.add_theme_stylebox_override(&"panel", plate)
+	elif panel is StyleBoxEmpty:
+		line.theme_type_variation = &"HudLabel"
 	_toasts.add_child(card)
 	# Four at the most: the oldest gives way.
 	while _toasts.get_child_count() > 4:
@@ -284,9 +300,20 @@ func hurt(strength := 0.6, color := Color(0.8, 0.05, 0.05)) -> void:
 
 
 ## Shows a menu of the game's own, such as a pause or settings panel, in the middle of the screen over a dimmed
-## game, above the HUD, and gives its first button the focus. `close()` takes it away again. The game goes on
-## behind it unless the game pauses itself.
+## game, above the HUD, and gives its first button the focus unless the game gives a control of the menu the focus
+## first. A mouse pointer that the game hid or captured shows while menus are open. `close()` takes the menu away
+## again. The game goes on behind it unless the game pauses itself.
 func open(menu: Control, dim := 0.55) -> void:
+	var id := menu.get_instance_id()
+	if not _focus_before.has(id):
+		var had := get_viewport().gui_get_focus_owner()
+		_focus_before[id] = had.get_instance_id() if had != null and had != menu and not menu.is_ancestor_of(had) else 0
+	var mode := Input.mouse_mode
+	if not _menus.visible and mode in [Input.MOUSE_MODE_HIDDEN, Input.MOUSE_MODE_CAPTURED, Input.MOUSE_MODE_CONFINED_HIDDEN]:
+		_pointer_shown = true
+		_pointer_before = mode
+		_pointer_while = Input.MOUSE_MODE_CONFINED if mode == Input.MOUSE_MODE_CONFINED_HIDDEN else Input.MOUSE_MODE_VISIBLE
+		Input.mouse_mode = _pointer_while
 	if menu.get_parent() != null:
 		menu.get_parent().remove_child(menu)
 	_dim.color = Color(0, 0, 0, dim)
@@ -295,23 +322,38 @@ func open(menu: Control, dim := 0.55) -> void:
 	_menus.show()
 	menu.modulate.a = 0.0
 	create_tween().tween_property(menu, ^"modulate:a", 1.0, 0.12)
-	var first := menu.find_next_valid_focus() if menu.focus_mode != Control.FOCUS_NONE else null
-	for part: Node in menu.find_children("*", "BaseButton", true, false):
-		if first == null and (part as BaseButton).focus_mode != Control.FOCUS_NONE and not (part as BaseButton).disabled:
-			first = part as Control
+	var first := _first_focus(menu)
 	if first != null:
-		first.grab_focus.call_deferred()
+		# Once the input that opened the menu is done, so that it does not press the new button as well.
+		_give_focus.call_deferred(first.get_instance_id(), id)
 
 
-## Takes a menu that `open()` showed away again, and frees it unless `keep` is true.
+## Takes a menu that `open()` showed away again, and frees it unless `keep` is true. If the focus was in the menu or
+## nowhere, it goes back to the control that had it before, or else to the first button of the menu still open
+## beneath, unless the game gives the focus to a control first. Once the last menu has gone and the input that
+## closed it is done, the mouse pointer goes back as the game had it, unless a menu is open again by then, the game
+## changed the pointer or the scene meanwhile, or, in a browser, the game had captured it: a browser captures the
+## pointer only on a click, and the game captures it again on the next one.
 func close(menu: Control, keep := false) -> void:
+	var held := get_viewport().gui_get_focus_owner()
+	var was_in_menu := held == null or held == menu or menu.is_ancestor_of(held)
+	var back := instance_from_id(_focus_before.get(menu.get_instance_id(), 0)) as Control
+	_focus_before.erase(menu.get_instance_id())
 	if menu.get_parent() == _menus:
 		_menus.remove_child(menu)
 		if not keep:
 			menu.queue_free()
-	if _menus.get_child_count() == 0:
+	var left := _menus.get_child_count()
+	if left == 0:
 		_menus.hide()
 		_dim.hide()
+		if _pointer_shown:
+			var scene := get_tree().current_scene
+			_give_pointer_back.call_deferred(scene.get_instance_id() if scene != null else 0)
+	elif back == null or not _menus.is_ancestor_of(back):
+		back = _first_focus(_menus.get_child(left - 1) as Control)
+	if was_in_menu and back != null:
+		_give_focus.call_deferred(back.get_instance_id(), 0)
 
 
 ## Covers the screen in a color over `seconds` and returns the Tween to await: before a cut, a death, a level's
@@ -339,15 +381,25 @@ func clear(seconds := 0.4) -> Tween:
 	return _cover_fade
 
 
-## Builds the look for the window as it is and lays the HUD out for it.
+## Builds the look for the window as it is and lays the HUD out for it, unless the look, the accent, the font, and the
+## scale are all as they were the last time: building a look takes some 40 ms in a browser.
 func _apply() -> void:
 	var window := get_tree().root
 	var stretched := str(ProjectSettings.get_setting("display/window/stretch/mode", "disabled")) != "disabled"
-	_scale = scale_by if scale_by > 0.0 else (1.0 if stretched else clampf(window.size.y / 720.0, 0.75, 3.0))
+	# In steps, so that a window dragged to another size, or a phone's toolbar coming and going, builds no look for
+	# each pixel.
+	var wanted := scale_by if scale_by > 0.0 else (1.0 if stretched else snappedf(clampf(window.size.y / 720.0, 0.75, 3.0), 0.05))
+	var made_of := [look, accent, font, wanted]
+	if made_of == _built:
+		return
+	_built = made_of
+	_scale = wanted
 	# The look goes into the default theme, which every control falls back on wherever it stands in the tree: a
 	# theme set on the window would not reach controls under a CanvasLayer. A Theme of the game's own, on a control
-	# or in the project settings, still comes first.
+	# or in the project settings, still comes first. Controls hear of the change once, when the theme is whole: laid
+	# out for a theme half built, a panel could stay smaller than what it holds.
 	var shared := ThemeDB.get_default_theme()
+	shared.set_block_signals(true)
 	shared.clear()
 	shared.merge_with(_godot_theme)
 	shared.default_font = _godot_theme.default_font
@@ -357,6 +409,8 @@ func _apply() -> void:
 		shared.merge_with(made)
 		shared.default_font = made.default_font
 		shared.default_font_size = made.default_font_size
+	shared.set_block_signals(false)
+	shared.emit_changed()
 	var edge := roundi(20.0 * _scale)
 	for corner: int in _corners:
 		var stack: VBoxContainer = _corners[corner]
@@ -387,6 +441,47 @@ func _apply() -> void:
 	_prompt_key.custom_minimum_size = Vector2.ONE * roundi(30.0 * _scale)
 	_prompt_icon.custom_minimum_size = Vector2.ONE * roundi(36.0 * _scale)
 	look_changed.emit()
+
+
+## The control of a menu that takes the focus first: the next in focus order if the menu itself takes the focus, and
+## otherwise its first button that can.
+func _first_focus(menu: Control) -> Control:
+	var first := menu.find_next_valid_focus() if menu.focus_mode != Control.FOCUS_NONE else null
+	if first != null:
+		return first
+	for part: Node in menu.find_children("*", "BaseButton", true, false):
+		if (part as BaseButton).focus_mode != Control.FOCUS_NONE and not (part as BaseButton).disabled:
+			return part as Control
+	return null
+
+
+## Gives the focus to a control, by its instance id, if it can still take it (in the tree, shown, and focusable), if
+## the game has not given the focus meanwhile (to a control of the menu whose instance id is `menu`, or, for 0, to any
+## control), and if, while menus are open, the control is in one of them.
+func _give_focus(id: int, menu: int) -> void:
+	var held := get_viewport().gui_get_focus_owner()
+	var opened := instance_from_id(menu) as Node
+	if held != null and (opened == null or opened == held or opened.is_ancestor_of(held)):
+		return
+	var control := instance_from_id(id) as Control
+	if control == null or not control.is_inside_tree() or not control.is_visible_in_tree() or control.focus_mode == Control.FOCUS_NONE:
+		return
+	if _menus.visible and not _menus.is_ancestor_of(control):
+		return
+	control.grab_focus()
+
+
+## Gives the mouse pointer back as the game had it before the first menu showed it, as `close()` describes; `scene` is
+## the instance id of the scene that was current when the last menu closed.
+func _give_pointer_back(scene: int) -> void:
+	if _menus.visible or not _pointer_shown:
+		return
+	_pointer_shown = false
+	var current := get_tree().current_scene
+	var same_scene := (current.get_instance_id() if current != null else 0) == scene
+	var browser_capture := _pointer_before == Input.MOUSE_MODE_CAPTURED and OS.has_feature("web")
+	if same_scene and Input.mouse_mode == _pointer_while and not browser_capture:
+		Input.mouse_mode = _pointer_before
 
 
 func _set_look(to: String) -> void:

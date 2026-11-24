@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/wasd-plugins/addon/wasd_multiplayer/README.md
 /wasd-multiplayer:
-  en: 4c80a49ec493fb5e
-  zh: ee54d8b956de54b1
+  en: 671bc3c836b56b17
+  zh: b0bcfd705868147d
 /wasd-multiplayer/modes:
   en: 4afaca1328258940
   zh: 2dc1ad8e23b501d9
@@ -15,8 +15,8 @@
   en: 8aa08575ec8cda05
   zh: bdb25c9b7751ade9
 /wasd-multiplayer/configuration:
-  en: 98db8897dd6ecbd1
-  zh: 19cc8e4f48635cf1
+  en: 7799e7c3d9b5f117
+  zh: 70390c0847c253e6
 /wasd-multiplayer/test-runs:
   en: 22df9e2f7d72f23a
   zh: e1ff0e2d34c94a35

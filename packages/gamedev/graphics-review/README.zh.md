@@ -46,7 +46,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | `maxImagePixels` | `1150000` | 发送的图片最多的像素数 |
 | `minImagePixels` | `295936` | 发送的图片最少的像素数：较小的图片（例如像素画）按整数倍朝这个像素数放大，因为路由会把更小的图片按非整数倍放大；默认值是账号路由的 544×544 |
 
-插件需要 `tools` 和 `workingDirectory` 服务，审查还需要 `llm` 和 `attachments` 服务。有 `systemPrompt` 服务时它添加 `graphics-review` 段落；有 [`@deepseek-ai/dsh-game-addons`](../game-addons/README.zh.md) 的 `gameAddons` 服务时，审查者可以点名目录中会改变游戏外观、且用户没有在「扩展」对话框中关闭的扩展，不包括游戏系统、起始套件和测试框架；有 [`@deepseek-ai/dsh-deepseek-account`](../../credentials/deepseek-account/README.zh.md) 的 `deepseekAccount` 服务时，路由在无人登录时列不出模型，审查会请用户登录；有 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 的 `gameMcp` 服务时，它把工具提供给连接的 agent。「插件」页面的开关可以关闭这一行。
+插件需要 `tools` 和 `workingDirectory` 服务，审查还需要 `llm` 和 `attachments` 服务。有 `systemPrompt` 服务时它添加 `graphics-review` 段落；有 [`@deepseek-ai/dsh-game-addons`](../game-addons/README.zh.md) 的 `gameAddons` 服务时，审查者可以点名目录中会改变游戏外观、且用户没有在「扩展」对话框中关闭的扩展，不包括游戏系统、起始套件和测试框架，前提是调用方 agent 拥有 `game_addons`，Blender 的扩展还要求它拥有 Blender 工具；有 [`@deepseek-ai/dsh-deepseek-account`](../../credentials/deepseek-account/README.zh.md) 的 `deepseekAccount` 服务时，路由在无人登录时列不出模型，审查会请用户登录；有 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 的 `gameMcp` 服务时，它把工具提供给连接的 agent。「插件」页面的开关可以关闭这一行。
 
 ### 工具
 
@@ -66,7 +66,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 <details>
 <summary>实现内部细节——点击展开</summary>
 
-面向模型的文字把审查者称为专门的画面专家审查模型，从不提及其费用；审查者是账号的模型路由，配合 [`src/prompt.ts`](src/prompt.ts) 中审查者的说明，其中列出要关注的方面、按 agent 的偏好顺序排列的 WASD Engine 工具（先是符合游戏美术风格的可下载素材，再是生成的 2D 美术，最后才是手绘或用代码绘制的美术）、已发布的游戏在浏览器中运行，因此审查者不建议在那里不起作用的效果；按 id 列出的目录扩展，每个附带几个词的提示；如何看待 agent 说明的自上次审查以来的改动，使审查者评判这些改动，并且不重复 agent 说无法处理的意见（例如现成角色的脸）；以及回复的格式：只给出能带来明显、可见改善的意见（最多八条，作品接近完成时更少）和可以考虑使用的工具和扩展，不含评分、等级或结论。请求把 agent 的 `previous` 以 `Since the last review of this work:` 加在图片旁的文字中。请求通过 `ctx.llm.prepareCall` 准备，它绑定模型的推理强度：模型提供 `reasoningEffort` 时使用它，否则使用模型最低的推理强度，因为输出上限把推理也计算在内，而路由默认的推理强度可能把 `maxTokens` 全部用在推理上。请求带有 purpose `graphics-review`、调用有 Session 时的 Session id 和 `maxTokens`，不设 temperature，因为模型推理时账号路由会忽略它。达到 `maxTokens` 的回复保留其文本，并注明审查在此结束。Sharp 在第一次审查时加载。
+面向模型的文字把审查者称为专门的画面专家审查模型，从不提及其费用；审查者是账号的模型路由，配合 [`src/prompt.ts`](src/prompt.ts) 中审查者的说明，其中列出要关注的方面、调用方 agent 拥有的 WASD Engine 工具（Session 当前这一步允许的工具；对连接的 agent 而言，则是 WASD Engine 注册的工具，因此从不建议其插件已在「插件」页面关闭的工具），按 agent 的偏好顺序排列（先是符合游戏美术风格的可下载素材，再是生成的 2D 美术，最后才是手绘或用代码绘制的美术）、已发布的游戏在浏览器中运行，因此审查者不建议在那里不起作用的效果；按 id 列出的目录扩展，每个附带几个词的提示；如何看待 agent 说明的自上次审查以来的改动，使审查者评判这些改动，并且不重复 agent 说无法处理的意见（例如现成角色的脸）；以及回复的格式：只给出能带来明显、可见改善的意见（最多八条，作品接近完成时更少）和可以考虑使用的工具和扩展，不含评分、等级或结论。请求把 agent 的 `previous` 以 `Since the last review of this work:` 加在图片旁的文字中。请求通过 `ctx.llm.prepareCall` 准备，它绑定模型的推理强度：模型提供 `reasoningEffort` 时使用它，否则使用模型最低的推理强度，因为输出上限把推理也计算在内，而路由默认的推理强度可能把 `maxTokens` 全部用在推理上。请求带有 purpose `graphics-review`、调用有 Session 时的 Session id 和 `maxTokens`，不设 temperature，因为模型推理时账号路由会忽略它。达到 `maxTokens` 的回复保留其文本，并注明审查在此结束。Sharp 在第一次审查时加载。
 
 | 文件 | 作用 |
 |---|---|
@@ -141,7 +141,7 @@ graphics_review sends an image to a specialized graphics expert reviewer model, 
 
 #### Token 影响
 
-一次审查最多约 600 个英文单词。请求本身从不进入对话，它携带审查者的说明（约 4,400 个字符，每个 agent 可用的目录扩展再加约 200 个字符）和图片。
+一次审查最多约 600 个英文单词。请求本身从不进入对话，它携带审查者的说明（最多约 4,600 个字符，agent 缺少其中提到的某些工具时更少，每个 agent 可用的目录扩展再加约 200 个字符）和图片。
 
 #### KV Cache 影响
 

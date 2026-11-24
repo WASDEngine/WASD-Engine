@@ -7,7 +7,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
-import { lstat, mkdir, rename, rm } from 'node:fs/promises'
+import { lstat, mkdir, rename, rm, rmdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import type { Context } from '@deepseek-ai/cordis'
@@ -28,6 +28,9 @@ const MAX_REDIRECTS = 5
 
 /** Most conflicting files that an error lists by name. */
 const LISTED_CONFLICTS = 5
+
+/** Most times a download makes a folder and its marker again after another download removed a folder on its path. */
+const FOLDER_ATTEMPTS = 5
 
 /** Media types a preview image may have. */
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const
@@ -488,21 +491,44 @@ export interface AssetFileWrite {
   write(temporary: string, signal: AbortSignal): Promise<void>
 }
 
-/** One file with its target and what the download does with it. */
-interface Target {
+/** One file with its absolute target. */
+interface Placed {
   readonly file: AssetFileWrite
   readonly target: string
+}
+
+/** One file with its target and what the download does with it. */
+interface Target extends Placed {
   readonly status: AssetFileStatus
 }
 
 /**
- * Find what a download does with one file.
- * @throws Error when the path leaves the folder, or the target exists and is not a regular file.
+ * Find each file's target in the folder.
+ * @throws Error when a path leaves the folder, or two paths name one file, as paths that differ only in letter case
+ * do on the disks of macOS and Windows.
  */
-async function targetOf(directory: string, file: AssetFileWrite, signal: AbortSignal): Promise<Target> {
-  const target = join(directory, ...file.path.split('/'))
-  const inside = relative(directory, target)
-  if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) throw new Error(`The file ${file.path} would leave the download folder; the download stopped.`)
+function placeFiles(directory: string, files: readonly AssetFileWrite[]): Placed[] {
+  const seen = new Map<string, Placed>()
+  return files.map((file) => {
+    const target = join(directory, ...file.path.split('/'))
+    const inside = relative(directory, target)
+    if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) throw new Error(`The file ${file.path} would leave the download folder; the download stopped.`)
+    const earlier = seen.get(inside.toLowerCase())
+    if (earlier !== undefined) {
+      const why = earlier.target === target ? '' : ', since macOS and Windows ignore letter case in file names'
+      throw new Error(`The files ${earlier.file.path} and ${file.path} would be one file in the download folder${why}; the download stopped.`)
+    }
+    const placed = { file, target }
+    seen.set(inside.toLowerCase(), placed)
+    return placed
+  })
+}
+
+/**
+ * Find what a download does with one file.
+ * @throws Error when the target exists and is not a regular file.
+ */
+async function targetOf({ file, target }: Placed, signal: AbortSignal): Promise<Target> {
   let status: AssetFileStatus
   try {
     const stats = await lstat(target)
@@ -516,23 +542,83 @@ async function targetOf(directory: string, file: AssetFileWrite, signal: AbortSi
 }
 
 /**
+ * Create a folder and the missing folders above it, the highest first.
+ * @param folder - absolute folder.
+ * @param created - receives each folder this call creates, also when creating a later one fails.
+ * @throws Error when a folder cannot be created.
+ */
+async function createFolders(folder: string, created: string[]): Promise<void> {
+  // A path that cannot be looked up counts as missing; creating it then fails with the reason.
+  if (await lstat(folder).then(() => true, () => false)) return
+  const parent = dirname(folder)
+  if (parent !== folder) await createFolders(parent, created)
+  // A folder that another call created meanwhile is not this call's to remove.
+  const made = await mkdir(folder).then(() => true, (error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    return false
+  })
+  if (made) created.push(folder)
+}
+
+/**
+ * Make a folder that a download writes into, with the missing folders above it, and a marker file in it, which keeps
+ * the folder from being empty, so that another download that fails, which removes only the empty folders it created,
+ * leaves it while this download runs.
+ * @param folder - absolute folder.
+ * @param marker - absolute path of the marker file to create in it.
+ * @param created - receives each folder this call creates.
+ * @throws Error when the folder or the marker cannot be created.
+ */
+async function claimFolder(folder: string, marker: string, created: string[]): Promise<void> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await createFolders(folder, created)
+      await writeFile(marker, '', { flag: 'wx' })
+      return
+    } catch (error) {
+      // ENOENT: a download that failed meanwhile removed a folder on the path, which this download makes again.
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || attempt >= FOLDER_ATTEMPTS) throw error
+    }
+  }
+}
+
+/**
+ * Remove folders that a failed download created, the deepest first, each only while it is empty.
+ * @param folders - absolute folders.
+ */
+async function removeEmptyFolders(folders: readonly string[]): Promise<void> {
+  // A folder's path is longer than the path of each folder above it.
+  for (const folder of [...new Set(folders)].sort((left, right) => right.length - left.length)) {
+    try {
+      await rmdir(folder)
+    } catch {
+      // Any error keeps the folder: ENOTEMPTY or EEXIST when a file holds it, ENOENT when it is gone. The call reports
+      // the download's own failure.
+    }
+  }
+}
+
+/**
  * Write a download's files into a folder, creating the folder and its subfolders. Each file is written into a temporary
  * file beside its target, and only after every file arrived intact do the temporary files take their targets' places,
- * so a failed or cancelled download writes none of its files. A file already in place with the same contents is not
- * written again; a file with other contents stops the download unless the call allows replacing it.
+ * so a failed or cancelled download writes none of its files and removes the folders it created, while they hold
+ * nothing. While a download runs, a hidden marker file in each folder that its files go into keeps another download
+ * that fails from removing that folder. A file already in place with the same contents is not written again; a file
+ * with other contents stops the download unless the call allows replacing it. Two paths that differ only in letter
+ * case stop the download before anything is written, since the disks of macOS and Windows hold one file for both.
  * @param files - the files.
  * @param directory - absolute download folder.
  * @param options - whether to replace changed files, and cancellation of the whole download.
  * @returns what happened to each file, in the given order.
- * @throws Error when a file conflicts, cannot be fetched, arrives damaged, or cannot be written; no file is written
- * then, except when moving the checked files into place fails partway.
+ * @throws Error when a path leaves the folder, two paths name one file, a file conflicts, cannot be fetched, arrives
+ * damaged, or cannot be written; no file is written then, except when moving the checked files into place fails partway.
  */
 export async function writeAssetFiles(
   files: readonly AssetFileWrite[], directory: string, options: { readonly replace: boolean; readonly signal: AbortSignal },
 ): Promise<WrittenAssetFile[]> {
   const { signal } = options
   const targets: Target[] = []
-  for (const file of files) targets.push(await targetOf(directory, file, signal))
+  for (const placed of placeFiles(directory, files)) targets.push(await targetOf(placed, signal))
   const conflicts = targets.filter(target => target.status === 'replaced')
   if (conflicts.length > 0 && !options.replace) {
     const names = conflicts.slice(0, LISTED_CONFLICTS).map(conflict => conflict.file.path).join(', ')
@@ -542,11 +628,16 @@ export async function writeAssetFiles(
   }
   const pending = targets.filter(target => target.status !== 'unchanged')
     .map(entry => ({ entry, temporary: join(dirname(entry.target), `.${basename(entry.target)}.${randomUUID()}.part`) }))
+  const folders = [...new Set(pending.map(({ entry }) => dirname(entry.target)))]
+  const markers = new Map(folders.map((folder): [string, string] => [folder, join(folder, `.${randomUUID()}.part`)]))
   const controller = new AbortController()
   const linked = AbortSignal.any([signal, controller.signal])
-  const leftovers = new Set(pending.map(({ temporary }) => temporary))
+  // The markers go with the temporary files, whether the download succeeds or fails.
+  const leftovers = new Set([...pending.map(({ temporary }) => temporary), ...markers.values()])
+  const created: string[] = []
+  let placed = false
   try {
-    for (const { entry } of pending) await mkdir(dirname(entry.target), { recursive: true })
+    for (const [folder, marker] of markers) await claimFolder(folder, marker, created)
     // The first failure stops the other files; the cancellations it causes are not the reason the download failed.
     const failures: unknown[] = []
     await Promise.all(pending.map(async ({ entry, temporary }) => {
@@ -563,8 +654,10 @@ export async function writeAssetFiles(
       await rename(temporary, entry.target)
       leftovers.delete(temporary)
     }
+    placed = true
   } finally {
     await Promise.all([...leftovers].map(path => rm(path, { force: true })))
+    if (!placed) await removeEmptyFolders(created)
   }
   return targets.map(target => ({ path: target.file.path, bytes: target.file.bytes, status: target.status }))
 }

@@ -2,7 +2,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { GameAddonCatalogError, guideReferences, loadCatalog, loadGuides, MAX_ICON_BYTES, parseGuide, searchCatalog } from '../src/catalog.ts'
+import { GameAddonCatalogError, guideReferences, loadCatalog, loadGuides, MAX_ICON_BYTES, parseGuide, queryTerms, searchCatalog } from '../src/catalog.ts'
 import { editableCatalogEntries, pin, scratch, TREE_ASSETS_ARCHIVE, URLS, writeCatalog, type Scratch } from './fixtures.ts'
 
 let dir: Scratch | undefined
@@ -139,6 +139,7 @@ describe('loadCatalog', () => {
     await expect(loadCatalog(path)).rejects.toThrow(/name rig must equal the add-on id test-rig/u)
     await writeFile(join(path, 'test-rig', 'SKILL.md'), '# no frontmatter\n')
     await expect(loadCatalog(path)).rejects.toThrow(GameAddonCatalogError)
+    await expect(loadCatalog(path)).rejects.toMatchObject({ name: 'GameAddonCatalogError', code: 'GAME_ADDON_CATALOG_INVALID' })
   })
 
   it('rejects an unreadable catalog folder', async () => {
@@ -212,5 +213,38 @@ describe('searchCatalog', () => {
     expect(searchCatalog(catalog.entries, { host: 'blender' }).map(entry => entry.id)).toEqual(['test-rig', 'test-trees'])
     expect(searchCatalog(catalog.entries, { stage: 'polish' }).map(entry => entry.id)).toEqual(['other-camera', 'test-camera'])
     expect(searchCatalog(catalog.entries, { text: 'the and plugin' })).toHaveLength(4)
+  })
+
+  it('keeps to the application that a query names, unless the query names both or host names one', async () => {
+    const catalog = await loadCatalog(await catalogWith(() => {}))
+    const ids = (text: string, host?: 'godot' | 'blender'): string[] => searchCatalog(catalog.entries, { text, ...host === undefined ? {} : { host } }).map(entry => entry.id)
+    for (const text of ['blender', 'Blender add-ons', 'blender addons', 'a blender add on', 'Blender 5 add-ons', 'blender add\u2011ons', 'Blender 5.2 add\u2013ons']) {
+      expect(ids(text), text).toEqual(['test-rig', 'test-trees'])
+    }
+    expect(ids('godot 4.7 plugins')).toEqual(['other-camera', 'test-camera'])
+    expect(ids('godot plugins')).toEqual(['other-camera', 'test-camera'])
+    expect(ids('blender rigging')).toEqual(['test-rig'])
+    expect(ids('blender camera')).toEqual([])
+    expect(ids('godot blender')).toHaveLength(4)
+    expect(ids('blender', 'godot')).toEqual(['other-camera', 'test-camera'])
+    // An id names its add-on within the filter that host sets; outside it, the id's words rank that application's add-ons.
+    expect(ids('test-rig', 'blender')).toEqual(['test-rig'])
+    expect(ids('test-rig', 'godot')).toEqual(['test-camera', 'other-camera'])
+  })
+})
+
+describe('queryTerms', () => {
+  it('leaves out common words, reads add-ons as one word, and names the one application a query names', () => {
+    expect(queryTerms('Blender add-ons for my game')).toEqual({ words: [], host: 'blender' })
+    expect(queryTerms('godot-state-charts')).toEqual({ words: ['state', 'charts'], host: 'godot' })
+    expect(queryTerms('export from blender to godot')).toEqual({ words: ['export', 'from'] })
+    expect(queryTerms('add on top of the addons, an address')).toEqual({ words: ['top', 'address'] })
+    // A possessive ending leaves no word of one letter, which would rank every add-on with a word that starts with it.
+    expect(queryTerms('Godot\'s dialogue and Blender’s rigs')).toEqual({ words: ['dialogue', 'rigs'] })
+    expect(queryTerms('Blender\'s add-ons')).toEqual({ words: [], host: 'blender' })
+    // A version ranks nothing, and a dash of any kind joins add-ons into one word; a word of digits and letters ranks.
+    expect(queryTerms('Godot 4.7 add\u2011ons')).toEqual({ words: [], host: 'godot' })
+    expect(queryTerms('add\u2014ons for a 2d platformer')).toEqual({ words: ['2d', 'platformer'] })
+    expect(queryTerms('  ')).toEqual({ words: [] })
   })
 })

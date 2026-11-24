@@ -47,6 +47,9 @@
       "path": "../../util/atomic-write"
     },
     {
+      "path": "../../util/error"
+    },
+    {
       "path": "../../util/values"
     },
     {

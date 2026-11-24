@@ -1,6 +1,6 @@
 /** The multiplayer tools, as the Session's agent and connected agents call them, against an in-memory WASD Engine site. */
 import { createHmac } from 'node:crypto'
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -14,7 +14,7 @@ import {
 } from '../src/multiplayer-tools.ts'
 import type { SiteAccess } from '../src/site-client.ts'
 import { wasdMcpProvider } from '../src/tools.ts'
-import { GAME, multiplayerProject, multiplayerSite, ORIGIN, PLANS, removeProjects, TOKEN } from './multiplayer-site.ts'
+import { GAME, multiplayerProject, multiplayerSite, olderAddon, ORIGIN, PLANS, removeProjects, TOKEN } from './multiplayer-site.ts'
 
 const ADDON = fileURLToPath(new URL('../addon/wasd_multiplayer', import.meta.url))
 const exec = { signal: new AbortController().signal } as ToolRunContext
@@ -147,6 +147,25 @@ describe('wasd_multiplayer_setup', () => {
     expect(await readFile(join(dir, 'project.godot'), 'utf8')).toBe(project)
     expect(await readFile(join(dir, 'wasd_multiplayer.cfg'), 'utf8')).toContain('mode="player_hosted"\nmax_players=4\n')
     await expect(call(definitions, 'wasd_multiplayer_setup', { mode: 'player_hosted', max_players: 17 })).rejects.toThrow('max_players must be a whole number from 2 to 16 for player_hosted.')
+  })
+
+  it('names the backup of the add-on files the game had changed, and keeps the configuration\'s other keys', async () => {
+    const site = multiplayerSite()
+    const dir = await multiplayerProject({ config: '[wasd]\nmode="player_hosted"\nserver_fps=30\ncount_traffic=false\n' })
+    const addon = await olderAddon(dir)
+    await writeFile(join(addon, 'wasd_multiplayer.gd'), 'extends Node\n# The game\'s patch.\n')
+    await writeFile(join(addon, 'examples', 'lobby_menu.gd'), 'extends Control\n')
+    const definitions = multiplayerToolDefinitions(toolHost(site, dir).host, appSurface().surface)
+    const { value, text } = await call(definitions, 'wasd_multiplayer_setup', { mode: 'dedicated' })
+    const backup = value.addon_backup as string
+    const copy = `${backup}/addons/wasd_multiplayer/wasd_multiplayer.gd`
+    expect(value).toMatchObject({ addon_kept: ['examples/lobby_menu.gd'], addon_backup_files: [copy] })
+    expect(text).toContain(`The setup replaced add-on files that the game had changed; the game's versions are at ${copy}.`)
+    // The result names the file where it is.
+    expect(await readFile(join(dir, copy), 'utf8')).toBe('extends Node\n# The game\'s patch.\n')
+    expect(await readFile(join(dir, 'wasd_multiplayer.cfg'), 'utf8')).toBe(
+      `[wasd]\nmode="dedicated"\nserver_fps=30\ncount_traffic=false\nmax_players=32\napi_origin="${ORIGIN}"\napp_origin="${ORIGIN}"\ngame_id="${GAME.id}"\nversion=0\n`,
+    )
   })
 })
 
@@ -524,7 +543,7 @@ describe('free servers WASD Engine gave the account', () => {
 describe('wasd_server_create and wasd_server_change descriptions', () => {
   it('say that only the site decides a free server when the user confirms, and what a change does to a paid and a free server\'s bill', () => {
     const definitions = multiplayerToolDefinitions(toolHost(multiplayerSite(), '/game').host, appSurface().surface)
-    expect(tool(definitions, 'wasd_server_create').description).toBe('Create a dedicated server for the released game, of a size the user chose from wasd_server_plans. It never charges by itself: it returns a page on the WASD Engine site where the user confirms and pays, which needs a valid payment method on their account; a size of which wasd_server_plans lists free servers left for the account is free while one is left when the user confirms, and then needs no card. Tell the user the size\'s monthly price, or that it is free while one of those free servers is left, and what it includes before calling it. The server then runs the newest release\'s server build.')
+    expect(tool(definitions, 'wasd_server_create').description).toBe('Create a dedicated server for the released game, of a size the user chose from wasd_server_plans. It never charges by itself: it returns a page on the WASD Engine site where the user confirms and pays, which needs a valid payment method on their account; a size of which wasd_server_plans lists free servers left for the account is free while one is left when the user confirms, and then needs no card. Tell the user the size\'s monthly price, or that it is free while one of those free servers is left, and what it includes before calling it. The server then runs the server build of the game\'s latest release.')
     expect(tool(definitions, 'wasd_server_change').description).toBe('Change a dedicated server\'s size, or delete the server. It never changes the bill by itself: it returns a page on the WASD Engine site where the user confirms. For a paid server, a bigger size is charged from the confirmation, prorated, and a smaller one credited. A free server (wasd_server_status marks it) moved to a size without free servers left becomes a new purchase at that size\'s monthly price, with no credit. A size with free servers left for the account (wasd_server_plans lists them) is free while one is left when the user confirms. Deleting stops the server and deletes its world 7 days later; a paid server\'s monthly price comes off the bill unless the confirmation page says another of the account\'s servers keeps it, and a free one changes no bill. Deleting a server whose purchase still awaits confirmation cancels that purchase, which never ran or charged anything. Tell the user the price difference or what deleting loses before calling it.')
   })
 })

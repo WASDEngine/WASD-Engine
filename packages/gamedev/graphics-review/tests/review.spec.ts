@@ -8,10 +8,13 @@ import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import sharp from 'sharp'
 import { afterEach, describe, expect, it } from 'vitest'
-import { LLM_FAILURE_CODES, LlmError, ReasoningEffortId, type ImageBlock, type TextBlock } from '@deepseek-ai/dsh-llm'
+import { GameToolCatalog } from '@deepseek-ai/dsh-game-mcp/src/catalog.ts'
+import { LLM_FAILURE_CODES, LlmError, ReasoningEffortId, ToolCallId, type ImageBlock, type TextBlock } from '@deepseek-ai/dsh-llm'
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
+import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { Config } from '../src/index.ts'
 import { failureMessage } from '../src/review.ts'
-import { compose, failedReply, review, text, textReply, type ComposeOptions, type Composition } from './composition.ts'
+import { compose, failedReply, fixtureTool, review, text, textReply, type ComposeOptions, type Composition } from './composition.ts'
 import { checkerboardDifference, writeCheckerboard } from './pixels.ts'
 
 let current: Composition | undefined
@@ -71,7 +74,8 @@ describe('graphics_review', () => {
     expect(request?.system).toContain('Review it as a senior game art director and technical artist reviews a teammate\'s work')
     expect(request?.system).toContain('Give no rating of any kind: no score, such as 6/10, no grade, and no verdict, such as pass or fail.')
     expect(request?.system).toContain('  - sky3d (Godot): day and night sky')
-    expect(request?.system).toContain('  - sapling-tree-gen (Blender): parametric trees and bushes')
+    // A Blender add-on runs in Blender, whose tools this Session lacks.
+    expect(request?.system).not.toContain('sapling-tree-gen')
     expect(request?.system).not.toContain('beehave')
     const [message] = request?.messages ?? []
     const [image, words] = (message?.content ?? []) as [ImageBlock, TextBlock]
@@ -142,6 +146,41 @@ describe('graphics_review', () => {
     expect(current.models.requests[0]?.system).not.toContain('game_addons installs')
     const [message] = current.models.requests[0]?.messages ?? []
     expect((message?.content[1] as TextBlock).text).toContain('The look the game is going for: not given; judge it against the style the image itself sets.')
+  })
+
+  it('names to the reviewer only the tools of the plugins that the calling agent has, for the Session and for connected agents', async () => {
+    current = await compose()
+    await png(join(current.work, 'a.png'), 640, 360)
+    await review(current, { image: 'a.png', subject: 'the dock at dusk' })
+    current.ctx.tools.register(fixtureTool('ambientcg_search'))
+    current.ctx.tools.register(fixtureTool('mcp__wasd_blender__execute_python'))
+    await review(current, { image: 'a.png', subject: 'the dock at dusk' })
+    // A step that admits only the review names none of them and no add-on, as after the user switched those plugins off.
+    const tool = current.ctx.tools.get('graphics_review') as ToolDefinition
+    await executeToolFixture(current.ctx, {
+      signal: new AbortController().signal, callId: ToolCallId('review-step'), name: 'graphics_review',
+      arguments: { image: 'a.png', subject: 'the dock at dusk' }, agent: current.agent,
+      toolSet: { dispose: () => {}, view: () => new Map([['graphics_review', tool]]) },
+    })
+    // A connected agent's call, which has no Session, gets the tools that WASD Engine registers.
+    const catalog = new GameToolCatalog(() => current?.providers ?? [], () => {})
+    const [entry] = catalog.tools()
+    const call = {
+      client: { id: 'claude-code', title: 'Claude Code' }, signal: new AbortController().signal,
+      session: () => Promise.reject(new Error('the review needs no Session')), reveal: () => {},
+    }
+    expect(await catalog.run(entry!, { image: join(current.work, 'a.png'), subject: 'the dock at dusk' }, call)).not.toHaveProperty('isError')
+    const [none, both, admitted, connected] = current.models.requests.map(request => String(request.system))
+    expect(none).toContain('the agent also has a catalog of tested add-ons.')
+    expect(none).toContain('  - sky3d (Godot): day and night sky')
+    expect(none).not.toMatch(/ambientcg|headless Blender|- Blender:|sapling-tree-gen/u)
+    for (const system of [both, connected]) {
+      expect(system).toContain('the agent also has a headless Blender and a catalog of tested add-ons.')
+      expect(system).toContain('- ambientcg_* (ambientCG): more than 2,000 free CC0 PBR materials')
+      expect(system).toContain('\n- Blender: model, sculpt')
+      expect(system).toContain('  - sky3d (Godot): day and night sky\n  - sapling-tree-gen (Blender): parametric trees and bushes')
+    }
+    expect(admitted).not.toMatch(/ambientcg|headless Blender|- Blender:|catalog of tested add-ons|game_addons|sky3d|sapling-tree-gen/u)
   })
 
   it('scales a large image down, and enlarges small pixel art by whole pixels until the route takes it without scaling it up', async () => {

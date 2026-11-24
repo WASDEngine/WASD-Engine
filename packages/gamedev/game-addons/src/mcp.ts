@@ -10,6 +10,7 @@
  */
 import { isAbsolute } from 'node:path'
 import type { GameMcpProvider, GameMcpTool } from '@deepseek-ai/dsh-game-mcp'
+import { ToolArgsError } from '@deepseek-ai/dsh-tools'
 import { mcpInstructions } from './prompt.ts'
 import { gameAddonToolDefinition, type GameAddonToolHost, type GameAddonToolWording } from './tools.ts'
 
@@ -56,11 +57,11 @@ export function gameAddonMcpProvider(host: GameAddonToolHost): GameMcpProvider {
     prepare(args) {
       const project = args.project
       if (project !== undefined && (typeof project !== 'string' || !isAbsolute(project))) {
-        return Promise.reject(new Error('project must be an absolute path.'))
+        return Promise.reject(new ToolArgsError(['project must be an absolute path.']))
       }
       const action = args.action
       if ((action === 'install' || action === 'remove' || action === 'list') && project === undefined) {
-        return Promise.reject(new Error(`action ${action} needs project, the absolute folder that holds project.godot.`))
+        return Promise.reject(new ToolArgsError([`action ${action} needs project, the absolute folder that holds project.godot.`]))
       }
       return Promise.resolve({ args })
     },

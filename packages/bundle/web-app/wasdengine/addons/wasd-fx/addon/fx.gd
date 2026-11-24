@@ -26,10 +26,17 @@ var _noise: NoiseTexture2D
 var _card := QuadMesh.new()
 var _swarms := {}
 var _stores := {}
-## What flashes and what is outlined now, by the node's instance id: [the meshes, the material, what was over each
-## mesh before].
+## The effects on things, by the instance id of the node given. What flashes: {"material", "meshes" (their instance
+## ids), "fade" (its tween)}; what is outlined: {"material", "meshes"}; what dissolves or appears: {"turn" (the
+## number of the call, as only a node's latest call finishes), "meshes", "kept" (what each surface wore before)}.
 var _flashing := {}
 var _outlined := {}
+var _dissolving := {}
+## By the instance id of each mesh that an effect on things draws on: {"base": what was over the mesh before, or what
+## another hand has put there since, "shown": what WasdFx put there last, "flash" and "outline": the materials of
+## those effects or null, "hidden": how many dissolves and appears keep everything off it}.
+var _overs := {}
+var _turns := 0
 
 
 func _init() -> void:
@@ -100,8 +107,7 @@ func play(effect: String, at: Vector3, options := {}) -> WasdFxInstance3D:
 		material.set_shader_parameter(&"light_level", lit)
 		material.set_shader_parameter(&"age", 0.0)
 		material.set_shader_parameter(&"fade", 1.0)
-		# The box the layer is drawn within: wide enough for the effect, and for how far the wind carries it.
-		(instance.get_child(index) as MultiMeshInstance3D).custom_aabb = AABB(Vector3.ONE * -16.0 * size, Vector3.ONE * 32.0 * size).grow(wind.length() * float(layer.get("carried", 0.0)) * float(layer.get("life", 1.0)))
+	instance._fit(wind)
 	if instance._light != null:
 		var light: Dictionary = definition["light"]
 		instance._light.light_color = (light["color"] as Color) * Color(tint.r, tint.g, tint.b)
@@ -122,115 +128,213 @@ func play(effect: String, at: Vector3, options := {}) -> WasdFxInstance3D:
 
 
 ## Flashes a thing in one color, as when it is hit: every mesh and CSG shape under `node`, `node` included, for
-## `seconds`. A second flash before the first is over starts it again.
+## `seconds`, except what WASD packs draw by their own means (see _parts()). A second flash before the first is over
+## starts it again. An outline under it shows again once it is over.
 func flash(node: Node, color := Color.WHITE, seconds := 0.12) -> void:
 	var id := node.get_instance_id()
-	if not _flashing.has(id):
+	var now: Dictionary = _flashing.get(id, {})
+	if now.is_empty():
 		var material := ShaderMaterial.new()
 		material.shader = FLASH_SHADER
-		_flashing[id] = _cover(node, material)
-	var now: Array = _flashing[id]
-	var over := now[1] as ShaderMaterial
+		now = {"material": material, "meshes": _parts(node, true)}
+		_flashing[id] = now
+		for mesh: int in now["meshes"]:
+			_put_over(mesh, &"flash", material)
+	else:
+		(now["fade"] as Tween).kill()
+	var over := now["material"] as ShaderMaterial
 	over.set_shader_parameter(&"color", color)
 	over.set_shader_parameter(&"strength", 1.0)
-	if now.size() > 3 and now[3] is Tween:
-		(now[3] as Tween).kill()
 	var fade := create_tween()
 	fade.tween_property(over, ^"shader_parameter/strength", 0.0, maxf(seconds, 0.01)).set_ease(Tween.EASE_IN)
 	fade.tween_callback(func() -> void:
-		_uncover(_flashing.get(id, []))
-		_flashing.erase(id))
-	now.resize(4)
-	now[3] = fade
+		_flashing.erase(id)
+		for mesh: int in now["meshes"]:
+			_take_over(mesh, &"flash", over))
+	now["fade"] = fade
 
 
 ## Draws an outline of `width` pixels round a thing: what the player aims at, has selected, or can pick up. It
-## stays until `clear_outline(node)`. It wants smooth normals; on a plain box the line opens at the corners.
+## stays until `clear_outline(node)`, also through a flash or a dissolve. It wants smooth normals; on a plain box the
+## line opens at the corners.
 func outline(node: Node, color := Color(1.0, 0.85, 0.3), width := 3.0) -> void:
 	var id := node.get_instance_id()
 	if not _outlined.has(id):
+		# Things that were outlined and freed since are let go.
+		for gone: int in _outlined.keys():
+			if not is_instance_id_valid(gone):
+				_clear_outline(gone)
 		var material := ShaderMaterial.new()
 		material.shader = OUTLINE_SHADER
-		_outlined[id] = _cover(node, material)
-	var over := (_outlined[id] as Array)[1] as ShaderMaterial
+		_outlined[id] = {"material": material, "meshes": _parts(node, true)}
+		for mesh: int in _outlined[id]["meshes"]:
+			_put_over(mesh, &"outline", material)
+	var over := (_outlined[id] as Dictionary)["material"] as ShaderMaterial
 	over.set_shader_parameter(&"color", color)
 	over.set_shader_parameter(&"width", width)
 
 
 ## Takes the outline off a thing again.
 func clear_outline(node: Node) -> void:
-	var id := node.get_instance_id()
-	_uncover(_outlined.get(id, []))
-	_outlined.erase(id)
+	_clear_outline(node.get_instance_id())
+
+
+## For a pack that draws over things itself, as WASD Weather draws wet and snowy ground: puts `material` over a mesh
+## in place of `was` (null for nothing), beneath WasdFx's own effects. While a flash, an outline, or a dissolve shows
+## on the mesh, the material waits under it and shows once the effect is over. What another hand has put over the
+## mesh in place of `was` stays.
+func put_under(mesh: GeometryInstance3D, material: Material, was: Material) -> void:
+	var id := mesh.get_instance_id()
+	var state: Dictionary = _overs.get(id, {})
+	if state.is_empty():
+		if mesh.material_overlay == was:
+			mesh.material_overlay = material
+		return
+	if mesh.material_overlay != state["shown"]:
+		state["base"] = mesh.material_overlay
+		state["shown"] = mesh.material_overlay
+	if state["base"] == was:
+		state["base"] = material
+	_show_over(id)
 
 
 ## Dissolves a thing away over `seconds`: it is eaten in patches with a glowing edge, as a defeated enemy or a
 ## spent pickup goes. Await it; the thing is hidden at the end and, with `free` true, freed. For the seconds it
-## takes, each mesh wears a plain material in its own color and picture. Options: `color` (Color): the edge's
-## glow; `patch_size` (float, 1.0): meters across the patches; `free` (bool, false).
+## takes, each mesh wears a plain material in its own color and picture, with nothing drawn over it. A later
+## dissolve or appear of the same thing takes over, and this one ends without hiding it. Options: `color` (Color):
+## the edge's glow; `patch_size` (float, 1.0): meters across the patches; `free` (bool, false).
 func dissolve(node: Node, seconds := 0.8, options := {}) -> void:
-	var worn := _wear_dissolve(node, options)
-	for material: ShaderMaterial in worn:
-		material.set_shader_parameter(&"gone", 0.0)
-		create_tween().tween_property(material, ^"shader_parameter/gone", 1.0, seconds)
+	var id := node.get_instance_id()
+	var turn := _wear_dissolve(node, options, 0.0, seconds)
 	await get_tree().create_timer(seconds).timeout
-	if not is_instance_valid(node):
+	if not _finishes(id, turn):
 		return
 	if node is Node3D:
 		(node as Node3D).visible = false
-	_restore_dissolve(node)
+	_restore_dissolve(id)
 	if options.get("free", false):
 		node.queue_free()
 
 
 ## The other way round: a hidden thing appears out of nothing over `seconds`, with the same glowing edge, and
-## wears its own materials again at the end. Await it.
+## wears its own materials again at the end. Await it. Called while the thing still dissolves, it takes over: a
+## teleport is a dissolve here and an appear there.
 func appear(node: Node, seconds := 0.8, options := {}) -> void:
-	var worn := _wear_dissolve(node, options)
-	for material: ShaderMaterial in worn:
-		material.set_shader_parameter(&"gone", 1.0)
-		create_tween().tween_property(material, ^"shader_parameter/gone", 0.0, seconds)
+	var id := node.get_instance_id()
+	var turn := _wear_dissolve(node, options, 1.0, seconds)
 	if node is Node3D:
 		(node as Node3D).visible = true
 	await get_tree().create_timer(seconds).timeout
-	if is_instance_valid(node):
-		_restore_dissolve(node)
+	if _finishes(id, turn):
+		_restore_dissolve(id)
 
 
-## Puts a material over every mesh and CSG shape under a node and returns [the meshes, the material, what was
-## over each before].
-func _cover(node: Node, material: Material) -> Array:
-	var meshes: Array[GeometryInstance3D] = []
-	var before: Array = []
-	for part: Node in [node] + node.find_children("*", "GeometryInstance3D", true, false):
-		if part is MeshInstance3D or part is CSGShape3D:
-			var mesh := part as GeometryInstance3D
-			meshes.append(mesh)
-			before.append(mesh.material_overlay)
-			mesh.material_overlay = material
-	return [meshes, material, before]
-
-
-## Gives every mesh back what was over it, unless something else has taken the place since.
-func _uncover(covered: Array) -> void:
-	if covered.is_empty():
-		return
-	var meshes: Array = covered[0]
-	for index: int in meshes.size():
-		var mesh: GeometryInstance3D = meshes[index]
-		if is_instance_valid(mesh) and mesh.material_overlay == covered[1]:
-			mesh.material_overlay = (covered[2] as Array)[index]
-
-
-## Gives every surface under a node the dissolving material in that surface's own color and picture, and returns
-## the materials. What the surfaces wore before is kept on the node, for _restore_dissolve().
-func _wear_dissolve(node: Node, options: Dictionary) -> Array[ShaderMaterial]:
-	var worn: Array[ShaderMaterial] = []
-	var kept: Array = []
-	for part: Node in [node] + node.find_children("*", "MeshInstance3D", true, false):
-		var mesh := part as MeshInstance3D
-		if mesh == null or mesh.mesh == null:
+## The instance ids of the meshes under a node, `node` included, that the effects on things draw on: each
+## MeshInstance3D with a mesh, and each CSG shape when `shapes` is true. What a WASD pack draws by its own means, a
+## mesh whose script is a WASD pack's or extends one (blob shadows, halos, light shafts, gobos, fog banks, water,
+## ropes), is left out with all under it; WASD Cloth's sheets, soft bodies drawn with the game's own material, are
+## not. Internal children, such as WASD Weather's rain, are not walked.
+func _parts(node: Node, shapes: bool) -> Array[int]:
+	var found: Array[int] = []
+	var open: Array[Node] = [node]
+	while not open.is_empty():
+		var part: Node = open.pop_back()
+		if part is GeometryInstance3D and not (part is SoftBody3D) and _drawn_by_wasd(part):
 			continue
+		if (part is MeshInstance3D and (part as MeshInstance3D).mesh != null) or (shapes and part is CSGShape3D):
+			found.append(part.get_instance_id())
+		open.append_array(part.get_children())
+	return found
+
+
+## Whether a node's script is a WASD pack's or extends one.
+static func _drawn_by_wasd(node: Node) -> bool:
+	var script := node.get_script() as Script
+	while script != null:
+		if script.resource_path.begins_with("res://addons/wasd_"):
+			return true
+		script = script.get_base_script()
+	return false
+
+
+func _clear_outline(id: int) -> void:
+	var was: Dictionary = _outlined.get(id, {})
+	_outlined.erase(id)
+	for mesh: int in was.get("meshes", []):
+		_take_over(mesh, &"outline", was["material"])
+
+
+## A mesh's entry in _overs, made when it has none; empty for a mesh that is gone.
+func _over(id: int) -> Dictionary:
+	var mesh := instance_from_id(id) as GeometryInstance3D
+	if mesh == null:
+		_overs.erase(id)
+		return {}
+	if not _overs.has(id):
+		_overs[id] = {"base": mesh.material_overlay, "shown": mesh.material_overlay, "flash": null, "outline": null, "hidden": 0}
+	return _overs[id]
+
+
+## Puts the material of a flash or an outline (`kind` &"flash" or &"outline") over a mesh.
+func _put_over(id: int, kind: StringName, material: Material) -> void:
+	var state := _over(id)
+	if not state.is_empty():
+		state[kind] = material
+		_show_over(id)
+
+
+## Takes the material of a flash or an outline off a mesh again, unless another of its kind has taken its place.
+func _take_over(id: int, kind: StringName, material: Material) -> void:
+	var state: Dictionary = _overs.get(id, {})
+	if state.get(kind) == material:
+		state[kind] = null
+	_show_over(id)
+
+
+## Keeps everything off a mesh while it dissolves or appears (`change` 1), or lets it back (-1).
+func _hide_over(id: int, change: int) -> void:
+	var state := _over(id)
+	if not state.is_empty():
+		state["hidden"] = maxi(int(state["hidden"]) + change, 0)
+		_show_over(id)
+
+
+## Puts over a mesh what its effects call for: nothing while it dissolves, else its flash, else its outline, else what
+## was over it before. What another hand has put over the mesh since WasdFx last did counts as what was over it before.
+func _show_over(id: int) -> void:
+	var mesh := instance_from_id(id) as GeometryInstance3D
+	var state: Dictionary = _overs.get(id, {})
+	if mesh == null or state.is_empty():
+		_overs.erase(id)
+		return
+	if mesh.material_overlay != state["shown"]:
+		state["base"] = mesh.material_overlay
+	var wanted: Material = state["base"]
+	if int(state["hidden"]) > 0:
+		wanted = null
+	elif state["flash"] != null:
+		wanted = state["flash"]
+	elif state["outline"] != null:
+		wanted = state["outline"]
+	mesh.material_overlay = wanted
+	state["shown"] = wanted
+	if int(state["hidden"]) == 0 and state["flash"] == null and state["outline"] == null:
+		_overs.erase(id)
+
+
+## Gives every surface under a node the dissolving material in that surface's own color and picture, at `gone` and
+## going to the other end over `seconds`, keeps everything off the meshes meanwhile, and returns the call's turn. What
+## the surfaces wore is kept for _restore_dissolve(); a node that dissolves or appears already gets its own materials
+## back first, so that those, not the last call's, are kept again.
+func _wear_dissolve(node: Node, options: Dictionary, gone: float, seconds: float) -> int:
+	var id := node.get_instance_id()
+	if _dissolving.has(id):
+		_restore_dissolve(id)
+	_turns += 1
+	var meshes := _parts(node, false)
+	var kept: Array = []
+	for part: int in meshes:
+		var mesh := instance_from_id(part) as MeshInstance3D
 		for surface: int in mesh.mesh.get_surface_count():
 			var own := mesh.get_active_material(surface)
 			var material := ShaderMaterial.new()
@@ -256,21 +360,38 @@ func _wear_dissolve(node: Node, options: Dictionary) -> Array[ShaderMaterial]:
 					if value is Texture2D:
 						material.set_shader_parameter(&"picture", value)
 						break
-			kept.append([mesh, surface, mesh.get_surface_override_material(surface), mesh.material_override])
+			material.set_shader_parameter(&"gone", gone)
+			create_tween().tween_property(material, ^"shader_parameter/gone", 1.0 - gone, seconds)
+			kept.append([part, surface, mesh.get_surface_override_material(surface), mesh.material_override])
 			mesh.set_surface_override_material(surface, material)
-			worn.append(material)
 		mesh.material_override = null
-	node.set_meta(&"wasd_fx_dissolve", kept)
-	return worn
+		_hide_over(part, 1)
+	_dissolving[id] = {"turn": _turns, "meshes": meshes, "kept": kept}
+	return _turns
 
 
-func _restore_dissolve(node: Node) -> void:
-	for entry: Array in node.get_meta(&"wasd_fx_dissolve", []):
-		var mesh: MeshInstance3D = entry[0]
-		if is_instance_valid(mesh):
+## Whether a call of dissolve() or appear() is still its node's latest, the one that finishes. The record of a node
+## freed meanwhile is let go.
+func _finishes(id: int, turn: int) -> bool:
+	if (_dissolving.get(id, {}) as Dictionary).get("turn", -1) != turn:
+		return false
+	if not is_instance_id_valid(id):
+		_restore_dissolve(id)
+		return false
+	return true
+
+
+## Gives every surface back what it wore before the node's dissolve or appear, and its meshes what was over them.
+func _restore_dissolve(id: int) -> void:
+	var was: Dictionary = _dissolving.get(id, {})
+	_dissolving.erase(id)
+	for entry: Array in was.get("kept", []):
+		var mesh := instance_from_id(entry[0]) as MeshInstance3D
+		if mesh != null:
 			mesh.set_surface_override_material(entry[1], entry[2])
 			mesh.material_override = entry[3]
-	node.remove_meta(&"wasd_fx_dissolve")
+	for mesh: int in was.get("meshes", []):
+		_hide_over(mesh, -1)
 
 
 ## Draws every effect once, tiny and for a moment, before the camera that draws the scene, so that the one shader
@@ -313,7 +434,10 @@ func _take(effect: String) -> WasdFxInstance3D:
 	var store: Array = _stores.get_or_add(effect, [])
 	while not store.is_empty():
 		var kept: WasdFxInstance3D = store.pop_back()
-		if is_instance_valid(kept):
+		if is_instance_valid(kept) and not kept.is_queued_for_deletion():
+			# What the game connected to `finished` was for the play that is over.
+			for connection: Dictionary in kept.finished.get_connections():
+				kept.finished.disconnect(connection["callable"])
 			return kept
 	var definition: Dictionary = WasdFxEffects.EFFECTS[effect]
 	var instance := WasdFxInstance3D.new()
@@ -344,11 +468,10 @@ func _take(effect: String) -> WasdFxInstance3D:
 		instance._light = OmniLight3D.new()
 		instance._light.shadow_enabled = false
 		instance.add_child(instance._light)
-	instance.finished.connect(_keep.bind(instance))
 	return instance
 
 
-## Takes an effect that is over back into the store.
+## Takes an effect that is over back into the store; the effect calls it once `finished` has been emitted.
 func _keep(instance: WasdFxInstance3D) -> void:
 	var store: Array = _stores.get_or_add(instance.effect, [])
 	if store.size() < STORE_SIZE:

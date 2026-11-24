@@ -74,6 +74,12 @@ describe('archivePictures and selectPictures', () => {
     expect(pictures.at(-1)).toEqual({ name: 'bricks097_1k-jpg_Emission.PNG', map: 'Emission', bytes: 7, crc32: 9 })
   })
 
+  it('takes only letters, digits, hyphens, and underscores between the id and the map', () => {
+    const names = ['Bricks097_1K:JPG_Color.jpg', 'Bricks097_1K JPG_Color.jpg', 'Bricks097_1K.JPG_Color.jpg', 'Bricks097_1K\u0000_Color.jpg', 'Bricks097_ä_Color.jpg']
+    expect(archivePictures(BRICKS, [...names.map(name => file(name)), file('Bricks097_1K-JPG_Color.jpg'), file('Bricks097_Roughness.jpg')]).map(picture => picture.name))
+      .toEqual(['Bricks097_1K-JPG_Color.jpg', 'Bricks097_Roughness.jpg'])
+  })
+
   it('takes every map but the DirectX normal map by default, an HDRI\'s panorama, and the maps a call names', () => {
     const pictures = archivePictures(BRICKS, BRICK_FILES)
     expect(selectPictures(BRICKS, pictures, undefined).map(picture => picture.map)).toEqual(['AmbientOcclusion', 'Color', 'Displacement', 'NormalGL', 'Roughness'])

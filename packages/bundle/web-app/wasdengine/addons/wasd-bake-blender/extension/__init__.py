@@ -70,22 +70,26 @@ BAKE_UV = 'WasdBake'
 def _ensure_uv(obj, unwrap, margin):
     """The UV map to bake into: a new one without overlaps from Smart UV Project, or the object's own active one.
 
-    A new map becomes the active one, which is where Cycles bakes to, while the map that was used for rendering
-    stays the one the materials read their textures through. Returns whether it unwrapped.
+    A new map becomes the active one, which is where Cycles bakes to, while the map that is used for rendering
+    stays the one the materials read their textures through until the bake is done. An earlier bake's map that is
+    that one keeps its layout under the name `WasdBake_before`; one that is not goes. Returns whether it unwrapped.
     """
     layers = obj.data.uv_layers
     if layers and not unwrap:
         return False
-    source = next((layer for layer in layers if layer.active_render), None)
-    old = layers.get(BAKE_UV)
-    if old is not None:
-        layers.remove(old)
-    fresh = layers.new(name=BAKE_UV, do_init=False)
-    layers.active = fresh
-    if source is not None:
-        source.active_render = True
-    else:
-        fresh.active_render = True
+    # Maps are found by name each time: adding or removing one moves the others, and a map held from before then
+    # points at nothing.
+    render = next((layer.name for layer in layers if layer.active_render), None)
+    earlier = layers.get(BAKE_UV)
+    if earlier is not None and render == BAKE_UV:
+        earlier.name = BAKE_UV + '_before'
+        render = earlier.name
+    elif earlier is not None:
+        layers.remove(earlier)
+    if layers.new(name=BAKE_UV, do_init=False) is None:
+        raise BakeError(f'{obj.name} has as many UV maps as a mesh can have: remove one, or bake with unwrap=False.')
+    layers.active = layers[BAKE_UV]
+    layers[render or BAKE_UV].active_render = True
     _select_only([obj], obj)
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
@@ -106,12 +110,62 @@ def _keep_bake_uv(obj):
 
 
 def _image(name, size, data):
-    old = bpy.data.images.get(name)
-    if old is not None:
-        bpy.data.images.remove(old)
+    """A new image to bake into. An image of its name, such as an earlier bake's that the materials still show,
+    keeps that name until the bake is done (_settle)."""
     image = bpy.data.images.new(name, size, size, alpha=False, float_buffer=False)
     image.colorspace_settings.name = 'Non-Color' if data else 'sRGB'
     return image
+
+
+def _settle(datablocks, made, name):
+    """Give an image or a material that a bake made the name of the one it replaces. That one goes once nothing uses
+    it, and is kept as `<name>_before` while something does."""
+    earlier = datablocks.get(name)
+    if earlier is not None and earlier != made:
+        if earlier.users == 0:
+            datablocks.remove(earlier)
+        else:
+            earlier.name = name + '_before'
+    made.name = name
+
+
+BAKED = 'wasd_bake'
+"""Custom property of a material that textures() or from_high() made: each map it holds with the function that baked
+it, as `map:function` separated by commas, such as `color:textures,normal:from_high`."""
+
+MAP_NODE = 'wasd_map_'
+"""Start of the name of each image node of a baked material, which ends in the map that the node shows."""
+
+
+def _baked_sources(obj):
+    """Each map of the baked materials that an object wears from an earlier bake, with the function that baked it."""
+    found = {}
+    for slot in obj.material_slots:
+        for item in str(slot.material.get(BAKED, '') if slot.material is not None else '').split(','):
+            key, _, source = item.partition(':')
+            if key in MAPS:
+                found[key] = source
+    return found
+
+
+def _shown_maps(obj):
+    """The images that the baked materials an object wears show, by map."""
+    return {node.name[len(MAP_NODE):]: node.image for slot in obj.material_slots
+            if slot.material is not None and slot.material.get(BAKED)
+            for node in slot.material.node_tree.nodes if node.type == 'TEX_IMAGE' and node.image is not None and node.name.startswith(MAP_NODE)}
+
+
+def _check_colors(materials, asked=True):
+    """Refuse a color bake of materials without a Principled BSDF, whose Base Color is what the color map holds: a
+    bake of theirs would be black. asked says whether the color map is one the caller named, or one of an earlier bake
+    that is baked again."""
+    plain = [material.name for material in materials if material is not None and _principled(material) is None]
+    if plain:
+        names = f'{", ".join(plain)} {"has" if len(plain) == 1 else "have"} none'
+        build = f'build {"it" if len(plain) == 1 else "them"} on a Principled BSDF'
+        raise BakeError(f'The color map holds each material\'s Principled BSDF Base Color, and {names}: {build}, or leave "color" out of maps.'
+                        if asked else f'The low model\'s earlier bake from the high model has a color map, which this one bakes again from '
+                        f'each material\'s Principled BSDF Base Color, and {names}: {build}.')
 
 
 def _materials(obj):
@@ -157,18 +211,21 @@ def _bake_input(materials, socket, margin, **options):
     """Bake what feeds one input of each material's Principled BSDF, such as its Base Color or its Metallic value.
 
     Cycles has no bake pass for either: a metal's diffuse color is black, and metal itself is no pass. For the time
-    of the bake each material shows that input as light instead.
+    of the bake each material shows that input as light instead, and a material without a Principled BSDF shows
+    black: it has no metal, and _check_colors() refuses a color bake of it beforehand.
     """
     restore = []
     for material in materials:
         tree = material.node_tree
         shader = _principled(material)
         output = next((node for node in tree.nodes if node.type == 'OUTPUT_MATERIAL' and node.is_active_output), None)
-        if shader is None or output is None:
+        if output is None:
             continue
         emit = tree.nodes.new('ShaderNodeEmission')
-        source = shader.inputs[socket]
-        if source.is_linked:
+        source = shader.inputs[socket] if shader is not None else None
+        if source is None:
+            emit.inputs['Color'].default_value = (0.0, 0.0, 0.0, 1.0)
+        elif source.is_linked:
             tree.links.new(source.links[0].from_socket, emit.inputs['Color'])
         elif source.type == 'RGBA':
             emit.inputs['Color'].default_value = source.default_value
@@ -202,12 +259,12 @@ def _shade(color, occlusion, amount):
     color.update()
 
 
-def _baked_material(name, images):
-    """One material of baked images: color, roughness, metal, relief, and glow."""
-    old = bpy.data.materials.get(name)
-    if old is not None:
-        bpy.data.materials.remove(old)
+def _baked_material(name, images, sources):
+    """One material of baked images: color, roughness, metal, relief, and glow, each image's node named for its map,
+    and the function that baked each map, by map, as BAKED. A material of its name, such as the one an earlier bake
+    gave the object, keeps that name until this one is on the object (_wear)."""
     material = bpy.data.materials.new(name)
+    material[BAKED] = ','.join(f'{key}:{sources[key]}' for key in MAPS if key in images)
     tree = material.node_tree
     shader = _principled(material)
     if shader is None:
@@ -218,6 +275,7 @@ def _baked_material(name, images):
 
     def picture(key, y):
         node = tree.nodes.new('ShaderNodeTexImage')
+        node.name = MAP_NODE + key
         node.image = images[key]
         node.location = (-700, y)
         return node
@@ -239,6 +297,37 @@ def _baked_material(name, images):
         tree.links.new(picture('emission', -900).outputs['Color'], shader.inputs['Emission Color'])
         shader.inputs['Emission Strength'].default_value = 1.0
     return material
+
+
+def _wear(obj, baked):
+    """Give an object its bake's material in place of its own, and only the UV map that the bake laid out."""
+    obj.data.materials.clear()
+    obj.data.materials.append(baked)
+    for polygon in obj.data.polygons:
+        polygon.material_index = 0
+    _keep_bake_uv(obj)
+    _settle(bpy.data.materials, baked, obj.name + '_baked')
+
+
+def _bake_maps(obj, materials, maps, size, bake):
+    """Bake each of the maps into a new image, as `bake(name)` bakes it, with an image node to bake into in every
+    material for the time of each. Returns the images by map; none of them is left behind when a bake fails."""
+    images = {}
+    try:
+        for name in MAPS:
+            if name not in maps:
+                continue
+            images[name] = _image(f'{obj.name}_{name}', size, name in _DATA_MAPS)
+            for material in materials:
+                _target(material, images[name])
+            bake(name)
+            _drop_targets(materials)
+    except BaseException:
+        _drop_targets(materials)
+        for image in images.values():
+            bpy.data.images.remove(image)
+        raise
+    return images
 
 
 def _save(images, folder, stem):
@@ -276,51 +365,52 @@ def textures(obj, size=1024, maps=('color', 'roughness', 'normal', 'ao'), *, fol
     the game in every renderer. The object gets a new UV map without overlaps to bake into, while its materials still read
     their textures through the old one; `unwrap=False` bakes into its own UV map, which must not overlap. `folder`
     saves the images as PNG files there; without it they are packed into the .blend, and
-    export_gltf embeds them either way. Returns the images, their files, each one's darkest and brightest value, and
-    the seconds it took.
+    export_gltf embeds them either way. `replace_materials=False` only makes the images. An object that wears the
+    material of an earlier bake is refused: its own materials are gone, and a second bake would bake that material's
+    images over again, their creases darkened twice. Returns the images, their files, each one's darkest and
+    brightest value, and the seconds it took.
     """
     obj = _object(obj)
     unknown = [name for name in maps if name not in MAPS]
     if unknown:
         raise BakeError(f'Unknown maps {unknown}; the maps are {list(MAPS)}.')
+    if _baked_sources(obj):
+        worn = ', '.join(slot.material.name for slot in obj.material_slots if slot.material is not None and slot.material.get(BAKED))
+        raise BakeError(f'{obj.name} wears {worn}, the material of an earlier bake, which replaced its own: a second bake would '
+                        'bake its images over again, their creases darkened twice. To bake it again, undo to a checkpoint '
+                        'taken before the bake, or make its materials anew, and bake once with every map it needs.')
+    if 'color' in maps:
+        _check_colors([slot.material for slot in obj.material_slots])
     started = time.time()
     unwrapped = _ensure_uv(obj, unwrap, 0.02)
     materials = _materials(obj)
-    images = {}
     with _Cycles(samples) as scene:
         _select_only([obj], obj)
         scene.render.bake.use_selected_to_active = False
         scene.render.bake.margin = margin
-        for name in MAPS:
-            if name not in maps:
-                continue
-            image = _image(f'{obj.name}_{name}', size, name in _DATA_MAPS)
-            for material in materials:
-                _target(material, image)
-            if name == 'metallic':
-                _bake_input(materials, 'Metallic', margin)
-            elif name == 'color':
-                _bake_input(materials, 'Base Color', margin)
+
+        def bake(name):
+            if name in ('color', 'metallic'):
+                _bake_input(materials, 'Base Color' if name == 'color' else 'Metallic', margin)
             elif name == 'ao':
                 scene.cycles.samples = ao_samples
                 bpy.ops.object.bake(type='AO', margin=margin)
                 scene.cycles.samples = samples
             else:
                 bpy.ops.object.bake(type=_BAKE_TYPES[name], margin=margin)
-            _drop_targets(materials)
-            images[name] = image
+
+        images = _bake_maps(obj, materials, maps, size, bake)
     if 'color' in images and 'ao' in images and ao_into_color > 0.0:
         _shade(images['color'], images['ao'], ao_into_color)
     paths = _save(images, folder, obj.name)
+    if replace_materials:
+        baked = _baked_material(obj.name + '_baked', images, {key: 'textures' for key in images})
+        _wear(obj, baked)
+    for key, image in images.items():
+        _settle(bpy.data.images, image, f'{obj.name}_{key}')
     result = {'object': obj.name, 'size': size, 'unwrapped': unwrapped, 'images': {key: image.name for key, image in images.items()},
               'files': paths, 'range': {key: _spread(image) for key, image in images.items()}}
     if replace_materials:
-        baked = _baked_material(obj.name + '_baked', images)
-        obj.data.materials.clear()
-        obj.data.materials.append(baked)
-        for polygon in obj.data.polygons:
-            polygon.material_index = 0
-        _keep_bake_uv(obj)
         result['material'] = baked.name
         result['materials_before'] = len(materials)
     result['seconds'] = round(time.time() - started, 1)
@@ -335,57 +425,60 @@ def from_high(low, high, size=2048, maps=('normal', 'ao', 'color'), *, folder=No
     high: one object or a list of objects with the detail. maps: 'normal' (the detail's relief), 'ao' (its
     creases), 'color', 'roughness', 'metallic', 'emission'. `extrusion` is how far outside the low model, in meters, rays start
     to look for the detail: raise it when parts of the detail are missed, lower it when neighboring parts bleed in.
-    The low model gets one material of the baked images. Returns as textures() does.
+    The low model gets one material of the baked images. A low model baked before keeps every map of that bake that
+    `maps` leaves out: the maps of an earlier from_high() are baked again from the high model, and those that
+    textures() baked from the low model's own materials stay as they are, on the UV map they were baked into, which
+    this bake then bakes into too. Returns as textures() does, with the maps it kept as `kept`.
     """
     low = _object(low)
     highs = [_object(item) for item in (high if isinstance(high, (list, tuple)) else [high])]
     unknown = [name for name in maps if name not in MAPS]
     if unknown:
         raise BakeError(f'Unknown maps {unknown}; the maps are {list(MAPS)}.')
+    earlier = _baked_sources(low)
+    kept = {key: image for key, image in _shown_maps(low).items() if key not in maps and earlier.get(key) == 'textures'}
+    asked = [name for name in MAPS if name in maps]
+    maps = [name for name in MAPS if name in asked or earlier.get(name) == 'from_high']
+    if 'color' in maps:
+        _check_colors([slot.material for item in highs for slot in item.material_slots], asked='color' in asked)
     started = time.time()
-    unwrapped = _ensure_uv(low, unwrap, 0.02)
+    unwrapped = _ensure_uv(low, unwrap and not kept, 0.02)
     materials = _materials(low)
-    images = {}
     with _Cycles(samples) as scene:
         _select_only(highs + [low], low)
-        bake = scene.render.bake
-        saved = (bake.use_selected_to_active, bake.cage_extrusion, bake.max_ray_distance)
-        bake.use_selected_to_active = True
-        bake.cage_extrusion = extrusion
-        bake.max_ray_distance = extrusion * 2.0
+        settings = scene.render.bake
+        saved = (settings.use_selected_to_active, settings.cage_extrusion, settings.max_ray_distance)
+        settings.use_selected_to_active = True
+        settings.cage_extrusion = extrusion
+        settings.max_ray_distance = extrusion * 2.0
+
+        def bake(name):
+            if name in ('color', 'metallic'):
+                sources = [material for item in highs for material in _materials(item)]
+                _bake_input(sources, 'Base Color' if name == 'color' else 'Metallic', margin, use_selected_to_active=True,
+                            cage_extrusion=extrusion, max_ray_distance=extrusion * 2.0)
+            else:
+                if name == 'ao':
+                    scene.cycles.samples = ao_samples
+                bpy.ops.object.bake(type=_BAKE_TYPES[name], margin=margin, use_selected_to_active=True,
+                                    cage_extrusion=extrusion, max_ray_distance=extrusion * 2.0)
+                scene.cycles.samples = samples
+
         try:
-            for name in MAPS:
-                if name not in maps:
-                    continue
-                image = _image(f'{low.name}_{name}', size, name in _DATA_MAPS)
-                for material in materials:
-                    _target(material, image)
-                if name in ('color', 'metallic'):
-                    sources = [material for item in highs for material in _materials(item)]
-                    _bake_input(sources, 'Base Color' if name == 'color' else 'Metallic', margin, use_selected_to_active=True,
-                                cage_extrusion=extrusion, max_ray_distance=extrusion * 2.0)
-                else:
-                    if name == 'ao':
-                        scene.cycles.samples = ao_samples
-                    bpy.ops.object.bake(type=_BAKE_TYPES[name], margin=margin, use_selected_to_active=True,
-                                        cage_extrusion=extrusion, max_ray_distance=extrusion * 2.0)
-                    scene.cycles.samples = samples
-                _drop_targets(materials)
-                images[name] = image
+            images = _bake_maps(low, materials, maps, size, bake)
         finally:
-            bake.use_selected_to_active, bake.cage_extrusion, bake.max_ray_distance = saved
+            settings.use_selected_to_active, settings.cage_extrusion, settings.max_ray_distance = saved
     if 'color' in images and 'ao' in images and ao_into_color > 0.0:
         _shade(images['color'], images['ao'], ao_into_color)
     paths = _save(images, folder, low.name)
-    baked = _baked_material(low.name + '_baked', images)
-    low.data.materials.clear()
-    low.data.materials.append(baked)
-    for polygon in low.data.polygons:
-        polygon.material_index = 0
-    _keep_bake_uv(low)
+    shown = {key: images[key] if key in images else kept[key] for key in MAPS if key in images or key in kept}
+    baked = _baked_material(low.name + '_baked', shown, {key: 'from_high' if key in images else 'textures' for key in shown})
+    _wear(low, baked)
+    for key, image in images.items():
+        _settle(bpy.data.images, image, f'{low.name}_{key}')
     return {'object': low.name, 'from': [item.name for item in highs], 'size': size, 'unwrapped': unwrapped,
-            'images': {key: image.name for key, image in images.items()}, 'files': paths,
-            'range': {key: _spread(image) for key, image in images.items()}, 'material': baked.name,
+            'images': {key: image.name for key, image in shown.items()}, 'kept': [key for key in MAPS if key in kept], 'files': paths,
+            'range': {key: _spread(image) for key, image in shown.items()}, 'material': baked.name,
             'seconds': round(time.time() - started, 1)}
 
 
@@ -394,8 +487,9 @@ def vertex_ao(obj, *, name='Occlusion', samples=32, into_materials=True):
 
     It costs a game no texture and no UV map, and suits low-poly models with enough vertices to carry the shading:
     a crease darkens only as finely as the mesh is divided. `into_materials` multiplies the attribute into the base
-    color of each of the object's materials, which is what makes glTF export it. Returns the attribute's name and
-    its darkest and brightest value.
+    color of each of the object's materials, which is what makes glTF export it. A material that another mesh shows
+    too, which has no such attribute and would turn black, is copied first, and the objects baked after it that show
+    that material share the copy. Returns the attribute's name and its darkest and brightest value.
     """
     obj = _object(obj)
     started = time.time()
@@ -416,9 +510,19 @@ def vertex_ao(obj, *, name='Occlusion', samples=32, into_materials=True):
             scene.render.bake.target = 'IMAGE_TEXTURES'
     values = [max(color.color[0], color.color[1], color.color[2]) for color in mesh.color_attributes[name].data]
     if into_materials:
-        for material in _materials(obj):
+        _materials(obj)
+        own = {}
+        for slot in obj.material_slots:
+            if slot.material not in own:
+                own[slot.material] = _shaded_material(slot.material, name)
+            slot.material = own[slot.material]
+        for material in dict.fromkeys(own.values()):
             shader = _principled(material)
-            if shader is None or any(node.name == 'wasd_vertex_ao' for node in material.node_tree.nodes):
+            if shader is None:
+                continue
+            shown = next((node for node in material.node_tree.nodes if node.name == 'wasd_vertex_ao'), None)
+            if shown is not None:
+                shown.layer_name = name
                 continue
             tree = material.node_tree
             source = tree.nodes.new('ShaderNodeVertexColor')
@@ -437,6 +541,33 @@ def vertex_ao(obj, *, name='Occlusion', samples=32, into_materials=True):
             tree.links.new(mix.outputs['Result'], base)
     return {'object': obj.name, 'attribute': name, 'range': (round(min(values), 3), round(max(values), 3)),
             'corners': len(values), 'seconds': round(time.time() - started, 1)}
+
+
+SHADED = 'wasd_vertex_ao_copy'
+"""Custom property of a material that vertex_ao() copied: the name of the material it copied and the attribute that
+it multiplies in, as `material:attribute`."""
+
+
+def _shaded_material(material, name):
+    """The material into which an object that has just got the color attribute `name` multiplies it: a copy of it
+    that vertex_ao() made for that attribute and whose meshes all have it, so that objects baked one after another
+    share one copy; else the material itself when every mesh that shows it has such an attribute; else a new copy."""
+
+    def lacking(users):
+        meshes = [user.data if isinstance(user, bpy.types.Object) else user for user in users]
+        return [user for user in meshes if not isinstance(user, bpy.types.Mesh) or user.color_attributes.get(name) is None]
+
+    mark = f'{material.name}:{name}'
+    copies = [other for other in bpy.data.materials if other.get(SHADED) == mark]
+    users = bpy.data.user_map(subset={material, *copies})
+    copy = next((other for other in copies if not lacking(users[other])), None)
+    if copy is not None:
+        return copy
+    if not lacking(users[material]):
+        return material
+    copy = material.copy()
+    copy[SHADED] = mark
+    return copy
 
 
 def register():

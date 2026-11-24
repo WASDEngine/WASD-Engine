@@ -1,7 +1,8 @@
 /**
  * A Host composition with the real Agent, model, tool, prompt, and executor services, a scripted `deepseek-account`
  * route that records each request and answers with a scripted reply, a fake account sign-in, a fake attachment store, a
- * fake add-on catalog, a fake game MCP server, and the graphics review plugin loaded with its validated configuration.
+ * fake add-on catalog with its `game_addons` tool, a fake game MCP server, and the graphics review plugin loaded with
+ * its validated configuration.
  */
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -20,7 +21,7 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
-import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { defineTool, type ToolDefinition, type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import * as GraphicsReview from '../src/index.ts'
 
 /** The efforts of the account route's models, least first, with its default of `high`. */
@@ -68,6 +69,18 @@ export interface Composition {
   /** Dispose the graphics review plugin's fiber. */
   unload(): Promise<void>
   cleanup(): Promise<void>
+}
+
+/**
+ * A tool that stands in for another plugin's, by its name.
+ * @param name - the tool's name.
+ * @returns the definition, not registered.
+ */
+export function fixtureTool(name: string): ToolDefinition {
+  return defineTool({
+    name, description: 'fixture', parameters: {},
+    output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] }, execute: () => Promise.resolve('done'),
+  })
 }
 
 /** Which optional services the composition runs; each runs unless set to false. */
@@ -205,6 +218,8 @@ export async function compose(config: Partial<GraphicsReview.Config> = {}, optio
         { id: 'beehave', host: 'godot', category: 'gameplay', cue: 'behavior trees for NPC and enemy AI' },
       ],
     } as never)
+    // The add-on plugin's tool, which installs the add-ons.
+    ctx.tools.register(fixtureTool('game_addons'))
   }
   const providers: GameMcpProvider[] = []
   ctx.provide('gameMcp', {

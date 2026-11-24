@@ -6,10 +6,10 @@
  * model-facing texts call it a specialized graphics expert reviewer model and mention no cost. The Session's agent
  * gets the tool and a `graphics-review` system prompt section that asks for two to four reviews of each piece of
  * graphics it makes itself and none of the assets it downloads; agents connected through WASD Engine's MCP server get
- * the same tool under the provider `graphics`. With the `gameAddons`
- * service, the reviewer may name every catalog add-on that the user has not turned off; with the `deepseekAccount`
- * service, a route that lists no model
- * while no one is signed in asks for a sign-in.
+ * the same tool under the provider `graphics`. The reviewer names only the WASD Engine tools that the calling agent
+ * has. With the `gameAddons` service, the reviewer may name every catalog add-on that the user has not turned off, while
+ * the agent has `game_addons`, and Blender's add-ons while it also has the Blender tools; with the `deepseekAccount`
+ * service, a route that lists no model while no one is signed in asks for a sign-in.
  * @module @deepseek-ai/dsh-graphics-review
  */
 import { isAbsolute, resolve } from 'node:path'
@@ -20,7 +20,7 @@ import type {} from '@deepseek-ai/dsh-game-addons'
 import type {} from '@deepseek-ai/dsh-game-mcp'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import type {} from '@deepseek-ai/dsh-tools'
+import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { graphicsReviewMcpProvider } from './mcp.ts'
 import { PROMPT_SECTION, sessionPrompt, TOOL_NAME, type ReviewAddon } from './prompt.ts'
@@ -87,6 +87,18 @@ function catalogAddons(ctx: Context): readonly ReviewAddon[] {
 }
 
 /**
+ * The names of the tools the calling agent has, which the reviewer may name: as the call's agent and step see them, or,
+ * for a connected agent's call, which has neither, as WASD Engine registers them, since the tools that connected agents
+ * get are those of the same plugins.
+ * @param ctx - context with the tool registry.
+ * @param exec - the call's execution.
+ * @returns the tools' names.
+ */
+function agentTools(ctx: Context, exec: ToolRunContext): string[] {
+  return ctx.tools.definitions(exec.agent, exec.toolSet).map(definition => definition.name)
+}
+
+/**
  * Register the tool and its system prompt section for this plugin's lifetime, and offer the tool to WASD Engine's MCP
  * server while it runs.
  * @param ctx - plugin context with the tool registry and the working directory service.
@@ -104,7 +116,9 @@ export function apply(ctx: Context, config: Config): void {
       maxBytes: config.maxImageBytes, maxEdge: config.maxImageEdge, maxPixels: config.maxImagePixels, minPixels: config.minImagePixels,
     },
     timeoutMs: config.timeoutMs,
-    review: (request, signal) => reviewImage(ctx, settings, { ...request, addons: catalogAddons(ctx) }, signal),
+    review: (request, exec) => reviewImage(ctx, settings, {
+      ...request, addons: catalogAddons(ctx), tools: agentTools(ctx, exec),
+    }, exec.signal),
   }
   ctx.tools.register(graphicsReviewToolDefinition({
     ...base,

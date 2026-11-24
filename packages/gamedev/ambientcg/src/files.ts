@@ -12,8 +12,11 @@ const DEFAULT_RESOLUTION = '1k'
 /** The picture formats of a surface, the one a download takes by default first. */
 const SURFACE_FORMATS = ['jpg', 'png'] as const
 
-/** Extensions of the pictures a download may write. */
-const PICTURE_NAME = /^(?:.*_)?([a-z0-9]+)\.(?:jpe?g|png|exr|hdr|tiff?)$/iu
+/**
+ * What follows `<id>_` in the name of a picture a download may write: letters, digits, `-`, and `_`, such as the
+ * archive's `1K-JPG`, then `_<Map>` and a picture extension.
+ */
+const PICTURE_NAME = /^(?:[a-z0-9_-]*_)?([a-z0-9]+)\.(?:jpe?g|png|exr|hdr|tiff?)$/iu
 
 /** Other names of a map, as models write them, with the key of the map they mean. */
 const MAP_ALIASES: Readonly<Record<string, string>> = {
@@ -114,7 +117,8 @@ export function checkMaps(asset: AmbientCgAsset, maps: readonly string[] | undef
 
 /**
  * The map pictures among the files of an asset's archive: the files at the archive's root whose names start with the
- * asset's id and end in `_<Map>` and a picture extension. The preview `<id>.png` and the material files are not maps.
+ * asset's id and end in `_<Map>` and a picture extension, with only letters, digits, `-`, and `_` between. The preview
+ * `<id>.png` and the material files are not maps.
  * @param asset - the asset.
  * @param files - every file of the archive with its size and CRC-32.
  * @returns the pictures, in the archive's order.

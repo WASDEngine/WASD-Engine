@@ -39,10 +39,17 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	# A light or halo that the game has freed is let go.
+	if not is_instance_valid(light):
+		return
 	_time += delta * speed
 	var level := _level(_time + _phase)
 	light.light_energy = _base_energy * level
-	for index: int in _halos.size():
+	for index: int in range(_halos.size() - 1, -1, -1):
+		if not is_instance_valid(_halos[index]):
+			_halos.remove_at(index)
+			_halo_energies.remove_at(index)
+			continue
 		_halos[index].energy = _halo_energies[index] * level
 
 

@@ -265,7 +265,8 @@ export class MultiplayerApi {
   /**
    * Deploy a release's server build to a server, which restarts it with an in-game warning.
    * @param id - the server.
-   * @param version - the release; undefined deploys the newest uploaded build.
+   * @param version - the release; undefined deploys the server build of the game's latest release, which the site refuses
+   *   (404) when that release has none.
    * @returns the server afterwards.
    */
   async deploy(id: string, version: number | undefined): Promise<ServerRecord> {

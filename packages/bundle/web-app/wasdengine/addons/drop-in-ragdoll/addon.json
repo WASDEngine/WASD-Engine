@@ -2,7 +2,7 @@
   "id": "drop-in-ragdoll",
   "title": "Drop-In Ragdoll",
   "host": "godot",
-  "version": "1.0.0",
+  "version": "1.0.2+c7b56c7",
   "category": "physics",
   "cue": "ragdoll for any humanoid: go limp on death, get up",
   "summary": "A ragdoll for any humanoid Skeleton3D from one node: bodies sized to the mesh at any scale, joint limits like a body's, hits, settling, and a blend back into animation.",
@@ -25,23 +25,26 @@
   "copyright": "Copyright (c) 2026 Sir Debugalot (ExcaliBug)",
   "homepage": "https://github.com/debugalot/drop-in-ragdoll",
   "archive": {
-    "url": "https://github.com/debugalot/drop-in-ragdoll/archive/refs/tags/v1.0.0.zip",
-    "sha256": "7eac3b1e09f023b1da4764d43da46cd4a843f9237c07299628177f3091928a97",
-    "bytes": 1234322,
-    "root": "drop-in-ragdoll-1.0.0/addons/dropin_ragdoll",
-    "license": "drop-in-ragdoll-1.0.0/LICENSE"
+    "url": "https://github.com/debugalot/drop-in-ragdoll/archive/c7b56c7ae338d052923cd56ac7b590c1a4f2b8ff.zip",
+    "sha256": "80ed7739423f70854616965e32e3abed6bf9a8db9bfca718a223a8b166adc9c5",
+    "bytes": 25552,
+    "root": "drop-in-ragdoll-c7b56c7ae338d052923cd56ac7b590c1a4f2b8ff/addons/dropin_ragdoll",
+    "license": "drop-in-ragdoll-c7b56c7ae338d052923cd56ac7b590c1a4f2b8ff/addons/dropin_ragdoll/LICENSE.txt",
+    "exclude": [
+      "README.md"
+    ]
   },
   "godot": {
     "addonDir": "dropin_ragdoll"
   },
   "icon": {
     "file": "icon.svg",
-    "source": "https://raw.githubusercontent.com/debugalot/drop-in-ragdoll/v1.0.0/addons/dropin_ragdoll/icon.svg",
+    "source": "https://raw.githubusercontent.com/debugalot/drop-in-ragdoll/c7b56c7ae338d052923cd56ac7b590c1a4f2b8ff/addons/dropin_ragdoll/icon.svg",
     "license": "MIT",
     "copyright": "Copyright (c) 2026 Sir Debugalot (ExcaliBug)"
   },
   "verified": {
     "godot": "4.7.2",
-    "date": "2026-11-21"
+    "date": "2026-11-23"
   }
 }

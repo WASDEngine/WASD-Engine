@@ -51,8 +51,8 @@ import { LinkRequests } from './links.ts'
 import { MultiplayerApi } from './multiplayer-api.ts'
 import { readMultiplayerConfig } from './multiplayer-project.ts'
 import {
-  MCP_SURFACE, MULTIPLAYER_MCP_INSTRUCTIONS, MULTIPLAYER_PROMPT, multiplayerMcpTools, multiplayerToolDefinitions, type ApprovalAnswer,
-  type MultiplayerSurface, type MultiplayerToolHost,
+  MCP_SURFACE, MULTIPLAYER_MCP_INSTRUCTIONS, MULTIPLAYER_PROMPT, multiplayerMcpTools, multiplayerToolDefinitions, SESSION_PROJECT,
+  type ApprovalAnswer, type MultiplayerSurface, type MultiplayerToolHost,
 } from './multiplayer-tools.ts'
 import { GameLibrary } from './library.ts'
 import { startDetached, systemUnpack } from './library-process.ts'
@@ -203,7 +203,7 @@ const MULTIPLAYER_SECTION_ANCHOR = 'TOOL_COMPUTER_USE'
 function sessionSurface(ctx: Context, links: LinkRequests): MultiplayerSurface {
   return {
     channel: 'app',
-    projectDescription: 'Folder containing project.godot, relative to the working directory. Default: the nearest one.',
+    projectDescription: SESSION_PROJECT,
     async approve(exec, toolName, prompt): Promise<ApprovalAnswer> {
       const approval = ctx.get('approval')
       if (approval === undefined || exec.agent === undefined) return 'unavailable'

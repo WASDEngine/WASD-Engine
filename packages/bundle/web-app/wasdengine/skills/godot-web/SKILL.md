@@ -46,6 +46,7 @@ The same light, fog, and color values can look different in the two renderers: t
 - Keep draw calls under about 1,500 per frame: merge static meshes, draw repeated objects with `MultiMeshInstance3D`, and give small distant objects visibility ranges.
 - Players download the whole pack before the game starts: keep it under about 100 MB, with textures at 2048 px or less and music as Ogg Vorbis.
 - Capture the mouse (`Input.MOUSE_MODE_CAPTURED`) only when the player clicks or presses a key, never in `_ready`: a browser refuses to lock the pointer without such a gesture and prints an error, which stops a release.
+- Bind no game action to a Ctrl or Cmd chord: browsers keep Ctrl+W, Ctrl+T, Ctrl+N, and Ctrl+Shift+W for themselves, and Ctrl+W closes the game's tab.
 - Keep `physics/common/physics_ticks_per_second` at 60 unless the game needs more, and `physics/common/max_physics_steps_per_frame` low, so a slow frame does not run many physics steps.
 
 ## Check the Web build

@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 import { extname } from 'node:path'
 
 /** Extensions of the add-on's text files, whose digests read line endings as LF. */
-const TEXT_EXTENSIONS: ReadonlySet<string> = new Set(['.gd', '.cfg', '.tscn', '.tres', '.gdshader', '.json', '.txt'])
+const TEXT_EXTENSIONS: ReadonlySet<string> = new Set(['.gd', '.cfg', '.tscn', '.tres', '.gdshader', '.json', '.txt', '.md'])
 
 /**
  * The digest that {@link SHIPPED_ADDON_FILES} records for a file of the add-on: the SHA-256 of its bytes, with CRLF line
@@ -25,10 +25,11 @@ export function addonFileDigest(path: string, bytes: Uint8Array): string {
 /**
  * Every set of files that WASD Engine shipped as the WASD Multiplayer add-on, by the version its `plugin.cfg` names:
  * each file's path in the add-on folder with its {@link addonFileDigest}. Markdown files are left out, since they
- * document the add-on and may change within a version. 1.2.0 shipped two sets: WASD Engine 0.2.4 changed its files
- * without a new version. A release of a WASD Engine records the add-on it ships under that add-on's version for good,
- * and a later change of the add-on's files takes a new version; `tests/multiplayer-addon-files.spec.ts` checks that the
- * add-on in `addon/wasd_multiplayer/` is recorded under its version.
+ * document the add-on and may change within a version; {@link SHIPPED_ADDON_DOCS} records them. 1.2.0 shipped two
+ * sets: WASD Engine 0.2.4 changed its files without a new version. A release of a WASD Engine records the add-on it
+ * ships under that add-on's version for good, and a later change of the add-on's files takes a new version;
+ * `tests/multiplayer-addon-files.spec.ts` checks that the add-on in `addon/wasd_multiplayer/` is recorded under its
+ * version.
  */
 export const SHIPPED_ADDON_FILES: Readonly<Record<string, readonly Readonly<Record<string, string>>[]>> = {
   '1.0.0': [
@@ -111,21 +112,50 @@ export const SHIPPED_ADDON_FILES: Readonly<Record<string, readonly Readonly<Reco
   ],
 }
 
-/** The digests each path of the add-on folder had in any shipped add-on. */
+/**
+ * Every Markdown file that WASD Engine shipped in the add-on folder, whatever the add-on's version: each one's path with
+ * the {@link addonFileDigest} of each text it had. A change of these files needs no new version, only its digest here;
+ * `tests/multiplayer-addon-files.spec.ts` checks that the Markdown files in `addon/wasd_multiplayer/` are recorded.
+ */
+export const SHIPPED_ADDON_DOCS: Readonly<Record<string, readonly string[]>> = {
+  'README.md': [
+    'c1f7e1e1413975e26a8b2be1884107fedbae1d22e14cb5d6cb2a066ac0f7d667',
+    'f7b17e8c01550648c95d3408a8f65bfc39cfa95b0d5f1109e9af25c5e9f431f6',
+    '03a57fc43fcb0907261c4e814eb057c9272d265a67dd3fa135bb33d086e96233',
+    'aadfd806ea28a5987bf7409b92cfa8f1868f1214ae510904aca2fd50a4ec6c0a',
+    'c1f37784e2ce49e4ba719e5d33369cb069a068b65f27b77eda91f1534b0cac4b',
+    '4f3d818e4f2502bd949fc0772be997624b3d8fc823d762890fa988cb77dffb1d',
+  ],
+  'README.zh.md': [
+    '69a4b42c89bcd3fb3b7e106a8b36f0959e625275be29affbb81488604c8a1f2b',
+    'd5c395dab734c29eb081907fba71891ad11ef9937c5986147c3992989602371a',
+    'ae9628306e216fd724f70d3356a76802fe88264a1f205e8edcbc55ee88e7af8e',
+    'a852c5175c14bb34b09a238a134489223ed1e40f423b0914d04e89eaa70bc5b1',
+    'd11ae7b9b01f957b99d8d6c2bac8dc08d52c43fcd60cb10ed83137d5b2393ee4',
+    '36cb3bcf412cf309e4bf73f75e733647b9ceaa48051043fc5e49faf2b39c7637',
+  ],
+}
+
+/** The digests each path of the add-on folder had in any shipped add-on, its Markdown files included. */
 const SHIPPED_DIGESTS: ReadonlyMap<string, ReadonlySet<string>> = (() => {
   const digests = new Map<string, Set<string>>()
+  const add = (path: string, digest: string): void => {
+    const known = digests.get(path) ?? new Set<string>()
+    known.add(digest)
+    digests.set(path, known)
+  }
   for (const files of Object.values(SHIPPED_ADDON_FILES).flat()) {
-    for (const [path, digest] of Object.entries(files)) {
-      const known = digests.get(path) ?? new Set<string>()
-      known.add(digest)
-      digests.set(path, known)
-    }
+    for (const [path, digest] of Object.entries(files)) add(path, digest)
+  }
+  for (const [path, texts] of Object.entries(SHIPPED_ADDON_DOCS)) {
+    for (const digest of texts) add(path, digest)
   }
   return digests
 })()
 
 /**
- * Whether a file of a project's add-on folder is one that WASD Engine shipped at that path, in any version.
+ * Whether a file of a project's add-on folder is one that WASD Engine shipped at that path, in any version, as
+ * {@link SHIPPED_ADDON_FILES} and {@link SHIPPED_ADDON_DOCS} record them.
  * @param path - the file's path in the add-on folder, with forward slashes.
  * @param digest - its {@link addonFileDigest}.
  * @returns true for a shipped file, false for a file the game changed or added.

@@ -121,7 +121,7 @@ export function serverTools(host: MultiplayerToolHost, surface: MultiplayerSurfa
 
   const create = defineTool({
     name: 'wasd_server_create',
-    description: 'Create a dedicated server for the released game, of a size the user chose from wasd_server_plans. It never charges by itself: it returns a page on the WASD Engine site where the user confirms and pays, which needs a valid payment method on their account; a size of which wasd_server_plans lists free servers left for the account is free while one is left when the user confirms, and then needs no card. Tell the user the size\'s monthly price, or that it is free while one of those free servers is left, and what it includes before calling it. The server then runs the newest release\'s server build.',
+    description: 'Create a dedicated server for the released game, of a size the user chose from wasd_server_plans. It never charges by itself: it returns a page on the WASD Engine site where the user confirms and pays, which needs a valid payment method on their account; a size of which wasd_server_plans lists free servers left for the account is free while one is left when the user confirms, and then needs no card. Tell the user the size\'s monthly price, or that it is free while one of those free servers is left, and what it includes before calling it. The server then runs the server build of the game\'s latest release.',
     parameters: {
       project: PROJECT,
       size: { type: 'string', required: true, description: 'Size id from wasd_server_plans, such as small.' },
@@ -166,11 +166,11 @@ export function serverTools(host: MultiplayerToolHost, surface: MultiplayerSurfa
 
   const deploy = defineTool({
     name: 'wasd_server_deploy',
-    description: 'Deploy a release\'s server build to the game\'s server: the newest release unless version names one, such as an earlier version to roll back. Players get a 60-second warning, then the server restarts on that build; the world is kept. Releases deploy to the game\'s servers by themselves, so call this for a rollback or a server that missed one. Tell the user the server restarts.',
+    description: 'Deploy a release\'s server build to the game\'s server: the build of the game\'s latest release, the version players join, unless version names another, such as an earlier version to roll back; a latest release without a server build cannot be deployed. Players get a 60-second warning, then the server restarts on that build; the world is kept. Releases deploy to the game\'s servers by themselves, so call this for a rollback or a server that missed one. Tell the user the server restarts.',
     parameters: {
       project: PROJECT,
       server: SERVER,
-      version: { type: 'integer', description: 'Release whose server build to deploy. Default: the newest.' },
+      version: { type: 'integer', description: 'Release whose server build to deploy. Default: the game\'s latest release.' },
     },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: { server: JSON_VALUE, for_user: FOR_USER } },
@@ -182,7 +182,7 @@ export function serverTools(host: MultiplayerToolHost, surface: MultiplayerSurfa
       const deployed = await api.deploy(server.id, args.version)
       return {
         server: serverJson(deployed),
-        for_user: `${deployed.name} is switching to ${args.version === undefined ? 'the newest server build' : `version ${String(args.version)}`}: players get a 60-second warning, then it restarts with its world kept. ${serverLine(deployed)}`,
+        for_user: `${deployed.name} is switching to ${args.version === undefined ? 'the server build of the game\'s latest release' : `version ${String(args.version)}`}: players get a 60-second warning, then it restarts with its world kept. ${serverLine(deployed)}`,
       }
     },
   })

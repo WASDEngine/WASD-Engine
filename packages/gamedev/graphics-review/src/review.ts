@@ -49,8 +49,10 @@ export interface ReviewRequest {
   readonly focus?: string
   /** For a later review of the same work: what changed since the last one, and which of its notes were left and why. */
   readonly previous?: string
-  /** The add-ons the reviewer may suggest. */
+  /** The catalog add-ons that agents may use; the reviewer suggests those that the agent's tools install and run. */
   readonly addons: readonly ReviewAddon[]
+  /** The names of the tools the agent has, as a Session calls them; the reviewer suggests only these and Godot. */
+  readonly tools: readonly string[]
   /** The calling Session, for the route's request identity; absent for a connected agent's call without one. */
   readonly sessionId?: NonNullable<GenerateOptions['sessionId']>
 }
@@ -298,7 +300,7 @@ export async function reviewImage(ctx: Context, settings: ReviewSettings, reques
   signal.throwIfAborted()
   const options: GenerateOptions = {
     ...call.config,
-    system: reviewerPrompt(request.addons),
+    system: reviewerPrompt(request.addons, request.tools),
     messages: [{ role: 'user', content: [{ type: 'image', attachment }, { type: 'text', text: describeRequest(request) }] }],
     purpose: 'graphics-review',
     signal,

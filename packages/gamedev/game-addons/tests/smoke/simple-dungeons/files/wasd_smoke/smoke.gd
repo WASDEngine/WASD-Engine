@@ -2,7 +2,8 @@ extends Node3D
 ## SimpleDungeons smoke test (render run on the Compatibility renderer): a one-floor and a two-floor dungeon generate
 ## from box rooms built in code; every kind of room is there in its own shape; the same seed gives the same dungeon;
 ## each joined side has an open doorway that a ball passes through and each other side a wall; a walker climbs the
-## stairs from the lower floor to the upper; and the rooms show in the picture.
+## stairs from the lower floor to the upper; the rooms show in the picture; and a room of the game's own keeps its size
+## when its voxel_scale is the dungeon's, while one left at the default is squashed to fit.
 
 const ID := "simple-dungeons"
 const CELL := Vector3(6, 4, 6)
@@ -35,6 +36,30 @@ func _dungeon(floors: int, seed_number: int, at: Vector3) -> DungeonGenerator3D:
 	add_child(dungeon)
 	dungeon.generate(seed_number)
 	return dungeon
+
+
+## A room of one cell as the guide makes a room of the game's own: a DungeonRoom3D root with a door marker in the
+## middle of each outer side, packed into a scene of its own path. A `cell` of zero leaves `voxel_scale` at its default.
+func _own_room(room_name: String, cell: Vector3) -> PackedScene:
+	var room := DungeonRoom3D.new()
+	room.name = room_name
+	if cell != Vector3.ZERO:
+		room.voxel_scale = cell
+	room.size_in_voxels = Vector3i.ONE
+	room.min_count = 1
+	room.max_count = 1
+	for side: String in ["W", "E", "N", "S"]:
+		var way: Vector3 = {"W": Vector3.LEFT, "E": Vector3.RIGHT, "N": Vector3.FORWARD, "S": Vector3.BACK}[side]
+		var door := Node3D.new()
+		door.name = "DOOR?_" + side
+		door.position = way * room.voxel_scale * 0.5
+		room.add_child(door)
+		door.owner = room
+	var packed := PackedScene.new()
+	packed.pack(room)
+	packed.take_over_path("res://wasd_smoke/%s.tscn" % [room_name])
+	room.free()
+	return packed
 
 
 func _rooms(dungeon: DungeonGenerator3D) -> Array[DungeonRoom3D]:
@@ -178,5 +203,26 @@ func _run() -> void:
 	var climbed := walker.global_position.y - (foot.y - 0.7)
 	if climbed < CELL.y - 0.3:
 		return _fail("the walker climbed %.2f m of the stairs' %.1f m, to %s in the stairs' own space" % [climbed, CELL.y, stairs.to_local(walker.global_position)])
+
+	# Rooms of the game's own: one with the dungeon's voxel_scale keeps its size; one left at the default is squashed.
+	var own := DungeonGenerator3D.new()
+	own.voxel_scale = CELL
+	own.dungeon_size = Vector3i(6, 1, 6)
+	own.generate_on_ready = false
+	var own_scenes: Array[PackedScene] = [_own_room("Shrine", CELL), _own_room("DefaultShrine", Vector3.ZERO)]
+	own.room_scenes = own_scenes
+	own.corridor_room_scene = DungeonBoxRooms.corridor()
+	own.position = Vector3(400, 0, 0)
+	add_child(own)
+	own.generate(3)
+	for _i: int in 6:
+		await get_tree().physics_frame
+	if own.stage != DungeonGenerator3D.BuildStage.DONE:
+		return _fail("the dungeon of the game's own rooms stopped at stage %s" % [own.stage])
+	var scales := {}
+	for room: DungeonRoom3D in _rooms(own):
+		scales[String(room.name).get_slice("_", 0)] = room.basis.get_scale()
+	if not (scales.get("Shrine", Vector3.ZERO) as Vector3).is_equal_approx(Vector3.ONE) or not (scales.get("DefaultShrine", Vector3.ZERO) as Vector3).is_equal_approx(CELL / 10.0):
+		return _fail("rooms of the game's own are scaled %s" % [scales])
 	print("SMOKE_PASS ", ID)
 	get_tree().quit(0)

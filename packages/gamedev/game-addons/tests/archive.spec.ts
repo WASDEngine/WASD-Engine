@@ -2,7 +2,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { bundledArchivesDir, cachedArchive, GameAddonArchiveError, readArchiveFile, unpackFolder } from '../src/archive.ts'
+import { bundledArchivesDir, cachedArchive, GameAddonArchiveError, readArchiveFile, unpackFolder, type ArchiveDownloads } from '../src/archive.ts'
 import { CAMERA_ARCHIVE, fakeDownloads, pin, scratch, URLS, zip, type Scratch } from './fixtures.ts'
 
 let dir: Scratch | undefined
@@ -58,14 +58,22 @@ describe('cachedArchive', () => {
     const archive = pin(URLS.camera, CAMERA_ARCHIVE, '')
     const tampered = CAMERA_ARCHIVE.slice()
     tampered[10] = (tampered[10] ?? 0) ^ 0xff
-    await expect(cachedArchive(archive, { cacheDir, fetch: fakeDownloads({ [URLS.camera]: tampered }).fetch }, signal))
-      .rejects.toThrow(/does not match the SHA-256 the catalog pins/u)
-    await expect(cachedArchive(archive, { cacheDir, fetch: fakeDownloads({ [URLS.camera]: CAMERA_ARCHIVE.slice(0, 100) }).fetch }, signal))
-      .rejects.toThrow(/arrived with 100 bytes/u)
-    await expect(cachedArchive({ ...archive, bytes: 100 }, { cacheDir, fetch: fakeDownloads().fetch }, signal))
-      .rejects.toThrow(/larger than the 100 bytes/u)
+    // Each refusal of a download that differs from its pin, with its message and then its class and code.
+    const serving = (bytes: Uint8Array): ArchiveDownloads => ({ cacheDir, fetch: fakeDownloads({ [URLS.camera]: bytes }).fetch })
+    const corrupt = { name: 'GameAddonArchiveError', code: 'GAME_ADDON_ARCHIVE_CORRUPT' }
+    await expect(cachedArchive(archive, serving(tampered), signal)).rejects.toThrow(/does not match the SHA-256 the catalog pins/u)
+    await expect(cachedArchive(archive, serving(tampered), signal)).rejects.toMatchObject(corrupt)
+    await expect(cachedArchive(archive, serving(CAMERA_ARCHIVE.slice(0, 100)), signal)).rejects.toThrow(/arrived with 100 bytes/u)
+    await expect(cachedArchive(archive, serving(CAMERA_ARCHIVE.slice(0, 100)), signal)).rejects.toMatchObject(corrupt)
+    await expect(cachedArchive({ ...archive, bytes: 100 }, serving(CAMERA_ARCHIVE), signal)).rejects.toThrow(/larger than the 100 bytes/u)
+    await expect(cachedArchive({ ...archive, bytes: 100 }, serving(CAMERA_ARCHIVE), signal)).rejects.toMatchObject(corrupt)
+    const failed = { name: 'GameAddonArchiveError', code: 'GAME_ADDON_DOWNLOAD_FAILED' }
     await expect(cachedArchive(archive, { cacheDir, fetch: fakeDownloads({}).fetch }, signal)).rejects.toThrow(/HTTP 404/u)
-    await expect(cachedArchive(archive, { cacheDir, fetch: () => Promise.reject(new Error('offline')) }, signal)).rejects.toThrow(/failed: offline/u)
+    await expect(cachedArchive(archive, { cacheDir, fetch: fakeDownloads({}).fetch }, signal)).rejects.toMatchObject(failed)
+    const offline = new Error('offline')
+    const unreachable: ArchiveDownloads = { cacheDir, fetch: () => Promise.reject(offline) }
+    await expect(cachedArchive(archive, unreachable, signal)).rejects.toThrow(/failed: offline/u)
+    await expect(cachedArchive(archive, unreachable, signal)).rejects.toMatchObject({ ...failed, cause: offline })
     expect(await readdir(cacheDir)).toEqual([])
   })
 })
@@ -80,6 +88,7 @@ describe('unpackFolder', () => {
     expect(await readFile(join(target, 'nodes', 'rig.gd'), 'utf8')).toBe('class_name TestRig\nextends Node3D\n')
     expect(new TextDecoder().decode(await readArchiveFile(archivePath, 'camera-1.2.0/LICENSE'))).toContain('Test Author')
     await expect(readArchiveFile(archivePath, 'nope')).rejects.toThrow(/no file nope/u)
+    await expect(readArchiveFile(archivePath, 'nope')).rejects.toMatchObject({ name: 'GameAddonArchiveError', code: 'GAME_ADDON_CATALOG_INVALID' })
     const whole = join(dir.root, 'whole')
     expect(await unpackFolder(archivePath, '', whole, signal)).toContain('camera-1.2.0/README.md')
     expect(await readdir(whole)).toEqual(['camera-1.2.0'])
@@ -90,12 +99,15 @@ describe('unpackFolder', () => {
     const evil = join(dir.root, 'evil.zip')
     await writeFile(evil, zip({ 'root/../../escape.txt': 'x' }))
     await expect(unpackFolder(evil, 'root', join(dir.root, 'e1'), signal)).rejects.toThrow(/would leave the add-on folder/u)
+    await expect(unpackFolder(evil, 'root', join(dir.root, 'e1'), signal)).rejects.toMatchObject({ name: 'GameAddonArchiveError', code: 'GAME_ADDON_ARCHIVE_CORRUPT' })
     const archivePath = join(dir.root, 'a.zip')
     await writeFile(archivePath, CAMERA_ARCHIVE)
     await expect(unpackFolder(archivePath, 'missing', join(dir.root, 'e2'), signal)).rejects.toThrow(/no files under missing/u)
+    await expect(unpackFolder(archivePath, 'missing', join(dir.root, 'e2'), signal)).rejects.toMatchObject({ name: 'GameAddonArchiveError', code: 'GAME_ADDON_CATALOG_INVALID' })
     const damaged = join(dir.root, 'damaged.zip')
     await writeFile(damaged, 'not a zip')
     await expect(unpackFolder(damaged, '', join(dir.root, 'e3'), signal)).rejects.toThrow(GameAddonArchiveError)
+    await expect(unpackFolder(damaged, '', join(dir.root, 'e3'), signal)).rejects.toMatchObject({ name: 'GameAddonArchiveError', code: 'GAME_ADDON_ARCHIVE_CORRUPT' })
     await expect(unpackFolder(archivePath, 'camera-1.2.0', dir.root, signal)).rejects.toThrow(/EEXIST/u)
   })
 })

@@ -436,6 +436,16 @@ describe('releaseGame', () => {
     expect(siteDescription(' \n\u0000 ')).toBe('')
   })
 
+  it('keeps unassigned code points and drops controls, format, surrogate, and private-use characters and noncharacters, as the site does', () => {
+    // U+1FAE9 is an emoji of Unicode 16, which an older Unicode version, such as the site's, leaves unassigned, as
+    // every version so far leaves U+0378.
+    const kept = ['\u{1FAE9}', '\u0378', '\u200c', '\u200d', '\u{E0067}', '\u{E007F}', '\u{E01EF}']
+    for (const char of kept) expect(siteDescription(`a${char}b`), char.codePointAt(0)?.toString(16)).toBe(`a${char}b`)
+    const dropped = ['\u0007', '\u0085', '\u202e', '\u2066', '\u{E0001}', '\ufeff', '\uD800', '\ue000', '\u{F0000}', '\ufdd0', '\ufdef', '\ufffe', '\uffff', '\u{1FFFE}', '\u{10FFFF}']
+    for (const char of dropped) expect(siteDescription(`a${char}b`), char.codePointAt(0)?.toString(16)).toBe('ab')
+    expect(siteDescription('a\tb\nc')).toBe('a b\nc')
+  })
+
   it('describes the game on its first release, keeps the description until a release gives a new one, and asks for one when the game has none', async () => {
     const dir = await project()
     const server = site()

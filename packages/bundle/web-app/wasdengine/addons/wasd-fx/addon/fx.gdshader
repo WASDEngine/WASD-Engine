@@ -108,6 +108,8 @@ void vertex() {
 	vec2 corner = vec2(card.x * cos(turned) - card.y * sin(turned), card.x * sin(turned) + card.y * cos(turned));
 	if (lies_flat) {
 		VERTEX = place + vec3(corner.x, 0.0, corner.y) * across_card * 0.5;
+		// The shader writes POSITION, and Godot then takes it for every vertex: a card that lies flat gives it too.
+		POSITION = PROJECTION_MATRIX * (MODELVIEW_MATRIX * vec4(VERTEX, 1.0));
 	} else {
 		vec3 seen = (MODELVIEW_MATRIX * vec4(place, 1.0)).xyz;
 		if (stretch > 0.0) {

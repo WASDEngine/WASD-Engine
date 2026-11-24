@@ -1,6 +1,6 @@
-# Godot Easy Vehicle Physics, Copyright (c) 2024 David Shoemaker, MIT License. WASD Engine changed how steer() reads the
-# ground's surface from its groups, so that a ground in a group that names no surface no longer stops the wheel with an
-# error; the rest is the add-on's file.
+# Godot Easy Vehicle Physics, Copyright (c) 2024 David Shoemaker, MIT License. WASD Engine changed how process_forces()
+# reads the ground's surface from its groups, so that a ground in a group that names no surface no longer stops the
+# wheel with an error, and a ground in none of the surface groups drives like Road; the rest is the add-on's file.
 #
 # Copyright (c) 2024 David Shoemaker
 # Copyright (c) 2021 Dechode
@@ -182,19 +182,22 @@ func process_forces(opposite_compression : float, braking : bool, delta : float)
 		last_collider = get_collider()
 		last_collision_point = get_collision_point()
 		last_collision_normal = get_collision_normal()
-		# The surface is the first of the ground's groups that names one. A ground in other groups only, such as a
-		# level's own "walls" or "ground", keeps the surface the wheel was on.
+		# The surface is the first of the ground's groups that names one. A ground in none of them, such as one in a
+		# level's own "walls" or "ground" groups only, is Road, or the first surface when the vehicle names no Road.
+		var ground_surface := ""
 		for surface_group : StringName in last_collider.get_groups():
-			if not tire_stiffnesses.has(String(surface_group)):
-				continue
-			if surface_type != String(surface_group):
-				surface_type = String(surface_group)
-				current_cof = coefficient_of_friction[surface_type]
-				current_rolling_resistance = rolling_resistance[surface_type]
-				current_lateral_grip_assist = lateral_grip_assist[surface_type]
-				current_longitudinal_grip_ratio = longitudinal_grip_ratio[surface_type]
-				current_tire_stiffness = 1000000.0 + 8000000.0 * tire_stiffnesses[surface_type]
-			break
+			if tire_stiffnesses.has(String(surface_group)):
+				ground_surface = String(surface_group)
+				break
+		if ground_surface.is_empty():
+			ground_surface = "Road" if tire_stiffnesses.has("Road") else String(tire_stiffnesses.keys()[0])
+		if surface_type != ground_surface:
+			surface_type = ground_surface
+			current_cof = coefficient_of_friction[surface_type]
+			current_rolling_resistance = rolling_resistance[surface_type]
+			current_lateral_grip_assist = lateral_grip_assist[surface_type]
+			current_longitudinal_grip_ratio = longitudinal_grip_ratio[surface_type]
+			current_tire_stiffness = 1000000.0 + 8000000.0 * tire_stiffnesses[surface_type]
 	else:
 		last_collider = null
 

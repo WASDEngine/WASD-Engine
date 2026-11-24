@@ -2,8 +2,8 @@ extends Node3D
 ## WASD Light smoke test (render run on the Compatibility renderer, the one every Web build uses): a halo glows
 ## round its lamp and hides behind a wall; a shaft brightens the air along a spotlight; a fog bank veils what
 ## stands in it by how much fog lies before it and nothing outside it; dust shows; a flicker moves its light and the
-## halo with it; a shadow card throws shade that is part light, part dark; and stood upright it is striped, as blinds
-## and a grating are.
+## halo with it, and lets go of a halo or light that is freed; a shadow card throws shade that is part light, part
+## dark; and stood upright it is striped, as blinds and a grating are.
 
 const ID := "wasd-light"
 
@@ -187,20 +187,38 @@ func _run() -> void:
 	flicker.style = WasdFlicker.Style.FIRE
 	flicker.amount = 1.0
 	lamp.add_child(flicker)
+	# One second of the flicker in steps of a sixtieth, so that how far it moves does not hang on the frame rate: at
+	# any time a fire of amount 1 moves a light of energy 2 by more than 0.9 within a second.
+	flicker.set_process(false)
 	var lowest := 9.0
 	var highest := 0.0
 	var together := true
-	for _i: int in 40:
-		await get_tree().process_frame
+	for _i: int in 60:
+		flicker._process(1.0 / 60.0)
 		lowest = minf(lowest, lamp.light_energy)
 		highest = maxf(highest, lamp.light_energy)
 		if absf(lamp_halo.energy / 1.5 - lamp.light_energy / 2.0) > 0.001:
 			together = false
-	if highest - lowest < 0.1 or highest > 2.0 * 1.31 or lowest < 0.0 or not together:
+	if highest - lowest < 0.5 or highest > 2.0 * 1.31 or lowest < 0.0 or not together:
 		return _fail("the flicker moved the light between %f and %f, the halo with it: %s" % [lowest, highest, together])
+	flicker.set_process(true)
 	for style: int in WasdFlicker.Style.size():
 		flicker.style = style as WasdFlicker.Style
 		await get_tree().process_frame
+	# A halo that the game frees is let go, and so is a light named in `light` that goes away before the flicker.
+	lamp_halo.queue_free()
+	for _i: int in 3:
+		await get_tree().process_frame
+	var far_lamp := OmniLight3D.new()
+	add_child(far_lamp)
+	var far_flicker := WasdFlicker.new()
+	far_flicker.light = far_lamp
+	add_child(far_flicker)
+	await get_tree().process_frame
+	far_lamp.queue_free()
+	for _i: int in 3:
+		await get_tree().process_frame
+	far_flicker.queue_free()
 	lamp.queue_free()
 
 	# 6. A shadow card under a sun throws shade that is part light, part dark, and is not seen itself.

@@ -12,7 +12,8 @@ uniform sampler2D marks : source_color, filter_linear_mipmap, repeat_disable;
 uniform vec2 frames = vec2(1.0, 1.0);
 // 0 draws the texture; 1 a bullet hole, 2 a scorch mark, 3 a splat, 4 cracks, 5 a footprint.
 uniform int kind = 0;
-// The pool's clock in seconds, which the node advances.
+// The pool's clock in seconds, which the node advances and starts again from 0 every 64 seconds, moving the marks'
+// ends with it.
 uniform float clock = 0.0;
 // Seconds a mark takes to fade at the end of its life.
 uniform float fade = 1.0;
@@ -27,8 +28,9 @@ varying float shape_seed;
 varying float mark_side;
 
 void vertex() {
-	// Custom data: when the mark ends, on the pool's clock (0 for a mark that stays), its frame, and its own number.
-	life_left = INSTANCE_CUSTOM.x <= 0.0 ? 1000.0 : INSTANCE_CUSTOM.x - clock;
+	// Custom data: when the mark ends, on the pool's clock (0 for a mark that stays, below 0 for one that has ended), its
+	// frame, and its own number.
+	life_left = INSTANCE_CUSTOM.x == 0.0 ? 1000.0 : INSTANCE_CUSTOM.x - clock;
 	frame_index = INSTANCE_CUSTOM.y;
 	shape_seed = INSTANCE_CUSTOM.z;
 	// The mark's side in meters.

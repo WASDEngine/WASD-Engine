@@ -92,8 +92,11 @@ export const MULTIPLAYER_CONFIG_FILE = 'wasd_multiplayer.cfg'
  */
 export const EXPORT_INCLUDE_FILTER = [MULTIPLAYER_CONFIG_FILE, 'THIRD_PARTY_NOTICES.md', 'addons/*/LICENSE*'].join(', ')
 
-/** Most Godot warnings a result lists. */
+/** Most warnings a result lists: WASD Engine's notes about the export, then Godot's export warnings. */
 export const EXPORT_WARNINGS = 10
+
+/** Places of the {@link EXPORT_WARNINGS} that Godot's export warnings keep when the notes would fill them. */
+const GODOT_WARNING_PLACES = 5
 
 /** The splash image of a Web build, which its page's loading screen shows. */
 export const WEB_SPLASH_FILE = 'index.png'
@@ -792,6 +795,19 @@ export function packNotes(files: readonly { readonly path: string; readonly byte
   return [`The game's pack is ${String(Math.round(pack.bytes / (1024 * 1024)))} MB, and players download all of it before the game starts. Textures are most of most packs: lower the size limit of large ones (process/size_limit in their .import files), reuse textures, and keep sounds compressed.`]
 }
 
+/**
+ * The warnings an export's result lists: the notes, then Godot's export warnings, at most {@link EXPORT_WARNINGS} in
+ * all. When they do not all fit, Godot's warnings keep up to {@link GODOT_WARNING_PLACES} places, so notes cannot
+ * crowd them out, and the notes keep the rest; each list then loses its last entries.
+ * @param notes - WASD Engine's notes about the export, in order.
+ * @param warnings - Godot's export warnings, each once, in output order.
+ * @returns the warnings to list.
+ */
+export function exportWarnings(notes: readonly string[], warnings: readonly string[]): string[] {
+  const godot = Math.min(warnings.length, Math.max(GODOT_WARNING_PLACES, EXPORT_WARNINGS - notes.length))
+  return [...notes.slice(0, EXPORT_WARNINGS - godot), ...warnings.slice(0, godot)]
+}
+
 async function readOptional(path: string): Promise<Buffer | undefined> {
   try {
     return await readFile(path)
@@ -1065,8 +1081,9 @@ async function runExport(options: ExportOptions, plan: ExportPlan): Promise<Expo
 /**
  * Export a project for the Web. Exports writing to one output folder run one at a time, across Hosts too. The splash
  * image that Godot wrote becomes WASD Engine's ({@link wasdSplash}) for a project without one of its own. The warnings
- * start with notes on how the Web build differs: the renderer ({@link webNotes}) and the project files that use what
- * Web builds lack ({@link webFeatureNotes}).
+ * start with notes on how the Web build differs: the Blender importer, the renderer ({@link webNotes}), the project
+ * files that use what Web builds lack ({@link webFeatureNotes}), and a large pack ({@link packNotes}); Godot's export
+ * warnings follow, with the places {@link exportWarnings} keeps for them.
  * @param options - process parameters, project, template, and output folder.
  * @returns the exported files.
  * @throws {GodotExportError} when the process ends without writing the page, engine, and pack.
@@ -1097,9 +1114,9 @@ export async function exportWeb(options: WebExportOptions): Promise<GodotWebExpo
     files: outcome.files,
     totalBytes: outcome.files.reduce((sum, file) => sum + file.bytes, 0),
     fileName: desktopFileName(parseProjectSettings(project).name),
-    warnings: [
-      ...blenderNote === undefined ? [] : [blenderNote], ...webNotes(project), ...features, ...packNotes(outcome.files), ...warnings,
-    ].slice(0, EXPORT_WARNINGS),
+    warnings: exportWarnings([
+      ...blenderNote === undefined ? [] : [blenderNote], ...webNotes(project), ...features, ...packNotes(outcome.files),
+    ], warnings),
   }
 }
 
@@ -1129,7 +1146,7 @@ export async function exportServer(options: ExportOptions): Promise<GodotServerE
     binary: SERVER_EXPORT_BINARY,
     bytes: (outcome.files.find(file => file.path === SERVER_EXPORT_BINARY) as { bytes: number }).bytes,
     files: outcome.files,
-    warnings: [...outcome.blenderNote === undefined ? [] : [outcome.blenderNote], ...outcome.warnings].slice(0, EXPORT_WARNINGS),
+    warnings: exportWarnings(outcome.blenderNote === undefined ? [] : [outcome.blenderNote], outcome.warnings),
   }
 }
 
@@ -1349,7 +1366,7 @@ async function runPackagedExport(options: ExportOptions, plan: PackagedExportPla
       identifier,
       entry: target.entry,
       bytes: entry.isFile() ? entry.size : await folderBytes(options.outputDir),
-      warnings: [...blenderNote === undefined ? [] : [blenderNote], ...warnings].slice(0, EXPORT_WARNINGS),
+      warnings: exportWarnings(blenderNote === undefined ? [] : [blenderNote], warnings),
     }
   }, { signal: options.signal, waitMs: options.timeoutMs })
 }

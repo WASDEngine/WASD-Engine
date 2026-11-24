@@ -12,8 +12,9 @@ hairline that thin out, hair that hangs from head and spine, 15 face shapes made
 the lower teeth with it and leaves the upper ones on the skull, a smile that reaches the eyes and leans to one side,
 a normal map of the face's folds with the marks of where they lie, and an export that carries all of it; a face that
 measures what good-looking faces measure where MakeHuman's own does not, with brows painted for it, a groomed
-skin, and hair that stands off the skull; a human for a crowd on the low-poly proxy; and refusals that name what is
-taken.
+skin, and hair that stands off the skull; a twelve-year-old's face of a size for its age; a human for a crowd on the
+low-poly proxy; refusals that name what is taken, before anything is made; a body other than MakeHuman's base mesh
+refused a face; and a human that fails halfway leaving nothing in the scene.
 """
 
 import importlib
@@ -201,6 +202,23 @@ def faced(folder):
         check(False, "add_face took a shape it does not have")
     except ValueError as error:
         check("blink_l" in str(error), "the refusal of an unknown shape does not name the shapes: %s" % error)
+    # The face is read by the numbers of the base mesh's vertices: a mesh of another count is refused before it is shaped.
+    import bmesh
+    other = HumanService.create_human()
+    data = bmesh.new()
+    data.from_mesh(other.data)
+    data.verts.ensure_lookup_table()
+    bmesh.ops.delete(data, geom=[data.verts[len(data.verts) - 1]], context='VERTS')
+    data.to_mesh(other.data)
+    data.free()
+    shaped = list(other.data.shape_keys.key_blocks.keys()) if other.data.shape_keys else []
+    try:
+        wasd_mpfb.add_face(other)
+        check(False, "add_face took a mesh of %d vertices" % len(other.data.vertices))
+    except ValueError as error:
+        check("19,158" in str(error) and (list(other.data.shape_keys.key_blocks.keys()) if other.data.shape_keys else []) == shaped,
+              "the refusal of another mesh: %s" % error)
+    bpy.data.objects.remove(other)
     report = wasd_mpfb.add_face(body)
     names = list(wasd_mpfb.FACE_SHAPES)
     check(report["shapes"] == names and len(names) == 15 and report["eye_bones"] == ["eye_l", "eye_r"], "add_face reported %s" % report)
@@ -339,14 +357,18 @@ def natural(folder):
                 "jaw": (spots[7459].x - spots[mirrored(7459)].x) / (spots[12362].x - spots[mirrored(12362)].x)}
 
     clear()
+    # Every argument is checked before anything is made: a refusal leaves the scene empty.
     for call, word in ((lambda: wasd_mpfb.human(gender="other"), "female"), (lambda: wasd_mpfb.human(eyes="purple"), "hazel"),
                        (lambda: wasd_mpfb.human(hair="no_such_hair"), "long01"), (lambda: wasd_mpfb.human(hair_color="pink"), "auburn"),
-                       (lambda: wasd_mpfb.human(detail="medium"), "low"), (lambda: wasd_mpfb.human(ethnicity="martian"), "asian")):
+                       (lambda: wasd_mpfb.human(detail="medium"), "low"), (lambda: wasd_mpfb.human(ethnicity="martian"), "asian"),
+                       (lambda: wasd_mpfb.human(outfit=("male_casualsuit1",)), "male_casualsuit01"), (lambda: wasd_mpfb.human(seed=1.5), "integer"),
+                       (lambda: wasd_mpfb.human(age=8), "12 to 90"), (lambda: wasd_mpfb.human(build={"age": 0.2}), "muscle"),
+                       (lambda: wasd_mpfb.human(ethnicity={"asian": 0}), "share"), (lambda: wasd_mpfb.human(rig="unreal"), "game_engine")):
         try:
             call()
             check(False, "human() took an argument it does not know")
         except ValueError as error:
-            check(word in str(error), "a refusal does not name what is taken: %s" % error)
+            check(word in str(error) and not bpy.data.objects, "a refusal does not name what is taken, or comes after a body was made: %s" % error)
         clear()
 
     body = wasd_mpfb.human("female", age=27, eyes="hazel", hair_color="brown", seed=3)
@@ -449,6 +471,10 @@ def natural(folder):
         return max(moves, key=lambda move: move.length)
 
     left, right = reach("smile", 1.0), reach("smile", -1.0)
+    # The side a face leans to is drawn once and kept on the body: the face that human() set at rest and the smile
+    # that add_face() made lean alike.
+    check(body.get("wasd_lean") in (0.11, -0.11) and (left.length > right.length) == (body["wasd_lean"] > 0.0),
+          "the face leans by %s, and its smile moves the left corner %.4f m and the right one %.4f m" % (body.get("wasd_lean"), left.length, right.length))
     check(0.006 < left.length < 0.014 and left.x > 0.003 and left.y > 0.001 and left.z > 0.003 and right.x < -0.003
           and 0.02 < abs(left.length - right.length) / left.length < 0.25 and "smile" in keys(lashes),
           "a smile draws the left corner by (%.4f, %.4f, %.4f) m and the right one %.4f m, and the lashes have %s"
@@ -456,6 +482,12 @@ def natural(folder):
     check(0.012 < reach("mouth_open").length < 0.03 and reach("mouth_open").z < -0.01 and all(reach(name).length < 0.03 for name in names),
           "an open mouth moves the chin by %.4f m, and the shapes reach %s"
           % (reach("mouth_open").length, {name: round(reach(name).length, 4) for name in names}))
+    try:
+        wasd_mpfb.export(body, os.path.join(folder, "mpfb_natural"))
+        check(False, "export took a path without .glb")
+    except ValueError as error:
+        written = [name for name in os.listdir(folder) if name.startswith("mpfb_natural")]
+        check(".glb" in str(error) and not written, "the refusal of a path without .glb: %s, with %s written" % (error, written))
     path = os.path.join(folder, "mpfb_natural.glb")
     made = wasd_mpfb.export(body, path)
     data = open(path, "rb").read()
@@ -491,15 +523,17 @@ def natural(folder):
     check(200 < marks[0] < 900 and 20 < marks[1] < 200 and marks[2] > 5000 and min(values) >= 0.0 and max(values) <= 1.0,
           "the body marks %d of its %d vertices as where a smile folds it and %d as where a frown does" % (marks[0], marks[2], marks[1]))
 
-    # A dark face is of a brown that skin has, not MakeHuman's rust, and curls take no band of light. Without looks
-    # and a seed the face is MakeHuman's own: eyes too near each other, a narrow mouth, and a mirror image. A named
-    # eyebrow asset brings its own picture.
+    # A dark face is of a brown that skin has, not MakeHuman's rust, and curls are named so that a game lays no band of
+    # light across them, with a color as white as straight hair's, which a stock material multiplies into the picture.
+    # Without looks and a seed the face is MakeHuman's own: eyes too near each other, a narrow mouth, and a mirror
+    # image. A named eyebrow asset brings its own picture.
     clear()
     body = wasd_mpfb.human("male", age=45, ethnicity="african", eyes="dark", hair="afro01", hair_color="black", looks=0.0, seed=None, brows="eyebrow004")
     lightness, saturation = face_tone(body)
     curls = worn(body, ".hair_afro01")
     check(0.07 < lightness < 0.2 and saturation < 0.56, "a dark face's middle color has the lightness %.3f and the saturation %.3f" % (lightness, saturation))
-    check(curls is not None and max(colors(curls, 0)) == 0.0, "curls are marked as straight hair")
+    check(curls is not None and curls.material_slots[0].material.name.endswith("_curly") and min(colors(curls, 0)) == 1.0
+          and min(colors(curls, 2)) == 1.0, "curls are named %s and colored down to %s" % (curls and curls.material_slots[0].material.name, curls and min(colors(curls, 0))))
     plain = face(body)
     check(plain["pupils"] < 60.0 and plain["mouth"] < 48.0 and plain["lopsided"] < 0.001 and plain["corner"] < -0.7 and plain["jaw"] > 0.75,
           "MakeHuman's own face has pupils %.1f mm apart, a mouth %.1f mm wide with corners %.2f mm over its middle, and sides %.4f mm from each other's mirror image"
@@ -513,15 +547,44 @@ def natural(folder):
     check(good["pupils"] > plain["pupils"] + 2.0 and good["mouth"] > plain["mouth"] + 3.0 and worn(body, "eyebrow") is None and worn(body, ".hair_short01") is not None,
           "a man with looks has pupils %.1f mm apart (%.1f without) and a mouth %.1f mm wide (%.1f)" % (good["pupils"], plain["pupils"], good["mouth"], plain["mouth"]))
 
-    # A human for a crowd: the 1,460-triangle proxy, less what its clothes hide, with painted low-poly eyes and
-    # without brows, lashes, or teeth.
+    # A human that fails halfway leaves nothing in the scene, and the next one is Human again. Its seed is negative,
+    # which the brows, painted before the failure, take as they take any other.
     clear()
-    body = wasd_mpfb.human("male", age=35, detail="low", outfit=("male_casualsuit01",))
+    steps = wasd_mpfb.human.__globals__
+    finish = steps["_finish_skin"]
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("a step that fails")
+
+    kinds = ("objects", "meshes", "armatures", "materials", "images")
+    before = {kind: {block.name for block in getattr(bpy.data, kind)} for kind in kinds}
+    steps["_finish_skin"] = broken
+    try:
+        wasd_mpfb.human("female", age=30, hair=False, outfit=(), lashes=False, seed=-20)
+        check(False, "a human whose making fails was made")
+    except RuntimeError:
+        pass
+    finally:
+        steps["_finish_skin"] = finish
+    left = {kind: sorted({block.name for block in getattr(bpy.data, kind)} - before[kind]) for kind in kinds}
+    check(not any(left.values()), "a human whose making failed left %s" % left)
+    # A twelve-year-old's face is of a size for its age, a tenth smaller than the woman's of the same seed.
+    child = wasd_mpfb.human("female", age=12, eyes="hazel", hair=False, outfit=(), seed=3)
+    young = face(child)
+    check(child.name == "Human" and child.parent.name == "Human.rig" and young["pupils"] < 0.95 * fair["pupils"] and young["mouth"] < 0.95 * fair["mouth"],
+          "a girl of twelve, %s, has pupils %.1f mm apart and a mouth %.1f mm wide, where the woman's are %.1f and %.1f"
+          % (child.name, young["pupils"], young["mouth"], fair["pupils"], fair["mouth"]))
+
+    # A human for a crowd: the 1,460-triangle proxy, less what its clothes hide, with painted low-poly eyes and
+    # without brows, lashes, or teeth, and dressed in one asset given by its name.
+    clear()
+    body = wasd_mpfb.human("male", age=35, detail="low", outfit="male_casualsuit01")
     path = os.path.join(folder, "mpfb_crowd.glb")
     made = wasd_mpfb.export(body, path, texture_size=512)
     proxy = next((count for name, count in made["triangles"].items() if "proxy741" in name), 0)
     check(500 < proxy <= 1460 and not any(name.split(".")[-1].startswith("Human") for name in made["triangles"]) and made["bones"] == 53 and made["bytes"] < 4000000
-          and not any(word in name for name in made["triangles"] for word in ("eyebrow", "eyelashes", "teeth")),
+          and not any(word in name for name in made["triangles"] for word in ("eyebrow", "eyelashes", "teeth"))
+          and any("male_casualsuit01" in name for name in made["triangles"]),
           "a human for a crowd has %s and %d bytes" % (made["triangles"], made["bytes"]))
 
 

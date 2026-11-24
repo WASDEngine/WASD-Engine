@@ -5,7 +5,7 @@ description: Easy Vehicle Physics is installed in this project. Its Vehicle is a
 
 # Easy Vehicle Physics (2025-08-17)
 
-`res://addons/gevp/` (MIT, by David Shoemaker; the car models are Kenney's CC0 Car Kit; global classes, no plugin to enable; the demos and debug screens are left out, and one function is changed so that ground in a level's own groups works). A `Vehicle` is a `RigidBody3D` with four `Wheel` ray casts; three of them on a generated road ran at 60 frames a second in a Web build. The class names `Vehicle` and `Wheel` are the add-on's: name the game's own classes otherwise.
+`res://addons/gevp/` (MIT, by David Shoemaker; the car models are Kenney's CC0 Car Kit; global classes, no plugin to enable; the demos and debug screens are left out, and one function is changed so that a ground in no surface group, such as one in a level's own groups only, drives like the road). A `Vehicle` is a `RigidBody3D` with four `Wheel` ray casts; three of them on a generated road ran at 60 frames a second in a Web build. The class names `Vehicle` and `Wheel` are the add-on's: name the game's own classes otherwise.
 
 ## A car that drives
 
@@ -56,14 +56,14 @@ The ground needs a collider. A wheel takes its surface from the ground body's gr
 
 ## Tuning and another look
 
-Every setting is an exported property of the car with a tooltip: `max_torque` and `max_rpm` (power), `gear_ratios` and `final_drive`, `max_steering_angle`, `front_brake_bias`, `vehicle_mass` (not `mass`, which the car sets from it), and `tire_stiffnesses`, `coefficient_of_friction`, and `rolling_resistance` by surface. Change them on the instance before `add_child`, when the car reads them; after a change later, call `car.initialize()`.
+Every setting is an exported property of the car with a tooltip: `max_torque` and `max_rpm` (power), `gear_ratios` and `final_drive`, `max_steering_angle`, `front_brake_bias`, `vehicle_mass` (not `mass`, which the car sets from it), and `tire_stiffnesses`, `coefficient_of_friction`, and `rolling_resistance` by surface. Change them on the instance before `add_child`: the car reads them once, in its `_ready()`. Calling `car.initialize()` again registers its wheels a second time and applies their forces twice, so a car whose handling changes during play, as with an upgrade, is a new instance with the new values.
 
-For a model of the game's own, keep a preset's physics and swap the meshes: the car's `body` node is a `MeshInstance3D`, and each wheel's mesh sits under its `Wheel` node. Move each `Wheel` to its hub on the new model and set `front_tire_radius` and `rear_tire_radius` to the new wheels, then `car.initialize()`.
+For a model of the game's own, keep a preset's physics and swap the meshes: the car's `body` node is a `MeshInstance3D`, and each wheel's mesh sits under its `Wheel` node. Move each `Wheel` to its hub on the new model and set `front_tire_radius` and `rear_tire_radius` to the new wheels, all before `add_child`.
 
 ## Pitfalls
 
 - It runs at Godot's default 60 physics ticks a second with three of the cars. The monster truck, and any car that jitters or flips, needs `physics/common/physics_ticks_per_second=120` in `project.godot`; handling changes with the tick rate, so tune after choosing it.
-- A car set on the ground with code (`car.global_position = …`) keeps its speed: zero `linear_velocity` and `angular_velocity` too.
+- To set a car down elsewhere with code, zero its `linear_velocity` and `angular_velocity` and reset the positions its speed is measured from, or the first tick after the jump throws it into the air: `car.previous_global_position = car.global_position`, and `wheel.previous_global_position = wheel.global_position` for each wheel in `car.wheel_array`.
 - Slopes and jumps work on any collider; a curb higher than the suspension travels (0.15 m) stops a wheel.
 - Tire smoke by particle sub-emitters, as the add-on's own demo makes it, draws nothing in Web builds; that scene is left out.
 
