@@ -23,6 +23,10 @@ func _run() -> void:
 	var credits := (load(KIT + "examples/scenes/credits/credits_label.tscn") as PackedScene).instantiate() as RichTextLabel
 	if not credits.text.contains("Credits") or credits.text.contains("Person 1"):
 		return _fail("the credits label holds the template's placeholder text")
+	# The opening screen shows the Godot Engine logo by default, whose CC BY 4.0 license asks for this credit.
+	for part: String in ["Godot Engine Logo", "Andrea Calabró", "CC BY 4.0 International"]:
+		if not credits.text.contains(part):
+			return _fail("the credits label lacks \"%s\" of the Godot Engine logo's credit" % [part])
 	credits.free()
 	var menu := (load(KIT + "examples/scenes/menus/main_menu/main_menu.tscn") as PackedScene).instantiate() as MainMenu
 	menu.game_scene_path = GAME

@@ -12,11 +12,15 @@ hairline that thin out, hair that hangs from head and spine, 15 face shapes made
 the lower teeth with it and leaves the upper ones on the skull, a smile that reaches the eyes and leans to one side,
 a normal map of the face's folds with the marks of where they lie, and an export that carries all of it; a face that
 measures what good-looking faces measure where MakeHuman's own does not, with brows painted for it, a groomed
-skin, and hair that stands off the skull; a twelve-year-old's face of a size for its age; a human for a crowd on the
-low-poly proxy; refusals that name what is taken, before anything is made; a body other than MakeHuman's base mesh
-refused a face; and a human that fails halfway leaving nothing in the scene.
+skin, and hair that stands off the skull; a twelve-year-old's face of a size for its age; a man on the rig with breast
+bones, finished as on game_engine; a human for a crowd on the low-poly proxy, whose rig's action and unmuted NLA
+track are its file's clips, and no other action; refusals that name what is taken, before anything is made, a rig that human() cannot finish among
+them; seeds n and -n that draw two faces; humans made with MPFB's own services before and after human(), whose
+pictures human() leaves as they are; a body other than MakeHuman's base mesh refused a face; and a human that fails
+halfway leaving nothing in the scene.
 """
 
+import hashlib
 import importlib
 import json
 import math
@@ -295,6 +299,7 @@ def faced(folder):
 def natural(folder):
     """Make humans with wasd_mpfb.human, give one a face, export them, and check what makes a face fit to be seen."""
     import numpy
+    import wasd_addons
     import wasd_mpfb
 
     def clear():
@@ -357,13 +362,15 @@ def natural(folder):
                 "jaw": (spots[7459].x - spots[mirrored(7459)].x) / (spots[12362].x - spots[mirrored(12362)].x)}
 
     clear()
-    # Every argument is checked before anything is made: a refusal leaves the scene empty.
+    # Every argument is checked before anything is made: a refusal leaves the scene empty. A rig whose bones human()
+    # cannot finish the hair and the skin by, such as cmu_mb, is refused with the way to a bare human on it.
     for call, word in ((lambda: wasd_mpfb.human(gender="other"), "female"), (lambda: wasd_mpfb.human(eyes="purple"), "hazel"),
                        (lambda: wasd_mpfb.human(hair="no_such_hair"), "long01"), (lambda: wasd_mpfb.human(hair_color="pink"), "auburn"),
                        (lambda: wasd_mpfb.human(detail="medium"), "low"), (lambda: wasd_mpfb.human(ethnicity="martian"), "asian"),
                        (lambda: wasd_mpfb.human(outfit=("male_casualsuit1",)), "male_casualsuit01"), (lambda: wasd_mpfb.human(seed=1.5), "integer"),
                        (lambda: wasd_mpfb.human(age=8), "12 to 90"), (lambda: wasd_mpfb.human(build={"age": 0.2}), "muscle"),
-                       (lambda: wasd_mpfb.human(ethnicity={"asian": 0}), "share"), (lambda: wasd_mpfb.human(rig="unreal"), "game_engine")):
+                       (lambda: wasd_mpfb.human(ethnicity={"asian": 0}), "share"), (lambda: wasd_mpfb.human(rig="unreal"), "game_engine"),
+                       (lambda: wasd_mpfb.human(rig="cmu_mb"), 'add_builtin_rig(body, "cmu_mb")')):
         try:
             call()
             check(False, "human() took an argument it does not know")
@@ -371,8 +378,63 @@ def natural(folder):
             check(word in str(error) and not bpy.data.objects, "a refusal does not name what is taken, or comes after a body was made: %s" % error)
         clear()
 
+    # Seeds n and -n draw two faces: Python's Random would take both by their size alone.
+    services = importlib.import_module(next(a.module for a in bpy.context.preferences.addons if a.module.split(".")[-1] == "mpfb") + ".services")
+    drawn = []
+    for seed in (7, -7):
+        bare = services.HumanService.create_human()
+        if services.TargetService.has_any_shapekey(bare):
+            services.TargetService.bake_targets(bare)
+        wasd_mpfb.human.__globals__["_shape_face"](services, bare, "female", 0.0, {"caucasian": 1.0, "asian": 0.0, "african": 0.0}, 1.0, seed)
+        drawn.append([vertex.co.copy() for vertex in bare.data.vertices])
+        bpy.data.objects.remove(bare)
+    apart = max((first - second).length for first, second in zip(*drawn))
+    check(apart > 0.001, "the seeds 7 and -7 draw faces %.5f m apart at most" % apart)
+
+    # A human made with MPFB's own services before human(), and one made after it, of the same skin, hair, teeth, and
+    # lashes: human() changes its own copies of those pictures, and neither plain human shows what it made of them.
+    def plain_human():
+        made = services.HumanService.create_human()
+        services.HumanService.add_builtin_rig(made, "game_engine")
+        services.HumanService.set_character_skin(os.path.join(wasd_addons.assets(ADDON_ID), "skins", "young_caucasian_female", "young_caucasian_female.mhmat"),
+                                                 made, skin_type="GAMEENGINE", material_instances=False)
+        parts = [made]
+        for folder, name, kind in (("hair", "long01", "Hair"), ("teeth", "teeth_base", "Teeth"), ("eyelashes", "eyelashes02", "Eyelashes")):
+            parts.append(services.HumanService.add_mhclo_asset(os.path.join(wasd_addons.assets(ADDON_ID), folder, name, name + ".mhclo"), made,
+                                                               asset_type=kind, subdiv_levels=0))
+        return made, parts
+
+    def shown(parts):
+        """Each image node of the parts' materials, with its picture's name, the md5 of its pixels, and its marks."""
+        found = {}
+        for part in parts:
+            for node in part.material_slots[0].material.node_tree.nodes:
+                if node.type == 'TEX_IMAGE' and node.image is not None:
+                    values = numpy.empty(node.image.size[0] * node.image.size[1] * 4, dtype=numpy.float32)
+                    node.image.pixels.foreach_get(values)
+                    found[part.material_slots[0].material.name, node.name] = (node.image.name, hashlib.md5(values.tobytes()).hexdigest(), tuple(sorted(node.image.keys())))
+        return found
+
+    first, first_parts = plain_human()
+    before = shown(first_parts)
     body = wasd_mpfb.human("female", age=27, eyes="hazel", hair_color="brown", seed=3)
     rig = body.parent
+    after = shown(first_parts)
+    check(after == before and not any(marks for _, _, marks in before.values()),
+          "human() changed the pictures of a human made before it: %s" % sorted(key for key in before if after.get(key) != before[key] or before[key][2]))
+    later, later_parts = plain_human()
+    pristine = [(name, digest, marks) for name, digest, marks in shown(later_parts).values()]
+    check(sorted(pristine) == sorted(before.values()), "a human made after human() shows %s, not %s" % (sorted(pristine), sorted(before.values())))
+    users = bpy.data.user_map(subset=set(bpy.data.images))
+    own = {(material.name, node.name): node.image.name for child in rig.children if child.type == 'MESH' for material in [child.material_slots[0].material]
+           for node in material.node_tree.nodes if node.type == 'TEX_IMAGE' and node.image is not None
+           and any(key.startswith("wasd_") for key in node.image.keys()) and users[node.image] != {material}}
+    skin = {node.name: node.image for node in body.material_slots[0].material.node_tree.nodes if node.type == 'TEX_IMAGE'}
+    check(not own and skin["AlphaMapTexture"] == skin["DiffuseTexture"], "pictures that human() changed and other materials show: %s; the skin's alpha map shows %s"
+          % (own, skin["AlphaMapTexture"].name))
+    for made in (first, later):
+        for obj in [made.parent, *made.parent.children]:
+            bpy.data.objects.remove(obj)
     if not check(rig is not None and rig.type == 'ARMATURE' and len(rig.data.bones) == 53, "human() made no body on the game skeleton"):
         return
     eyes, hair, teeth, tongue = worn(body, ".eyes_hazel"), worn(body, ".hair_long01"), worn(body, "teeth"), worn(body, "tongue")
@@ -503,9 +565,9 @@ def natural(folder):
     check(made["bones"] == 55 and 30000 < sum(made["triangles"].values()) < 50000 and made["bytes"] == len(data) < 14000000,
           "export() reported %d bones, %d triangles, and %d bytes" % (made["bones"], sum(made["triangles"].values()), made["bytes"]))
     check(max(targets.values()) == 15 and "occlusionTexture" in skin and skin.get("alphaMode", "OPAQUE") == "OPAQUE" and max(max(size) for size in sizes) == 1024
-          and all(any(word in name for name in colored) for word in ("long01", "eyelashes", "teeth", "tongue")),
-          "the file has %s shapes on the body, the skin %s, pictures up to %d px, and colors on %s"
-          % (max(targets.values()), sorted(skin), max(max(size) for size in sizes), colored))
+          and all(any(word in name for name in colored) for word in ("long01", "eyelashes", "teeth", "tongue")) and "animations" not in scene,
+          "the file has %s shapes on the body, the skin %s, pictures up to %d px, colors on %s, and the clips %s"
+          % (max(targets.values()), sorted(skin), max(max(size) for size in sizes), colored, [clip.get("name") for clip in scene.get("animations", [])]))
 
     # The face's folds: the skin has a normal map of their grooves at no strength, so that a material that knows
     # nothing of them shows a smooth face, and the body's second UV map marks where a smile folds the face and, in
@@ -541,11 +603,21 @@ def natural(folder):
     check(worn(body, "eyebrow004") is not None and "eyebrow004" in picture(worn(body, "eyebrow004")).name,
           "a named eyebrow asset did not bring its own picture")
     # A man's face of the same kind with looks: wider-set eyes and a wider mouth than MakeHuman's own, and no makeup.
+    # He stands on the rig with breast bones, which human() finishes as it does game_engine: a skin that tells a game
+    # where it is hollow, a hairline that thins out, and hair that hangs from the head, the neck, and the spine.
     clear()
-    body = wasd_mpfb.human("male", age=45, ethnicity="african", eyes="dark", hair_color="black", brows=False)
+    body = wasd_mpfb.human("male", age=45, ethnicity="african", eyes="dark", hair_color="black", brows=False, rig="game_engine_with_breast")
     good = face(body)
     check(good["pupils"] > plain["pupils"] + 2.0 and good["mouth"] > plain["mouth"] + 3.0 and worn(body, "eyebrow") is None and worn(body, ".hair_short01") is not None,
           "a man with looks has pupils %.1f mm apart (%.1f without) and a mouth %.1f mm wide (%.1f)" % (good["pupils"], plain["pupils"], good["mouth"], plain["mouth"]))
+    hair = worn(body, ".hair_short01")
+    weighted = {hair.vertex_groups[entry.group].name for vertex in hair.data.vertices for entry in vertex.groups if entry.weight > 0.01} if hair else set()
+    finished = any(node.type == 'GROUP' and node.node_tree is not None and node.node_tree.name == "glTF Material Output"
+                   for node in body.material_slots[0].material.node_tree.nodes)
+    check(len(body.parent.data.bones) == 55 and finished and colors(hair) and min(colors(hair)) < 0.2 and weighted
+          and all(name in ("head", "neck_01") or name.startswith("spine") for name in weighted),
+          "on the rig with breast bones (%d bones) the skin is finished: %s, the hairline thins out: %s, and the hair hangs on %s"
+          % (len(body.parent.data.bones), finished, bool(colors(hair)) and min(colors(hair)) < 0.2, sorted(weighted)))
 
     # A human that fails halfway leaves nothing in the scene, and the next one is Human again. Its seed is negative,
     # which the brows, painted before the failure, take as they take any other.
@@ -576,9 +648,28 @@ def natural(folder):
           % (child.name, young["pupils"], young["mouth"], fair["pupils"], fair["mouth"]))
 
     # A human for a crowd: the 1,460-triangle proxy, less what its clothes hide, with painted low-poly eyes and
-    # without brows, lashes, or teeth, and dressed in one asset given by its name.
+    # without brows, lashes, or teeth, and dressed in one asset given by its name. Its rig waves and has an NLA track
+    # that nods and a muted one that idles: the export writes the wave and the nod as its clips, and neither the idle nor
+    # another action of the file that moves the same bones, and leaves the tracks as they were.
     clear()
     body = wasd_mpfb.human("male", age=35, detail="low", outfit="male_casualsuit01")
+    arm = body.parent.pose.bones["upperarm_l"]
+    arm.rotation_mode = 'XYZ'
+    actions = {}
+    for name, keys in (("Bow", ((1, 0.0), (10, 30.0))), ("Idle", ((1, 0.0), (8, 5.0))), ("Nod", ((1, 0.0), (6, 15.0))),
+                       ("Wave", ((1, 0.0), (12, 60.0), (24, 0.0)))):
+        if body.parent.animation_data is not None:
+            body.parent.animation_data.action = None
+        for frame, angle in keys:
+            arm.rotation_euler = (0.0, 0.0, math.radians(angle))
+            arm.keyframe_insert("rotation_euler", frame=frame)
+        actions[name] = body.parent.animation_data.action
+        actions[name].name = name
+    tracks = body.parent.animation_data.nla_tracks
+    tracks.new().strips.new("Nod", 1, actions["Nod"])
+    muted = tracks.new()
+    muted.strips.new("Idle", 1, actions["Idle"])
+    muted.mute = True
     path = os.path.join(folder, "mpfb_crowd.glb")
     made = wasd_mpfb.export(body, path, texture_size=512)
     proxy = next((count for name, count in made["triangles"].items() if "proxy741" in name), 0)
@@ -586,6 +677,12 @@ def natural(folder):
           and not any(word in name for name in made["triangles"] for word in ("eyebrow", "eyelashes", "teeth"))
           and any("male_casualsuit01" in name for name in made["triangles"]),
           "a human for a crowd has %s and %d bytes" % (made["triangles"], made["bytes"]))
+    data = open(path, "rb").read()
+    scene = json.loads(data[20:20 + struct.unpack("<I", data[12:16])[0]])
+    clips = {clip.get("name"): {scene["nodes"][channel["target"]["node"]].get("name") for channel in clip["channels"]} for clip in scene.get("animations", [])}
+    check(sorted(clips) == ["Nod", "Wave"] and "upperarm_l" in clips["Wave"] and muted.mute and not muted.strips[0].mute,
+          "the waving human's file has the clips %s, and the muted track is muted %s with its strip muted %s"
+          % ({name: len(nodes) for name, nodes in clips.items()}, muted.mute, muted.strips[0].mute))
 
 
 folder = tempfile.mkdtemp(prefix="wasd-smoke-mpfb-")

@@ -18,6 +18,7 @@ import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { PolyHavenApi } from './api.ts'
+import { POLYHAVEN_ERRORS } from './errors.ts'
 import { polyHavenMcpProvider } from './mcp.ts'
 import { polyHavenToolDefinitions, type PolyHavenToolHost } from './tools.ts'
 
@@ -70,12 +71,14 @@ export function apply(ctx: Context, config: Config): void {
     fetch: (input, init) => fetch(input, init),
     now: () => Date.now(),
   })
-  const folder = downloadFolders(ctx)
+  const folder = downloadFolders(ctx, POLYHAVEN_ERRORS)
   const host: PolyHavenToolHost = {
     api,
     maxDownloadBytes: config.maxDownloadBytes,
     requestTimeoutMs: config.requestTimeoutMs,
     downloadTimeoutMs: config.downloadTimeoutMs,
+    // One count of held folders for every download of this plugin, from Sessions and connected agents alike.
+    folders: new Map(),
     directory: (requested, id, exec) => folder(requested, join('assets', 'polyhaven', id), exec),
   }
   // Each preview becomes an attachment that the Session's model receives; a model that does not accept images gets none.

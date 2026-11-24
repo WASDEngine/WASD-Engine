@@ -3,8 +3,9 @@ extends Node3D
 ## changes to a scene behind its loading screen while frames go on being drawn, the bar only moves forward, the new
 ## scene wakes paused and runs once the screen has gone, what the game spawns later is shown once and stays loaded
 ## until the next change, a screen of the game's own is told the progress and a tip, a 2D scene loads the same
-## way, a second change is refused while one runs, a path without a scene changes nothing, a scene that does not
-## load brings back the scene that was left, and a resource loads in steps on its own.
+## way and shows a 2D guest where its camera looks, far from the origin, a second change is refused while one runs,
+## a path without a scene changes nothing, a scene that does not load brings back the scene that was left, and a
+## resource loads in steps on its own.
 
 const ID := "wasd-loading"
 
@@ -101,9 +102,12 @@ class Runner extends Node:
 			return _fail("after the next change the guest is still cached, or was shown again")
 		loader.warm_up = true
 		loader.screen_scene = null
-		var again: Node = await loader.change_scene("res://wasd_smoke/flat.tscn", ["res://wasd_smoke/guest.tscn"])
+		# The 2D scene's camera looks 2,000 pixels from the origin: a 2D guest stands where it looks, so it is drawn.
+		var again: Node = await loader.change_scene("res://wasd_smoke/flat.tscn", ["res://wasd_smoke/guest.tscn", "res://wasd_smoke/guest_2d.tscn"])
 		if again == null or int(tree.root.get_meta(&"guests_seen", 0)) != 2:
 			return _fail("the warm-up of a 2D scene showed the guest %s times" % [tree.root.get_meta(&"guests_seen", 0)])
+		if not tree.root.get_meta(&"guest_2d_shown", false) or again.find_child("Guest2D", true, false) != null:
+			return _fail("the warm-up of a 2D scene whose camera looks away from the origin drew the 2D guest %s, and it is still in the scene %s" % [tree.root.get_meta(&"guest_2d_shown", false), again.find_child("Guest2D", true, false) != null])
 
 		# 5. A path that holds no scene changes nothing; a scene that does not load brings back the one that was left.
 		var current := tree.current_scene

@@ -107,6 +107,7 @@ let calls = 0
  * @param name - tool name.
  * @param args - arguments.
  * @param agent - calling Agent; the composition's image-capable Agent by default.
+ * @param signal - cancellation of the call; none by default.
  * @returns the settled result.
  */
 export function callTool(
@@ -114,9 +115,20 @@ export function callTool(
   name: string,
   args: Record<string, unknown> = {},
   agent = composition.agent,
+  signal = new AbortController().signal,
 ): Promise<ToolExecutionResult> {
   calls += 1
-  return executeToolFixture(composition.ctx, { signal: new AbortController().signal, callId: ToolCallId(`ambientcg-${calls}`), name, arguments: args, agent })
+  return executeToolFixture(composition.ctx, { signal, callId: ToolCallId(`ambientcg-${calls}`), name, arguments: args, agent })
+}
+
+/**
+ * The class and code that a failed result records.
+ * @param result - tool result.
+ * @returns the failure's name and code, or undefined for a success or a failure without them.
+ */
+export function failure(result: ToolExecutionResult): { readonly name: string; readonly code: string } | undefined {
+  if (!result.isError || result.error.info === undefined) return undefined
+  return { name: result.error.info.name, code: result.error.info.code }
 }
 
 /**

@@ -192,6 +192,8 @@ static func cutout(folder: String, options := {}) -> ShaderMaterial:
 	var region: Rect2 = options.get("region", Rect2(0.0, 0.0, 1.0, 1.0))
 	material.set_shader_parameter(&"region", Vector4(region.position.x, region.position.y, region.size.x, region.size.y))
 	if soft:
+		# Under WASD Weather's snow and wet (-2) and WASD Decals' marks and blob shadows (-1), which lie over it.
+		material.render_priority = -3
 		material.set_shader_parameter(&"strength", options.get("strength", 1.0))
 	else:
 		material.set_shader_parameter(&"threshold", options.get("threshold", 0.5))
@@ -391,10 +393,11 @@ static func mouth(picture: Texture2D, tint := Color.WHITE) -> ShaderMaterial:
 ## Such a character may come in with every material see-through, and its eyes, teeth, and the back of its hair then
 ## show through its face. This makes skin, eyes, teeth, and whole cloth solid, gives the body the skin shader, the
 ## eyes their shade, shine, and catchlight, and the teeth and tongue the mouth's shader, lets hair thin out along
-## its hairline, blends brows and lashes over the skin, and cuts cloth with holes out. It tells the parts by their
-## names (body or skin, eye, teeth or tongue, brow, lash, hair) and the rest by whether their picture has holes.
-## Returns what it took each mesh for, by its first surface: "skin", "eyes", "teeth", "lashes", "hair", "cutout",
-## or "solid".
+## its hairline, blends brows and lashes over the skin, and cuts cloth with holes out. It tells each surface by its
+## material's name (body or skin, eye, teeth or tongue, brow, lash, hair), else by its mesh's name unless another
+## surface's material already names that part, as a one-mesh character's "Skin" does for a mesh named "Body", and
+## else by whether its picture has holes. A mesh of nothing but brows and lashes casts no shadow. Returns what it
+## took each mesh for, by its first surface: "skin", "eyes", "teeth", "lashes", "hair", "cutout", or "solid".
 static func human(root: Node) -> Dictionary:
 	var report := {}
 	var meshes: Array[Node] = root.find_children("*", "MeshInstance3D", true, false)
@@ -404,38 +407,51 @@ static func human(root: Node) -> Dictionary:
 		var mesh := node as MeshInstance3D
 		if mesh.mesh == null:
 			continue
+		# The parts that the mesh's materials name. The mesh keeps its own materials, so a second call sees the same.
+		var named := {}
 		for surface: int in mesh.mesh.get_surface_count():
-			var material := mesh.get_active_material(surface) as BaseMaterial3D
+			for material: Material in [mesh.mesh.surface_get_material(surface), mesh.get_active_material(surface)]:
+				if material != null and _human_part(material.resource_name) != "":
+					named[_human_part(material.resource_name)] = true
+		var by_mesh := _human_part(mesh.name)
+		var kinds := {}
+		# The name that told each surface's part, for brows among lashes and for curls.
+		var told := {}
+		var cards_only := true
+		for surface: int in mesh.mesh.get_surface_count():
+			var shown := mesh.get_active_material(surface)
+			var material := shown as BaseMaterial3D
 			if material == null:
+				cards_only = cards_only and shown == null
 				continue
-			var name := ("%s %s" % [mesh.name, material.resource_name]).to_lower()
-			var kind := "solid"
-			# Brown eyes are no brows.
-			if name.replace("brown", "").contains("brow") or name.contains("lash"):
-				kind = "lashes"
-			elif name.contains("teeth") or name.contains("tooth") or name.contains("tongue"):
-				kind = "teeth"
-			elif name.contains("eye") or name.ends_with("low-poly") or name.ends_with("high-poly"):
-				kind = "eyes"
-			elif name.contains("body") or name.contains("skin"):
-				kind = "skin"
-			elif name.contains("hair"):
-				kind = "hair"
-			elif _has_holes(material.albedo_texture):
-				kind = "cutout"
+			var by := String(material.resource_name)
+			var kind := _human_part(by)
+			if kind == "" and by_mesh != "" and not named.has(by_mesh):
+				by = String(mesh.name)
+				kind = by_mesh
+			if kind == "":
+				kind = "cutout" if _has_holes(material.albedo_texture) else "solid"
+			kinds[surface] = kind
+			told[surface] = by.to_lower().replace("brown", "")
+			cards_only = cards_only and kind == "lashes"
+		if cards_only and not kinds.is_empty():
+			# Cards of brows and lashes cast no shadow: a card's would lie on the lid and the eye as a solid band.
+			mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for surface: int in kinds:
+			var material := mesh.get_active_material(surface) as BaseMaterial3D
+			var kind: String = kinds[surface]
+			var by: String = told[surface]
 			# A head's mesh may hold the inside of its mouth after its skin: the mesh counts as its first surface.
 			if not report.has(String(mesh.name)):
 				report[String(mesh.name)] = kind
 			if kind == "lashes":
 				# Fine hairs that lie on the skin: blended over it, which is safe now that the skin under them is solid.
-				# Their cards cast no shadow: a card's would lie on the lid and the eye as a solid band.
-				var brows := name.contains("brow")
+				var brows := by.contains("brow")
 				mesh.set_surface_override_material(surface, lashes(material.albedo_texture, material.albedo_color, 0.5 if brows else 1.0, 0.0 if brows else 1.0))
-				mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				continue
 			if kind == "hair":
 				# The mpfb guide's humans name the material of curly hair with "curl".
-				mesh.set_surface_override_material(surface, hair(material.albedo_texture, material.albedo_color, {"straight": 0.0 if name.contains("curl") else 1.0}))
+				mesh.set_surface_override_material(surface, hair(material.albedo_texture, material.albedo_color, {"straight": 0.0 if by.contains("curl") else 1.0}))
 				continue
 			if kind == "cutout":
 				# Cloth with holes, and hair that does not say what it is: cut out, not blended. Every pixel is either
@@ -466,6 +482,24 @@ static func human(root: Node) -> Dictionary:
 	return report
 
 
+## The part of a human that a mesh's or a material's name tells: "lashes" (brows too), "teeth" (the tongue too),
+## "eyes", "skin", or "hair"; empty when it tells none.
+static func _human_part(name: String) -> String:
+	var lower := name.to_lower()
+	# Brown eyes are no brows.
+	if lower.replace("brown", "").contains("brow") or lower.contains("lash"):
+		return "lashes"
+	if lower.contains("teeth") or lower.contains("tooth") or lower.contains("tongue"):
+		return "teeth"
+	if lower.contains("eye") or lower.ends_with("low-poly") or lower.ends_with("high-poly"):
+		return "eyes"
+	if lower.contains("body") or lower.contains("skin"):
+		return "skin"
+	if lower.contains("hair"):
+		return "hair"
+	return ""
+
+
 ## One white pixel, for a shader that asks for a picture where a material has only a color.
 static func _white() -> ImageTexture:
 	if _white_pixel == null:
@@ -489,19 +523,27 @@ static func _has_holes(picture: Texture2D) -> bool:
 	return found
 
 
-## Gives a material to every mesh and CSG shape under `node`, `node` included. What a WASD add-on's node draws by its
-## own means, such as a halo, a fog bank, water, decals, a crowd, a rope, or cloth, is left out with all under it.
+## Gives a material to every mesh and CSG shape under `node`, `node` included. A WASD add-on's node of any kind is
+## left out with all under it: what it draws by its own means, such as an effect, a halo, a fog bank, water, decals, a
+## crowd, a rope, or cloth, and what hangs under it, such as a WasdCharacter3D's model, which paint() reaches when it
+## is handed the model itself. Handed a WASD add-on's node, or null, it changes nothing and warns.
 static func paint(node: Node, material: Material) -> void:
+	if node == null:
+		push_warning("WasdSurface.paint() was handed no node, as a WasdCharacter3D's model is before the character enters the tree.")
+		return
+	if _is_wasd_node(node):
+		push_warning("WasdSurface.paint(): %s is a WASD add-on's node, which paint() leaves alone with all under it. Hand it the node that holds the meshes, such as a WasdCharacter3D's model." % [node.name])
+		return
 	var open: Array[Node] = [node]
 	while not open.is_empty():
 		var part: Node = open.pop_back()
-		if part is GeometryInstance3D and _is_wasd_node(part):
-			continue
 		if part is MeshInstance3D or part is MultiMeshInstance3D:
 			(part as GeometryInstance3D).material_override = material
 		elif part is CSGPrimitive3D:
 			(part as CSGPrimitive3D).material = material
-		open.append_array(part.get_children())
+		for child: Node in part.get_children():
+			if not _is_wasd_node(child):
+				open.append(child)
 
 
 ## Whether a node's script is a WASD add-on's or extends one.

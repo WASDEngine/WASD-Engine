@@ -26,7 +26,13 @@ CROWD_BAKED res://characters/walker.glb: 2649 vertices in 4 surfaces, clips Idle
 - The file grows with vertices times frames, 16 bytes each before compression. Keep a crowd model under about 3,000 vertices (in Blender, a Decimate modifier above the Armature modifier; an `mpfb` human with `detail="low"` needs it too) and `--fps` at 10 to 15; frames in between are blended.
 - Each surface keeps its material's color, texture, roughness, and metal; see-through materials are cut out at 40% cover.
 
-`CROWD_FAILED` says what is missing. From code, `WasdCrowdBaker.bake(model, ["moves/Walk"], 12.0)` returns the same `WasdCrowdData` for a model instance, in a tenth of a second for a model this size, so a game may also bake while a level loads.
+`CROWD_FAILED` says what is missing. From code, `WasdCrowdBaker.bake(model, ["moves/Walk"], 12.0)` returns the same `WasdCrowdData` for a model instance, in the scene tree or not, in a tenth of a second for a model this size, so a game may also bake while a level loads. Free an instance that was made only for the bake:
+
+```gdscript
+var walker := preload("res://characters/walker.glb").instantiate() as Node3D
+var walker_data := WasdCrowdBaker.bake(walker, ["Walk"], 12.0)    # a .glb's clips have no library prefix
+walker.free()
+```
 
 ## 2. Draw the crowd
 

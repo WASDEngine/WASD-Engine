@@ -127,3 +127,13 @@ export function callTool(
 export function text(result: ToolExecutionResult): string {
   return result.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
 }
+
+/**
+ * The class and code that a failed result records.
+ * @param result - tool result.
+ * @returns the failure's name and code, or undefined for a success or a failure without them.
+ */
+export function failure(result: ToolExecutionResult): { readonly name: string; readonly code: string } | undefined {
+  if (!result.isError || result.error.info === undefined) return undefined
+  return { name: result.error.info.name, code: result.error.info.code }
+}

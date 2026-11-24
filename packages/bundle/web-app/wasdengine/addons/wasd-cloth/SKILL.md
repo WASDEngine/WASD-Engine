@@ -63,7 +63,7 @@ These break cloth without an error:
 
 ## WasdClothWind3D
 
-An Area3D that blows on every soft body in its `box_size` box (100 by 40 by 100 m around it); WasdClothChains3D follows it too. Set `direction`, `speed` in m/s (2 is a breeze, 6 stiff, 12 a gale), `gustiness` (0 to 1), `turbulence` (degrees the direction swings), and `cloth_pressure` (scales the push on sheets). `direction` is a world direction: turning the zone, or a ship that carries it, turns only its box. Wind along a sheet's surface does not push it: aim it across. `WasdClothWind3D.velocity_at(get_tree(), position)` returns the wind for your own code. With the `wasd-weather` add-on, `zone.add_to_group("wasd_wind")` hands the zone the weather's wind, so cloth flies harder in a storm.
+An Area3D that blows on every soft body in its `box_size` box (100 by 40 by 100 m around it); WasdClothChains3D follows it too. Set `direction`, `speed` in m/s (2 is a breeze, 6 stiff, 12 a gale), `gustiness` (0 to 1), `turbulence` (degrees the direction swings), and `cloth_pressure` (scales the push on sheets). `direction` is a world direction: turning the zone, or a ship that carries it, turns only its box. Wind along a sheet's surface does not push it: aim it across. `WasdClothWind3D.velocity_at(get_tree(), position)` returns the wind for your own code. With the `wasd-weather` add-on, `zone.add_to_group("wasd_wind")` hands the zone the weather's wind, so cloth flies harder in a storm, and its own when the weather leaves.
 
 ## WasdClothChains3D
 

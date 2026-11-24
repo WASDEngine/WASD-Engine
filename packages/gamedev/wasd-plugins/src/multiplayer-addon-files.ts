@@ -107,7 +107,7 @@ export const SHIPPED_ADDON_FILES: Readonly<Record<string, readonly Readonly<Reco
       'internal/web_bridge.gd': 'fe466bd7bdcefefe49880f266b7a97946049db03bace164cbf662606d709ee84',
       'plugin.cfg': '705fec5fc81c334eaf9050464ef4af9a4df93a4f1a53619a3feaf64d8c0cb880',
       'plugin.gd': '51251ff3e0555ad127ebb75bd4aac328ef08ea824e445a59a273a5dcc9664b1e',
-      'wasd_multiplayer.gd': '562528f42eba921ad9c3b74466f7d4605975b37f8115ab2815dab709b3c8283f',
+      'wasd_multiplayer.gd': '43d16dba0685012d18167d3ac56a53ef6f157ae3d0da8a4810a10ab4555745ee',
     },
   ],
 }
@@ -125,6 +125,7 @@ export const SHIPPED_ADDON_DOCS: Readonly<Record<string, readonly string[]>> = {
     'aadfd806ea28a5987bf7409b92cfa8f1868f1214ae510904aca2fd50a4ec6c0a',
     'c1f37784e2ce49e4ba719e5d33369cb069a068b65f27b77eda91f1534b0cac4b',
     '4f3d818e4f2502bd949fc0772be997624b3d8fc823d762890fa988cb77dffb1d',
+    '2c2b9bc51928bb04c68de3bd9be15c948fd518f3071e7a477e08fd71c0778d64',
   ],
   'README.zh.md': [
     '69a4b42c89bcd3fb3b7e106a8b36f0959e625275be29affbb81488604c8a1f2b',
@@ -133,6 +134,7 @@ export const SHIPPED_ADDON_DOCS: Readonly<Record<string, readonly string[]>> = {
     'a852c5175c14bb34b09a238a134489223ed1e40f423b0914d04e89eaa70bc5b1',
     'd11ae7b9b01f957b99d8d6c2bac8dc08d52c43fcd60cb10ed83137d5b2393ee4',
     '36cb3bcf412cf309e4bf73f75e733647b9ceaa48051043fc5e49faf2b39c7637',
+    'fad40a9407ad3216a443eb28e5c68c4bf108f6f9ca1a9534aa419ec925ca280e',
   ],
 }
 

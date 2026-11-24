@@ -1,7 +1,8 @@
 extends Node
-## Maaack's Menus Template smoke test: the main menu shows its buttons and opens the options menu, a volume change
-## reaches the audio server and the player's saved settings, New Game changes to the game scene, and there the pause
-## controller opens the pause menu on ui_cancel and pauses the game until the menu closes.
+## Maaack's Menus Template smoke test: the credits credit the opening screen's Godot Engine logo, the main menu shows
+## its buttons and opens the options menu, a volume change reaches the audio server and the player's saved settings,
+## New Game changes to the game scene, and there the pause controller opens the pause menu on ui_cancel and pauses the
+## game until the menu closes.
 
 const ID := "maaacks-menus-template"
 const KIT := "res://addons/maaacks_menus_template/"

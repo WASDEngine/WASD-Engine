@@ -12,7 +12,7 @@ import importlib, wasd_addons
 bake = importlib.import_module(wasd_addons.enable("wasd-bake-blender"))
 ```
 
-glTF carries images, not node materials: a model whose materials are built from Noise, Voronoi, Wave, Color Ramp, or Bump nodes arrives in Godot white. Baking turns what the materials show into images. Every function restores the render settings it changed and returns a dict: read it before going on.
+glTF carries images, not node materials: a model whose materials are built from Noise, Voronoi, Wave, Color Ramp, or Bump nodes arrives in Godot white. Baking turns what the materials show into images. Every function restores the render and bake settings it changed, leaves the model as it was when its bake fails, and returns a dict: read it before going on.
 
 ## Bake a model's materials
 
@@ -51,7 +51,7 @@ The simple model must lie where the detailed one does. Its relief becomes a norm
 - `extrusion` (0.05 m): how far outside the low model the rays start. Raise it when parts of the detail are missed and come out flat; lower it when neighboring parts bleed in.
 - Give the low model smooth shading first (`bpy.ops.object.shade_smooth()`), or its facets show through the normal map.
 - `high` may be a list of objects.
-- A low model baked before keeps the maps of that bake that `maps` leaves out. Those of an earlier `from_high` come again from the detailed model, so run it again to change `extrusion`; those of `textures()` stay as they are, on their UV map. `textures(low, maps=("color",))` and then `from_high(low, high, maps=("normal",))` give a model its own colors and the detail's relief; the dict's `kept` names what stayed.
+- A low model baked before keeps the maps of that bake that `maps` leaves out. Those of an earlier `from_high` come again from the detailed model, so run it again to change `extrusion`; those of `textures()` stay as they are, on their UV map. `textures(low, maps=("color",))` and then `from_high(low, high, maps=("normal", "ao"))` give a model its own colors, darkened by the detail's creases in place of its own, and the detail's relief; the dict's `kept` names what stayed, and with a `folder` its `files` has the darkened color.
 
 ## Occlusion in vertex colors
 
@@ -60,6 +60,8 @@ print(bake.vertex_ao("Tree"))
 ```
 
 It bakes ambient occlusion into a color attribute and multiplies it into each material's base color, which makes glTF export it and Godot shade with it: no texture, no UV map. A material that other objects without such an attribute show too is copied first, and the objects baked after it that show that material share the copy. It shades only as finely as the mesh is divided, so it suits models of many small faces, such as low-poly trees, rocks, and buildings, not a box of twelve triangles.
+
+A model whose material's Base Color is a color attribute, or is multiplied by one, such as painted vertex colors, is refused: a glTF file carries one vertex color for Godot, and that one is the paint. Bake such a model with `textures()`, which puts its colors and its occlusion into images. A color attribute used otherwise, such as a mask that mixes two colors, does not count.
 
 ## Pitfalls
 

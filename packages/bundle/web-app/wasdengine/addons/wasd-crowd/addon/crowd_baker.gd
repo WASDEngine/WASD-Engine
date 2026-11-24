@@ -11,9 +11,9 @@ const SHADER := preload("res://addons/wasd_crowd/crowd.gdshader")
 const WIDEST := 2048
 
 
-## Bakes `clips` of the model under `root` at `fps` frames a second. `player` is
-## the animation player that holds the clips; without one the first under `root` is used. Returns null, with an
-## error printed, when the model has no skinned mesh or none of the clips.
+## Bakes `clips` of the model under `root` at `fps` frames a second; the model need not be in the scene tree.
+## `player` is the animation player that holds the clips; without one the first under `root` is used. Returns null,
+## with an error printed, when the model has no skinned mesh or none of the clips.
 static func bake(root: Node3D, clips: PackedStringArray, fps := 15.0, player: AnimationPlayer = null) -> WasdCrowdData:
 	var skeleton := _first(root, "Skeleton3D") as Skeleton3D
 	if skeleton == null:
@@ -84,12 +84,21 @@ static func bake(root: Node3D, clips: PackedStringArray, fps := 15.0, player: An
 	var low := Vector3.INF
 	var high := -Vector3.INF
 	var was_playing := player.current_animation
+	# Each bone's place in the skeleton at a frame, from the poses the clip gives the bones, parents first: a skeleton
+	# outside the scene tree, as the model is in bake_crowd.gd's _initialize(), works out its bones' places once and
+	# keeps them, whatever the clip does.
+	var order := _bone_order(skeleton)
+	var placed: Array[Transform3D] = []
+	placed.resize(skeleton.get_bone_count())
 	for short: String in table:
 		var entry: Dictionary = table[short]
 		player.play(entry["clip"])
 		for frame: int in entry["frames"]:
 			player.seek(frame / float(entry["fps"]), true)
-			skeleton.force_update_all_bone_transforms()
+			for bone: int in order:
+				var own := skeleton.get_bone_pose(bone) if skeleton.is_bone_enabled(bone) and not skeleton.show_rest_only else skeleton.get_bone_rest(bone)
+				var parent := skeleton.get_bone_parent(bone)
+				placed[bone] = placed[parent] * own if parent >= 0 else own
 			var line: int = (int(entry["start"]) + frame) * data.rows * data.width * 4
 			for part: Dictionary in parts:
 				var binds: Array[int] = part["binds"]
@@ -97,7 +106,7 @@ static func bake(root: Node3D, clips: PackedStringArray, fps := 15.0, player: An
 				# Where each of the mesh's joints carries a vertex at this frame, in the model's own space.
 				var carry: Array[Transform3D] = []
 				for bind: int in binds.size():
-					carry.append(to_root * skeleton.get_bone_global_pose(binds[bind]) * poses[bind] if binds[bind] >= 0 else to_root)
+					carry.append(to_root * placed[binds[bind]] * poses[bind] if binds[bind] >= 0 else to_root)
 				var arrays: Array = part["arrays"]
 				var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 				var normal_list: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL] if arrays[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
@@ -186,6 +195,24 @@ static func _material(source: Material, data: WasdCrowdData) -> ShaderMaterial:
 		white.fill(Color.WHITE)
 		material.set_shader_parameter(&"albedo_texture", ImageTexture.create_from_image(white))
 	return material
+
+
+## The skeleton's bones, each after its parent.
+static func _bone_order(skeleton: Skeleton3D) -> PackedInt32Array:
+	var order := PackedInt32Array()
+	var count := skeleton.get_bone_count()
+	var listed := {}
+	for bone: int in count:
+		var chain := PackedInt32Array()
+		var step := bone
+		while step >= 0 and not listed.has(step) and chain.size() < count:
+			chain.append(step)
+			step = skeleton.get_bone_parent(step)
+		chain.reverse()
+		for link: int in chain:
+			listed[link] = true
+			order.append(link)
+	return order
 
 
 static func _first(under: Node, kind: String) -> Node:

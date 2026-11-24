@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-WASD Multiplayer is the Godot 4 add-on that connects a game to WASD Engine's online play: WASD sign-in for players, player-hosted lobbies, and WASD dedicated servers. WASD Engine's multiplayer setup copies this folder into a game as `res://addons/wasd_multiplayer/`, registers the `WasdMultiplayer` autoload, and writes `res://wasd_multiplayer.cfg`. A release from WASD Engine replaces an older copy with its own unless the game changed the add-on's scripts, and neither the setup nor a release overwrites an example or a Markdown file the game changed or writes through a link in this folder, so adapt `examples/` freely and leave the other files as they are. The setup replaces the add-on's own files whatever their changes, after keeping the ones the game changed in `.wasdengine/backups/wasd_multiplayer/<time>/`. The add-on is GDScript only, so Web builds keep working, and its files carry the CC0-1.0 license so that they can ship inside any game.
+WASD Multiplayer is the Godot 4 add-on that connects a game to WASD Engine's online play: WASD sign-in for players, player-hosted lobbies, and WASD dedicated servers. WASD Engine's multiplayer setup copies this folder into a game as `res://addons/wasd_multiplayer/`, registers the `WasdMultiplayer` autoload, and writes `res://wasd_multiplayer.cfg`. A release from WASD Engine replaces an older copy with its own unless the game changed the add-on's scripts, and neither the setup nor a release overwrites an example or a Markdown file the game changed or writes through a link in this folder, so adapt `examples/` freely and leave the other files as they are. The setup replaces the add-on's own files whatever their changes, after keeping the ones the game changed in `.wasdengine/backups/wasd_multiplayer/<time>/`, where a link it moved there still leads to the game's files. When `addons/` or this folder is a link that leads outside the project, as to a copy that several projects share, the setup refuses and a release leaves the copy as it is. The add-on is GDScript only, so Web builds keep working, and its files carry the CC0-1.0 license so that they can ship inside any game.
 
 ## Modes
 
@@ -42,7 +42,7 @@ Coroutines resolve to `{"ok": true, ...}` or to `{"ok": false, "error": <code>, 
 
 | Member | What it does |
 |---|---|
-| `sign_in()` | Signs the player in. On a WASD game page, under any of the site's hostnames, the page answers at once, and the game never opens the sign-in window there; elsewhere a WASD sign-in window opens, and a desktop build that WASD Engine started signs in with the token it got. The sign-in then lasts while the game runs, up to a week. |
+| `sign_in()` | Signs the player in. On a WASD game page, under any of the site's hostnames, the page answers at once, and the game never opens the sign-in window there; elsewhere on the WASD website, as when the game's build there runs in a tab of its own, a WASD sign-in window opens, and a desktop build that WASD Engine started signs in with the token it got. A copy of the Web build hosted anywhere else can't sign players in and fails with `sign_in_unavailable`. The sign-in then lasts while the game runs, up to a week. |
 | `host_lobby(options)` | Hosts a lobby; `options` takes `name`, `public`, `max_players` (2 to 16), and `data`. Resolves with `lobby` and `code`. |
 | `join_lobby(code)` | Joins a lobby by its code and resolves once connected to the host. |
 | `list_lobbies()` | Lists the public lobbies of this release that have room, as `lobbies`. |
@@ -56,7 +56,7 @@ Coroutines resolve to `{"ok": true, ...}` or to `{"ok": false, "error": <code>, 
 | `is_server()`, `is_signed_in()`, `player()`, `role()`, `lobby()`, `players()`, `player_info(peer_id)` | Read the current state. |
 | `stats()` | Traffic in bytes and packets, connected peers, and time per frame. |
 
-`host_lobby()`, `join_lobby()`, and `join_server()` sign the player in first when needed, as `sign_in()` does, so call them from button presses; `list_lobbies()` and `list_servers()` never open the sign-in window and fail with `signed_out` instead.
+`host_lobby()`, `join_lobby()`, and `join_server()` sign the player in first when needed, as `sign_in()` does, so call them from button presses; `list_lobbies()` and `list_servers()` never open the sign-in window and fail with `signed_out` instead, or with `sign_in_unavailable` where `sign_in()` does.
 
 Signals: `signed_in(player)`, `sign_in_failed(reason)`, `lobby_joined(lobby)`, `lobby_updated(lobby)`, `lobby_closed(reason)`, `player_joined(peer_id, player)`, `player_left(peer_id)`, `connected()`, `connection_failed(reason)`, `server_warning(seconds, reason, message)`, `server_waking()`, and `server_stopping()`. A dedicated server receives `server_stopping()` before WASD stops it, also when it goes to sleep without players; save the world in that handler. A save that awaits, such as one that writes in a thread, calls `delay_stop()` first and `stop_ready()` once it has finished, and the server quits once every such save has, or after 15 seconds. `server_waking()` tells a joining player's game that the server is starting, so it can say so. `lobby_closed` names why the lobby ended: `host_left`, `closed`, `replaced`, `kicked` (the host removed this player), `dropped` (the host could not connect to this player in time; joining again is allowed), `left`, or `signal_lost`.
 
@@ -85,6 +85,7 @@ With `WASD_MULTIPLAYER_TEST` set to `host`, `client`, or `server`, the add-on ru
 
 ## Known limitations
 
+- Online play works only on the WASD Engine website and in WASD Engine's game library. A copy of the Web build hosted elsewhere, such as the ZIP file of a Web export uploaded to another game site, can't sign players in, so its sign-in, lobbies, and server joins fail with `sign_in_unavailable` and a message that sends players to the WASD Engine website.
 - Player-hosted play in a native desktop build needs the webrtc-native extension; a desktop test run uses the loopback WebSocket instead.
 - Traffic counts cover multiplayer payloads only, not WebSocket, TLS, DTLS, or IP overhead.
 - A host's lobby cannot move to another player when the host leaves.

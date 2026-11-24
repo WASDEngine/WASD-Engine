@@ -37,18 +37,21 @@ Set the properties before `add_child`, or at any time after: the fur rebuilds. F
 | `normal_strength`, `static_direction_local` | 1, zero | fur grows out of the surface; `static_direction_local = Vector3.DOWN * 0.6` makes it hang |
 | `albedo_color`, `albedo_texture` | light blue | the fur's color, or a texture on the mesh's UV map for spots and stripes |
 | `height_gradient` | dark root to full tip | a `GradientTexture2D` of colors from root to tip |
-| `target_surfaces` | all | surface indices of the mesh that grow fur: the body and not the eyes |
-| `physics_enabled`, `spring_constant`, `mass`, `damping` | true, 80, 0.15, 3 | the fur lags behind its owner's movement and springs back |
-| `lod_enabled`, `lod_min_distance`, `lod_max_distance` | false, 3, 25 | fewer shells with distance from the camera |
+| `target_surfaces` | all | surface indices of the mesh that grow fur: the body and not the eyes (below) |
+| `physics_enabled`, `spring_constant`, `mass`, `damping` | true, 80, 0.15, 3 | the fur lags when the mesh, or the body that carries it, moves or turns, and springs back; after a teleport, such as a respawn, call `fur.init_physics()`, or the fur swings once |
+| `lod_enabled`, `lod_min_distance`, `lod_max_distance` | false, 3, 25 | fewer shells with distance from the camera, also one that hangs in a rig |
 
 Under the fur the mesh keeps its own material: give it the fur's color, darker, so that thin places show skin and not gray.
+
+`target_surfaces` is an `Array[int]`: `fur.target_surfaces = [0]` on the snippet's `var fur := FUR.new()` (with `var fur = FUR.new()`, without the colon, that line fails with "Invalid assignment"), or `target_surfaces = Array[int]([0])` on the Fur node in a `.tscn`. Only those surfaces grow fur, each over its own material: one set with `set_surface_override_material()`, or the Mesh's, as in an imported `.glb`, which the fur copies into the surface's override until the fur is freed or the surface leaves `target_surfaces`: change that surface through `get_surface_override_material()` meanwhile, which a rebuild, such as a new `number_of_shells`, keeps. The fur hangs on the `next_pass` of a surface's override, so give each furry mesh an override of its own, such as a `.duplicate()`: every mesh that shares it grows the fur too. A `material_override` draws over every surface and hides fur on `target_surfaces`: color the skin through the surfaces' materials instead.
 
 ## Pitfalls
 
 - The cost is the number of shells times the mesh's triangles, and each shell is also drawn into every shadow: keep fur to one or two things near the camera, switch `lod_enabled` on for anything that can be far away, and set `cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF` on rugs and moss.
-- The fur is the mesh's `material_overlay`. Whatever else sets an overlay on the same mesh takes the fur off, such as `wasd-weather` covering it with snow: add a furry mesh to the group `wasd_weather_bare`.
+- Without `target_surfaces` the fur is the mesh's `material_overlay`. Whatever else sets an overlay on the same mesh takes the fur off, such as `wasd-weather` covering it with snow: add a furry mesh to the group `wasd_weather_bare`.
 - Strands follow the mesh's UV map: a mesh without one grows no pattern, and a ball's poles show a swirl. Turn the swirl away from the camera or cover it.
 - Fur thicker than the gaps between a character's limbs pokes through them: keep `length` under a third of the thinnest limb.
+- WASD Engine changed the add-on's `so_fluffy.gd` so that the fur swings when any parent of the mesh moves or turns, the level of detail measures from the camera where it is in the world, also when it hangs in a rig, and `target_surfaces` lays the fur over a copy of a surface's own material instead of putting it in that material's place. Keep that file as installed.
 
 ## Check it
 

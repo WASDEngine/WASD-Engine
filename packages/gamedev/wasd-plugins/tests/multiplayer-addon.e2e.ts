@@ -1,7 +1,8 @@
 /**
  * The WASD Multiplayer add-on in a real Godot: sign-in messages count only from the configured site, on any of its
  * origins, a Web build asks the WASD game page that frames it at that page's own origin and never opens the sign-in
- * window there, sign-in failures read as players can act on them, a player token renews itself where no WASD game
+ * window there, nor anywhere but in the game's own build on the WASD website, so a copy hosted elsewhere says it can't
+ * play online, sign-in failures read as players can act on them, a player token renews itself where no WASD game
  * page frames the game and stops once the site refuses, a lobby host takes its ICE servers from the lobby service's
  * welcome and asks for fresh ones before they run out, a joiner that never connects is dropped rather than kicked, a
  * refused relay is named in a failed join, and a closed signal socket's code and reason say why a join ended. Once
@@ -52,9 +53,10 @@ const TEST_SCRIPT = [
   'const Config := preload("res://addons/wasd_multiplayer/internal/config.gd")',
   '',
   '',
-  '# A Web build\'s page bridge: the page that frames the game (parent, "" when the browser does not say) and what the',
-  '# add-on posts to it and opens.',
+  '# A Web build\'s page bridge: the address of the page that runs the game, the page that frames it (parent, "" when the',
+  '# browser does not say), and what the add-on posts to it and opens.',
   'class FakeWeb extends "res://addons/wasd_multiplayer/internal/web_bridge.gd":',
+  '\tvar path := ""',
   '\tvar framed := true',
   '\tvar parent := ""',
   '\tvar posts: Array = []',
@@ -62,6 +64,9 @@ const TEST_SCRIPT = [
   '',
   '\tfunc _init() -> void:',
   '\t\tavailable = true',
+  '',
+  '\tfunc location_path() -> String:',
+  '\t\treturn path',
   '',
   '\tfunc is_framed() -> bool:',
   '\t\treturn framed',
@@ -146,6 +151,12 @@ const TEST_SCRIPT = [
   '\tweb.parent = parent',
   '\tweb.posts.clear()',
   '\tweb.popups.clear()',
+  '',
+  '',
+  '# The page that runs the game is at [param path], as the add-on reads it once the game starts.',
+  'func run_at(mp: Node, web: FakeWeb, path: String) -> void:',
+  '\tweb.path = path',
+  '\tmp._read_build_path()',
   '',
   '',
   'func _ready() -> void:',
@@ -303,6 +314,7 @@ const TEST_SCRIPT = [
   '\tmp._on_web_message("parent", "https://evil.test", {"type": "wasd:play:context", "v": 1, "game_id": played})',
   '\tmp._on_web_message("parent", "https://site.test.evil.test", {"type": "wasd:play:context", "v": 1, "game_id": played})',
   '\tresults["foreign_parent_ignored"] = not mp._parent_wasd and mp._page_origin == ""',
+  '\trun_at(mp, web, "/games/" + played + "/versions/3/index.html")',
   '\tvar foreign: Dictionary = await mp.sign_in()',
   '\tresults["foreign_parent_window"] = [str(foreign.get("error", "")), str(foreign.get("message", "")), web.popups.duplicate()]',
   '',
@@ -311,6 +323,30 @@ const TEST_SCRIPT = [
   '\tvar listed: Dictionary = await mp.list_lobbies()',
   '\tvar hosted: Dictionary = await mp.host_lobby({})',
   '\tresults["unframed_list_and_host"] = [str(listed.get("message", "")), web.popups.size() == 1, str(hosted.get("error", ""))]',
+  '',
+  '\tsign_out(mp, web, "https://games.other.test")',
+  '\trun_at(mp, web, "/html/1234/index.html")',
+  '\tvar calls_offsite: int = api.calls.size()',
+  '\tvar offsite: Array = []',
+  '\toffsite.append(await mp.sign_in())',
+  '\toffsite.append(await mp.host_lobby({}))',
+  '\toffsite.append(await mp.join_lobby("ABC123"))',
+  '\toffsite.append(await mp.join_server())',
+  '\toffsite.append(await mp.list_lobbies())',
+  '\tweb.framed = false',
+  '\toffsite.append(await mp.join_lobby("ABC123"))',
+  '\tresults["offsite"] = {',
+  '\t\t"errors": offsite.map(func(result: Dictionary) -> String: return str(result.get("error", ""))),',
+  '\t\t"messages": offsite.map(func(result: Dictionary) -> String: return str(result.get("message", ""))),',
+  '\t\t"popups": web.popups.size(),',
+  '\t\t"api_calls": api.calls.size() - calls_offsite,',
+  '\t}',
+  '\tvar paths := []',
+  '\tfor path in ["/games/%s/versions/3/index.html" % played, "/game-files/games/%s/versions/12/index.html" % played,',
+  '\t\t\t"/games/%s/index.html" % played, "/"]:',
+  '\t\trun_at(mp, web, path)',
+  '\t\tpaths.append(mp.get("_hosted"))',
+  '\tresults["hosted_paths"] = paths',
   '\tresults["page_errors"] = [',
   '\t\tstr(mp._finish_sign_in({"error": "permission_error", "message": "Confirm this account\'s email address."}).get("message")),',
   '\t\tstr(mp._finish_sign_in({"error": "unavailable"}).get("message")),',
@@ -405,13 +441,26 @@ describe.skipIf(godot === undefined)('the WASD Multiplayer add-on on the real Li
       unknown_parent_hello: [true, ['wasd:play:hello https://pages.site.test', 'wasd:play:hello https://site.test']],
       foreign_parent_hello: [false, []],
       foreign_parent_ignored: true,
+      // The game's own build on the WASD website, which another site's page frames, signs in through the sign-in window.
       foreign_parent_window: [
         'popup_blocked',
         'The browser blocked the WASD Engine sign-in window. Allow pop-ups for this page, then try again.',
         ['https://site.test/play/connect?game=66666666-7777-8888-9999-000000000000&v=3'],
       ],
-      // Outside a WASD page a lobby list only asks the player to sign in, while hosting opens the sign-in window.
+      // In a tab of its own, that build's lobby list only asks the player to sign in, while hosting opens the sign-in
+      // window.
       unframed_list_and_host: ['Sign in to WASD Engine to play online.', true, 'popup_blocked'],
+      // A copy of the Web build hosted anywhere but the WASD website, framed by another site's page or on its own, never
+      // opens the sign-in window, which could never hand it a token, nor calls the WASD service: signing in, hosting,
+      // joining, and listing say so in words for players.
+      offsite: {
+        errors: Array<string>(6).fill('sign_in_unavailable'),
+        messages: Array<string>(6).fill('This copy of the game can\'t play online. Play it on the WASD Engine website.'),
+        popups: 0,
+        api_calls: 0,
+      },
+      // The game's own build on the WASD website, also as the site serves it locally, under /game-files/.
+      hosted_paths: [true, true, false, false],
       page_errors: [
         'Confirm this account\'s email address.',
         'WASD Engine sign-in didn\'t work. Try again in a moment.',

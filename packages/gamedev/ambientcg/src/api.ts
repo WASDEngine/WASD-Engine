@@ -6,7 +6,8 @@
  * @module @deepseek-ai/dsh-ambientcg/src/api
  */
 import { z } from 'zod'
-import { AssetLibraryClient, AssetLibraryRequestError } from '@deepseek-ai/dsh-game-mcp/kit'
+import { AssetLibraryClient } from '@deepseek-ai/dsh-game-mcp/kit'
+import { AMBIENTCG_ERRORS, AmbientCgError } from './errors.ts'
 import type { AmbientCgArchive, AmbientCgAsset, AmbientCgAssetKind, AmbientCgCategory, AmbientCgPage } from './types.ts'
 
 /** Pattern of an asset id. */
@@ -30,7 +31,10 @@ const MAX_CACHED_ASSETS = 2048
 /** An archive's name in the API: a resolution and, for surfaces, the picture format. */
 const ARCHIVE_ATTRIBUTES = /^(\d{1,2})K(?:-(JPG|PNG))?$/u
 
-/** The thumbnails a preview uses, the first one the asset has: about 512 pixels, on white. */
+/**
+ * The thumbnails a preview uses, the first one the asset has: a 512-pixel JPEG on white, a 512-pixel PNG, or a JPEG on
+ * white of 256 or 1,024 pixels.
+ */
 const PREVIEW_THUMBNAILS = ['512-JPG-FFFFFF', '512-PNG', '256-JPG-FFFFFF', '1024-JPG-FFFFFF'] as const
 
 const AssetJson = z.object({
@@ -155,6 +159,7 @@ export class AmbientCgApi extends AssetLibraryClient {
       userAgent: options.userAgent,
       fetch: options.fetch,
       downloads: 'the archive',
+      errors: AMBIENTCG_ERRORS,
     })
   }
 
@@ -170,7 +175,7 @@ export class AmbientCgApi extends AssetLibraryClient {
    * @param offset - assets to skip.
    * @param signal - cancellation.
    * @returns the page; the one read last when ambientCG cannot be reached now.
-   * @throws AssetLibraryRequestError when the page cannot be read and none is kept.
+   * @throws AmbientCgError `AMBIENTCG_REQUEST_FAILED` when the page cannot be read and none is kept.
    */
   async search(
     words: readonly string[], kinds: readonly AmbientCgAssetKind[], limit: number, offset: number, signal: AbortSignal,
@@ -205,7 +210,7 @@ export class AmbientCgApi extends AssetLibraryClient {
    * @param id - asset id.
    * @param signal - cancellation.
    * @returns the asset, or undefined when ambientCG has no material, decal, atlas, or HDRI of that id.
-   * @throws AssetLibraryRequestError when the request fails and the asset is not kept.
+   * @throws AmbientCgError `AMBIENTCG_REQUEST_FAILED` when the request fails and the asset is not kept.
    */
   async asset(id: string, signal: AbortSignal): Promise<AmbientCgAsset | undefined> {
     const kept = this.byId.get(id.toLowerCase())
@@ -236,14 +241,14 @@ export class AmbientCgApi extends AssetLibraryClient {
    * The categories of the kinds the tools offer.
    * @param signal - cancellation.
    * @returns the categories with assets, most assets first; the list read last when ambientCG cannot be reached now.
-   * @throws AssetLibraryRequestError when the list cannot be read and none is kept.
+   * @throws AmbientCgError `AMBIENTCG_REQUEST_FAILED` when the list cannot be read and none is kept.
    */
   async categories(signal: AbortSignal): Promise<readonly AmbientCgCategory[]> {
     const kept = this.categoryList
     if (kept !== undefined && this.fresh(kept)) return kept.value
     try {
       const json = await this.http.json(new URL('categories', this.base), 'the categories', signal)
-      if (!Array.isArray(json)) throw new AssetLibraryRequestError(200, 'ambientCG sent the categories in an unknown format.')
+      if (!Array.isArray(json)) throw new AmbientCgError('ambientCG sent the categories in an unknown format.', 'AMBIENTCG_REQUEST_FAILED')
       const categories = json.flatMap((value): AmbientCgCategory[] => {
         const parsed = CategoryJson.safeParse(value)
         const kind = parsed.success ? kindOf(parsed.data.type) : undefined
@@ -261,9 +266,9 @@ export class AmbientCgApi extends AssetLibraryClient {
   /** Read one page of assets and keep each asset by id. */
   private async page(url: URL, what: string, signal: AbortSignal): Promise<AmbientCgPage> {
     const parsed = PageJson.safeParse(await this.http.json(url, what, signal))
-    if (!parsed.success) throw new AssetLibraryRequestError(200, `ambientCG sent ${what} in an unknown format.`)
+    if (!parsed.success) throw new AmbientCgError(`ambientCG sent ${what} in an unknown format.`, 'AMBIENTCG_REQUEST_FAILED')
     const assets = parsed.data.assets.flatMap(value => parseAsset(value) ?? [])
-    if (assets.length === 0 && parsed.data.assets.length > 0) throw new AssetLibraryRequestError(200, `ambientCG sent ${what} in an unknown format.`)
+    if (assets.length === 0 && parsed.data.assets.length > 0) throw new AmbientCgError(`ambientCG sent ${what} in an unknown format.`, 'AMBIENTCG_REQUEST_FAILED')
     const fetchedAt = this.options.now()
     for (const asset of assets) {
       this.byId.delete(asset.id.toLowerCase())

@@ -11,11 +11,12 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import {
   ATTACHED_IMAGE_SCHEMA, checkedInteger, kilobytes, savedCounts, shownPreview, textBlocks, WRITTEN_FILES_SCHEMA, type PreviewSurface,
 } from '@deepseek-ai/dsh-game-mcp/kit'
-import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { defineTool, ToolArgsError, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { ASSET_ID_PATTERN, KINDS, type AmbientCgApi } from './api.ts'
-import { AmbientCgArchiveChanged, writeDownload } from './download.ts'
+import { writeDownload } from './download.ts'
+import { AmbientCgError, isStaleListing } from './errors.ts'
 import { checkMaps, chooseArchive, formatOptions, mapKey } from './files.ts'
-import type { AmbientCgArchiveListing, AmbientCgAsset, AmbientCgAssetKind, AmbientCgPage } from './types.ts'
+import type { AmbientCgArchiveListing, AmbientCgAsset, AmbientCgAssetKind, AmbientCgCategory, AmbientCgPage } from './types.ts'
 
 /** License of every ambientCG asset, as an SPDX identifier. */
 export const LICENSE = 'CC0-1.0'
@@ -90,6 +91,8 @@ export interface AmbientCgToolHost {
   readonly downloadTimeoutMs: number
   /** The directories of the archives the plugin read, which later downloads of the same archive start from. */
   readonly archives: Map<string, AmbientCgArchiveListing>
+  /** The folders that the plugin's running downloads created, each with how many of them hold it. */
+  readonly folders: Map<string, number>
   /**
    * The download folder of one call.
    * @param requested - the folder the call names: absolute, or relative to the calling Session's working directory;
@@ -177,7 +180,11 @@ const DOWNLOAD_SCHEMA = {
     maps: STRINGS,
     files: WRITTEN_FILES_SCHEMA,
     totalBytes: INTEGER,
-    downloadedBytes: { type: 'integer', required: true, description: 'Size of the archive this call fetched; 0 when every file was in place.' },
+    downloadedBytes: {
+      type: 'integer',
+      required: true,
+      description: 'Size of the archive this call fetched; 0 when it fetched none, which needs every map in place and an earlier download of the archive since WASD Engine started.',
+    },
     sizeM: SIZE,
     page: STRING,
     license: STRING,
@@ -206,7 +213,7 @@ export function assetPage(id: string): string {
 }
 
 function fail(message: string): never {
-  throw new Error(message)
+  throw new ToolArgsError([message])
 }
 
 function sizeText(sizeM: readonly number[] | undefined): string | undefined {
@@ -282,13 +289,30 @@ async function someWords(
 
 /**
  * Find one asset by id.
- * @throws Error when the id is malformed or names no asset the tools offer.
+ * @throws ToolArgsError when the id is malformed, and AmbientCgError `AMBIENTCG_ASSET_NOT_FOUND` when it names no asset
+ * the tools offer.
  */
 async function findAsset(host: AmbientCgToolHost, id: string, signal: AbortSignal): Promise<AmbientCgAsset> {
-  if (!ASSET_ID_PATTERN.test(id)) throw new Error(`${JSON.stringify(id)} is not an ambientCG asset id; ids are like "Bricks097", as ambientcg_search lists them.`)
+  if (!ASSET_ID_PATTERN.test(id)) throw new ToolArgsError([`${JSON.stringify(id)} is not an ambientCG asset id; ids are like "Bricks097", as ambientcg_search lists them.`])
   const asset = await host.api.asset(id, signal)
-  if (asset === undefined) throw new Error(`ambientCG has no material, decal, atlas, or HDRI with the id ${JSON.stringify(id)}; find one with ambientcg_search.`)
+  if (asset === undefined) {
+    throw new AmbientCgError(`ambientCG has no material, decal, atlas, or HDRI with the id ${JSON.stringify(id)}; find one with ambientcg_search.`, 'AMBIENTCG_ASSET_NOT_FOUND')
+  }
   return asset
+}
+
+/**
+ * The categories that a search without keywords lists: none when ambientCG cannot answer and none are kept, since the
+ * assets alone answer the search.
+ * @throws the call's cancellation, and every failure other than a failed request.
+ */
+async function categoriesOf(host: AmbientCgToolHost, signal: AbortSignal): Promise<readonly AmbientCgCategory[]> {
+  try {
+    return await host.api.categories(signal)
+  } catch (error) {
+    if (signal.aborted || !(error instanceof AmbientCgError && error.code === 'AMBIENTCG_REQUEST_FAILED')) throw error
+    return []
+  }
 }
 
 function renderSearch(value: SearchValue): string {
@@ -397,7 +421,7 @@ export function ambientCgToolDefinitions(host: AmbientCgToolHost, surface: Ambie
         page = { total: ranked.length, assets: ranked.slice(offset, offset + limit) }
       }
       // Only a call without keywords lists the kinds of surface there are to search for.
-      const categories = words.length === 0 ? await host.api.categories(exec.signal) : []
+      const categories = words.length === 0 ? await categoriesOf(host, exec.signal) : []
       return {
         query: words.join(' '),
         ...args.type === undefined ? {} : { type: args.type },
@@ -434,7 +458,7 @@ export function ambientCgToolDefinitions(host: AmbientCgToolHost, surface: Ambie
       const thumbnail = asset.thumbnailUrl
       const shown = args.preview === false || thumbnail === undefined
         ? {}
-        : await shownPreview(surface, exec, signal => host.api.image(thumbnail, signal), `ambientcg-${asset.id}.jpg`)
+        : await shownPreview(surface, exec, signal => host.api.image(thumbnail, signal), `ambientcg-${asset.id}`)
       return {
         ...summaryOf(asset),
         license: LICENSE,
@@ -470,7 +494,10 @@ export function ambientCgToolDefinitions(host: AmbientCgToolHost, surface: Ambie
       const archive = chooseArchive(asset, { format: args.format?.trim().toLowerCase(), resolution: args.resolution?.trim().toLowerCase() })
       checkMaps(asset, args.maps)
       if (archive.size > host.maxDownloadBytes) {
-        throw new Error(`The ${archive.resolution} ${archive.format} archive of ${asset.title} is ${kilobytes(archive.size)}, more than the ${kilobytes(host.maxDownloadBytes)} that one download may be; choose a lower resolution${archive.format === 'png' ? ' or jpg' : ''}.`)
+        throw new AmbientCgError(
+          `The ${archive.resolution} ${archive.format} archive of ${asset.title} is ${kilobytes(archive.size)}, more than the ${kilobytes(host.maxDownloadBytes)} that one download may be; choose a lower resolution${archive.format === 'png' ? ' or jpg' : ''}.`,
+          'AMBIENTCG_TOO_LARGE',
+        )
       }
       const directory = await host.directory(args.directory, asset.id, exec)
       const saved = await writeDownload(asset, archive, directory, {
@@ -479,10 +506,11 @@ export function ambientCgToolDefinitions(host: AmbientCgToolHost, surface: Ambie
         maxUnpackedBytes: host.maxDownloadBytes,
         open: (url, signal) => host.api.download(url, signal),
         known: host.archives,
+        folders: host.folders,
         signal: exec.signal,
       }).catch((error: unknown) => {
         // An archive that no longer fits the listing means the asset changed; the next call reads it again.
-        if (error instanceof AmbientCgArchiveChanged) host.api.forget(asset.id)
+        if (isStaleListing(error)) host.api.forget(asset.id)
         throw error
       })
       return {

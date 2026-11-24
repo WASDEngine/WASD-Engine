@@ -36,7 +36,8 @@ func _init() -> void:
 	_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_material.albedo_texture = soft
-	_material.render_priority = 1
+	# With WASD Decals' marks: over WASD Weather's cover, under smoke, fire, and other see-through things.
+	_material.render_priority = WasdDecals3D.PRIORITY
 	var quad := QuadMesh.new()
 	quad.orientation = PlaneMesh.FACE_Y
 	quad.material = _material

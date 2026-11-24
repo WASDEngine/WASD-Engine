@@ -53,7 +53,7 @@ crosshair = ExtResource("3")
 ## Pitfalls
 
 - The player's `weapons` array must hold at least one weapon, or `_ready` fails.
-- Browsers let a page capture the mouse only after a click. WASD Engine changed the kit's `objects/player.gd` so that a Web build waits for the first click (`mouse_capture`) instead of capturing the mouse in `_ready`, which would print an error that stops a release. Keep that in a copied player script.
+- Browsers let a page capture the mouse only after a click. WASD Engine changed the kit's `objects/player.gd` so that a Web build waits for the first click (`mouse_capture`) instead of capturing the mouse in `_ready`, which would print an error that stops a release, and turns the view with the mouse only after that click. Keep both in a copied player script.
 - The player's blob shadow is a `Decal`, which Web builds do not draw; the Web export names `objects/player.tscn` for it. In first person it is not seen anyway.
 - The kit is drawn for Forward+ and looks nearly the same on the Compatibility renderer. Its sky texture is 3.9 MB: replace `sprites/skybox.png` in a copy of `scenes/main-environment.tres` with the game's own sky.
 - Kenney's models are low-poly and flat-colored. Keep the game's own models in that style, or replace the kit's.

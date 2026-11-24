@@ -35,6 +35,9 @@
       "path": "../../session/working-directory"
     },
     {
+      "path": "../../util/error"
+    },
+    {
       "path": "../../util/values"
     },
     {

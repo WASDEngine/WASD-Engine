@@ -20,6 +20,8 @@ void fragment() {
 	COLOR = vec4(tone.rgb, edge * strength);
 }
 "
+## The sides of a control, in the order in which a menu's anchors and offsets are kept and put back.
+const SIDES: Array[Side] = [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]
 
 ## The look by name: one of WasdUiLooks.names(), on every control of the game. Empty gives Godot's own back.
 var look := "clean": set = _set_look
@@ -53,6 +55,11 @@ var _built := []
 var _godot_theme: Theme
 ## The instance id of the control that had the focus before each open menu took it, by the menu's instance id.
 var _focus_before := {}
+## Where each open menu came from, by the menu's instance id: the instance id of the parent it had (0 for none), its
+## place among that parent's children, whether it showed, its layout (anchors and offsets in the order of `SIDES`,
+## rotation, scale), and which of its nodes the scene owned; and the nodes whose leaving the tree closes it, each with
+## the Callable connected to its `tree_exited`.
+var _homes := {}
 ## Whether menus show a mouse pointer that the game had hidden or captured, until it goes back after the last one
 ## closes; the mode the game had; and the mode that shows the pointer.
 var _pointer_shown := false
@@ -300,9 +307,12 @@ func hurt(strength := 0.6, color := Color(0.8, 0.05, 0.05)) -> void:
 
 
 ## Shows a menu of the game's own, such as a pause or settings panel, in the middle of the screen over a dimmed
-## game, above the HUD, and gives its first button the focus unless the game gives a control of the menu the focus
-## first. A mouse pointer that the game hid or captured shows while menus are open. `close()` takes the menu away
-## again. The game goes on behind it unless the game pauses itself.
+## game, above the HUD, and gives its first button that shows the focus unless the game gives a control of the menu
+## the focus first. A hidden menu shows. While it is open the menu stands under WasdUi, so a path from its scene, such
+## as `$PauseMenu`, does not reach it. A mouse pointer that the game hid or captured shows while menus are open.
+## `close()` takes the menu away again, and the menu closes by itself when the scene that was current as it opened,
+## or the parent it had, leaves the tree: one that had a parent goes back to it, and one made in code is freed. The
+## game goes on behind it unless the game pauses itself.
 func open(menu: Control, dim := 0.55) -> void:
 	var id := menu.get_instance_id()
 	if not _focus_before.has(id):
@@ -314,12 +324,15 @@ func open(menu: Control, dim := 0.55) -> void:
 		_pointer_before = mode
 		_pointer_while = Input.MOUSE_MODE_CONFINED if mode == Input.MOUSE_MODE_CONFINED_HIDDEN else Input.MOUSE_MODE_VISIBLE
 		Input.mouse_mode = _pointer_while
-	if menu.get_parent() != null:
-		menu.get_parent().remove_child(menu)
+	if menu.get_parent() == _menus:
+		# Open already: it comes to the top.
+		_menus.move_child(menu, -1)
+	else:
+		_take(menu)
 	_dim.color = Color(0, 0, 0, dim)
 	_dim.show()
-	_menus.add_child(menu)
 	_menus.show()
+	menu.show()
 	menu.modulate.a = 0.0
 	create_tween().tween_property(menu, ^"modulate:a", 1.0, 0.12)
 	var first := _first_focus(menu)
@@ -328,32 +341,18 @@ func open(menu: Control, dim := 0.55) -> void:
 		_give_focus.call_deferred(first.get_instance_id(), id)
 
 
-## Takes a menu that `open()` showed away again, and frees it unless `keep` is true. If the focus was in the menu or
-## nowhere, it goes back to the control that had it before, or else to the first button of the menu still open
-## beneath, unless the game gives the focus to a control first. Once the last menu has gone and the input that
-## closed it is done, the mouse pointer goes back as the game had it, unless a menu is open again by then, the game
-## changed the pointer or the scene meanwhile, or, in a browser, the game had captured it: a browser captures the
-## pointer only on a click, and the game captures it again on the next one.
+## Takes a menu that `open()` showed away again. With `keep` true, a menu that had a parent goes back there as it was:
+## in its place, shown or hidden, laid out, and owned by its scene, so that `$` paths and `%` names reach it again;
+## one made in code stays out of the tree for the game to open again, but is freed if its scene leaves the tree while
+## it is open, so a menu that must outlive its scene belongs, hidden, under an autoload. Otherwise the menu is freed.
+## If the focus was in the menu or nowhere, it goes back to the control that had it before, or else to the first
+## button that shows of the menu still open beneath, unless the game gives the focus to a control first. Once the last
+## menu has gone and the input that closed it is done, the mouse pointer goes back as the game had it, unless a menu is
+## open again by then, the game changed the pointer or the scene meanwhile, or, in a browser, the game had captured
+## it: a browser captures the pointer only on a click, and the game captures it again on the next one.
 func close(menu: Control, keep := false) -> void:
-	var held := get_viewport().gui_get_focus_owner()
-	var was_in_menu := held == null or held == menu or menu.is_ancestor_of(held)
-	var back := instance_from_id(_focus_before.get(menu.get_instance_id(), 0)) as Control
-	_focus_before.erase(menu.get_instance_id())
-	if menu.get_parent() == _menus:
-		_menus.remove_child(menu)
-		if not keep:
-			menu.queue_free()
-	var left := _menus.get_child_count()
-	if left == 0:
-		_menus.hide()
-		_dim.hide()
-		if _pointer_shown:
-			var scene := get_tree().current_scene
-			_give_pointer_back.call_deferred(scene.get_instance_id() if scene != null else 0)
-	elif back == null or not _menus.is_ancestor_of(back):
-		back = _first_focus(_menus.get_child(left - 1) as Control)
-	if was_in_menu and back != null:
-		_give_focus.call_deferred(back.get_instance_id(), 0)
+	var scene := get_tree().current_scene
+	_close(menu, keep, scene.get_instance_id() if scene != null else 0)
 
 
 ## Covers the screen in a color over `seconds` and returns the Tween to await: before a cut, a death, a level's
@@ -443,28 +442,156 @@ func _apply() -> void:
 	look_changed.emit()
 
 
+## Moves a menu under WasdUi, and remembers where it came from and what closes it: the scene that is current now, and
+## the parent it had.
+func _take(menu: Control) -> void:
+	var id := menu.get_instance_id()
+	var home := menu.get_parent()
+	var record := {"home": 0, "ties": []}
+	if home != null:
+		# Moved out of its scene, the menu and its parts lose the owner the scene gave them, and with it their `%` names.
+		var owned := []
+		var parts: Array[Node] = menu.find_children("*", "", true, false)
+		parts.append(menu)
+		for part: Node in parts:
+			if part.owner != null and part.owner != menu and not menu.is_ancestor_of(part.owner):
+				owned.append([part.get_instance_id(), part.owner.get_instance_id()])
+		# What laying the menu out in the middle changes: a container sets its anchors to 0 and its offsets, and turns
+		# and scales it back to none.
+		var layout := []
+		for side: Side in SIDES:
+			layout.append(menu.get_anchor(side))
+		for side: Side in SIDES:
+			layout.append(menu.get_offset(side))
+		layout.append_array([menu.rotation, menu.scale])
+		record = {
+			"home": home.get_instance_id(), "index": menu.get_index(), "visible": menu.visible, "owned": owned,
+			"layout": layout, "ties": [],
+		}
+		home.remove_child(menu)
+	_menus.add_child(menu)
+	var ties: Array[Node] = []
+	for tie: Node in [get_tree().current_scene, home]:
+		if tie != null and tie.is_inside_tree() and not ties.has(tie):
+			ties.append(tie)
+	for tie: Node in ties:
+		# A Callable of its own for each menu: a signal takes a method once, whatever arguments are bound to it.
+		var tie_id := tie.get_instance_id()
+		var ends := func() -> void: _left(id, tie_id)
+		tie.tree_exited.connect(ends)
+		(record["ties"] as Array).append([tie_id, ends])
+	_homes[id] = record
+
+
+## Closes a menu as `close()` describes; `scene` is the instance id of the scene that the pointer goes back for.
+func _close(menu: Control, keep: bool, scene: int) -> void:
+	var id := menu.get_instance_id()
+	var held := get_viewport().gui_get_focus_owner()
+	var was_in_menu := held == null or held == menu or menu.is_ancestor_of(held)
+	var back := instance_from_id(_focus_before.get(id, 0)) as Control
+	_focus_before.erase(id)
+	var record := _untie(id)
+	if menu.get_parent() == _menus:
+		_menus.remove_child(menu)
+		if not keep:
+			menu.queue_free()
+		elif int(record.get("home", 0)) != 0:
+			_put_back(menu, record)
+	var left := _menus.get_child_count()
+	if left == 0:
+		_menus.hide()
+		_dim.hide()
+		if _pointer_shown:
+			_give_pointer_back.call_deferred(scene)
+	elif not _focusable(back) or not _menus.is_ancestor_of(back):
+		back = _first_focus(_menus.get_child(left - 1) as Control)
+	if was_in_menu and back != null:
+		_give_focus.call_deferred(back.get_instance_id(), 0)
+
+
+## Puts a menu back where `open()` took it from, as it was there; one whose parent is gone stays out of the tree.
+func _put_back(menu: Control, record: Dictionary) -> void:
+	var home := instance_from_id(int(record["home"])) as Node
+	if home == null:
+		return
+	home.add_child(menu)
+	home.move_child(menu, mini(int(record["index"]), home.get_child_count() - 1))
+	menu.visible = record["visible"]
+	# The anchors first, since the offsets count from them.
+	var layout: Array = record["layout"]
+	for index: int in SIDES.size():
+		menu.set_anchor(SIDES[index], layout[index], true)
+	for index: int in SIDES.size():
+		menu.set_offset(SIDES[index], layout[SIDES.size() + index])
+	menu.rotation = layout[8]
+	menu.scale = layout[9]
+	for pair: Array in record["owned"]:
+		var part := instance_from_id(int(pair[0])) as Node
+		var owned_by := instance_from_id(int(pair[1])) as Node
+		if part != null and owned_by != null and owned_by.is_ancestor_of(part):
+			part.owner = owned_by
+
+
+## Forgets where a menu came from and what closes it, and returns what was remembered.
+func _untie(id: int) -> Dictionary:
+	var record: Dictionary = _homes.get(id, {})
+	_homes.erase(id)
+	for tie: Array in record.get("ties", []):
+		var node := instance_from_id(int(tie[0])) as Node
+		if node != null and node.tree_exited.is_connected(tie[1]):
+			node.tree_exited.disconnect(tie[1])
+	return record
+
+
+## A node that an open menu is tied to, by instance id, has left the tree, as a scene does when the game changes to
+## another: the menu closes. One that had a parent goes back there, as `close(menu, true)` puts it, and is freed with
+## that scene if it was in it; one made in code is freed, as `close(menu)` frees it. The pointer stays as it is when
+## the scene went: the scene the game changes to sets its own.
+func _left(id: int, tie: int) -> void:
+	if not is_inside_tree():
+		# The game is quitting.
+		return
+	var menu := instance_from_id(id) as Control
+	if menu == null:
+		# The game freed the menu while it was open.
+		_untie(id)
+		_focus_before.erase(id)
+		if _menus.get_child_count() == 0:
+			_menus.hide()
+			_dim.hide()
+		return
+	var record: Dictionary = _homes.get(id, {})
+	var scene := get_tree().current_scene
+	_close(menu, int(record.get("home", 0)) != 0, scene.get_instance_id() if scene != null else tie)
+
+
 ## The control of a menu that takes the focus first: the next in focus order if the menu itself takes the focus, and
-## otherwise its first button that can.
+## otherwise its first button that shows and can.
 func _first_focus(menu: Control) -> Control:
 	var first := menu.find_next_valid_focus() if menu.focus_mode != Control.FOCUS_NONE else null
 	if first != null:
 		return first
 	for part: Node in menu.find_children("*", "BaseButton", true, false):
-		if (part as BaseButton).focus_mode != Control.FOCUS_NONE and not (part as BaseButton).disabled:
+		if _focusable(part as BaseButton) and not (part as BaseButton).disabled:
 			return part as Control
 	return null
 
 
-## Gives the focus to a control, by its instance id, if it can still take it (in the tree, shown, and focusable), if
-## the game has not given the focus meanwhile (to a control of the menu whose instance id is `menu`, or, for 0, to any
-## control), and if, while menus are open, the control is in one of them.
+## Whether a control can take the focus: it is there, in the tree, shown, and focusable.
+func _focusable(control: Control) -> bool:
+	return control != null and control.is_inside_tree() and control.is_visible_in_tree() and control.focus_mode != Control.FOCUS_NONE
+
+
+## Gives the focus to a control, by its instance id, if it can still take it, if the game has not given the focus
+## meanwhile (to a control of the menu whose instance id is `menu`, or, for 0, to any control), and if, while menus
+## are open, the control is in one of them.
 func _give_focus(id: int, menu: int) -> void:
 	var held := get_viewport().gui_get_focus_owner()
 	var opened := instance_from_id(menu) as Node
 	if held != null and (opened == null or opened == held or opened.is_ancestor_of(held)):
 		return
 	var control := instance_from_id(id) as Control
-	if control == null or not control.is_inside_tree() or not control.is_visible_in_tree() or control.focus_mode == Control.FOCUS_NONE:
+	if not _focusable(control):
 		return
 	if _menus.visible and not _menus.is_ancestor_of(control):
 		return

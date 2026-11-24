@@ -2,7 +2,7 @@
   "id": "phantom-camera",
   "title": "Phantom Camera",
   "host": "godot",
-  "version": "0.11.0.4",
+  "version": "0.11.0.4+wasd.1",
   "category": "camera",
   "cue": "virtual cameras: follow, look at, framing, switches",
   "summary": "Virtual 2D and 3D cameras that drive the real camera: follow modes, damping, level limits, look-at, third person, shake, and tweened switches by priority.",

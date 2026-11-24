@@ -23,6 +23,7 @@ func add_trail(parent: Node3D, half_width: float, color: Color, seconds := 0.3) 
 	trail.min_vertex_distance = 0.05         # metres moved between ribbon points; smaller is smoother
 	trail.alignment = LineRenderer.Alignment.View
 	var width := Curve.new()                 # half the ribbon's width in metres, from tail (0) to head (1)
+	width.max_value = maxf(half_width, 1.0)  # a Curve clamps its points to max_value, which starts at 1
 	width.add_point(Vector2(0.0, 0.0))
 	width.add_point(Vector2(1.0, half_width))
 	trail.curve = width

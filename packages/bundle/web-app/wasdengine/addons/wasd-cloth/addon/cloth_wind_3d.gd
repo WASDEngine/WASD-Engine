@@ -36,6 +36,11 @@ var _source: Node3D
 var _time := 0.0
 var _gust := 1.0
 var _current := Vector3.ZERO
+## The zone's own `direction` and `speed` from before a wind from WASD Weather took it over, and whether one drives it
+## now.
+var _own_direction := Vector3.RIGHT
+var _own_speed := 0.0
+var _wind_drives := false
 
 
 func _ready() -> void:
@@ -64,10 +69,20 @@ func _physics_process(delta: float) -> void:
 
 
 ## Takes a wind in m/s along the world's axes as this zone's direction and speed. WASD Weather calls it on every
-## zone the game has put in the group "wasd_wind", so that flags and capes fly harder in a storm.
+## zone the game has put in the group "wasd_wind", so that flags and capes fly harder in a storm. No wind, as WASD
+## Weather tells when it leaves, gives the zone back the direction and speed it had before a wind took it over.
 func set_wind(wind: Vector3) -> void:
-	if wind.length() > 0.01:
-		direction = wind.normalized()
+	if wind.length() <= 0.01:
+		if _wind_drives:
+			_wind_drives = false
+			direction = _own_direction
+			speed = _own_speed
+		return
+	if not _wind_drives:
+		_wind_drives = true
+		_own_direction = direction
+		_own_speed = speed
+	direction = wind.normalized()
 	speed = wind.length()
 
 

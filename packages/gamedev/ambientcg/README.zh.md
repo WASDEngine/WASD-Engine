@@ -49,7 +49,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 | 工具 | 作用 |
 |---|---|
-| `ambientcg_search` | 列出标签中包含 `query` 每个关键词的素材，按受欢迎程度从高到低，带有 id、种类、真实尺寸、制作方式、最大分辨率、贴图和标签。ambientCG 匹配完整的英文单词，因此当没有素材包含全部关键词时，插件逐个查询每个词，并为包含其中一些词的素材排序：先看包含的词数，再看包含这些词的素材有多少（越少越靠前），最后看受欢迎程度。没有 `query` 时，列出最受欢迎的素材以及可供搜索的分类。`type`（`materials`、`decals`、`atlases` 或 `hdris`）缩小列表范围；`limit`（1 到 50，默认 10）与 `offset` 用于分页 |
+| `ambientcg_search` | 列出标签中包含 `query` 每个关键词的素材，按受欢迎程度从高到低，带有 id、种类、真实尺寸、制作方式、最大分辨率、贴图和标签。ambientCG 匹配完整的英文单词，因此当没有素材包含全部关键词时，插件逐个查询每个词，并为包含其中一些词的素材排序：先看包含的词数，再看包含这些词的素材有多少（越少越靠前），最后看受欢迎程度。没有 `query` 时，列出最受欢迎的素材以及可供搜索的分类；ambientCG 无法列出分类且内存中也没有保留时，不列分类。`type`（`materials`、`decals`、`atlases` 或 `hdris`）缩小列表范围；`limit`（1 到 50，默认 10）与 `offset` 用于分页 |
 | `ambientcg_asset` | 显示素材 `id`：它的标签、真实尺寸、贴图和 ambientcg.com 上的页面；每种图片格式及各分辨率压缩包的大小；除非 `preview` 为 false，还有它的预览图，一张 512 像素的材质渲染图 |
 | `ambientcg_download` | 把素材一种 `resolution` 和 `format` 的贴图图片保存到 `directory`，默认是工作目录中的 `assets/ambientcg/<id>` |
 
@@ -60,9 +60,11 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 `maps` 接受 API 的名称（`color`、`normal`、`roughness`、`ambient-occlusion`）、文件中的名称（`NormalGL`、`NormalDX`）或常见的其他名称（`albedo`、`ao`、`metallic`、`height`、`alpha`）；`normal` 指 OpenGL 法线贴图，Godot 与 Blender 读取的就是它。素材没有列出的贴图会在下载任何内容之前被拒绝。没有 `resolution` 时，下载使用 `1k`；该格式没有 `1k` 时使用最小的分辨率。超过 `maxDownloadBytes` 的压缩包在取得之前失败，并说明其大小。
 
-ambientCG 把每种分辨率作为一个 ZIP 压缩包提供，其中还有供其他程序使用的材质文件和一张预览图。一次下载把压缩包取到临时文件夹，按素材列表校验其大小，按 ambientCG 文件主机给出的值校验其 SHA-1 摘要，读取压缩包的目录，只解出贴图图片，每张图片都按目录中的 CRC-32 校验；之后删除临时文件夹。一次下载要么写入全部图片，要么一张也不写入，失败或取消会让文件夹保持原样。已在原位且内容相同的图片不会再次写入；内容不同的图片，例如用户编辑过的纹理，会在写入任何内容之前中止下载，除非 `replace` 为 true。插件记住它读过的每个压缩包的目录，因此图片全部在原位的重复下载不会取得任何内容。
+ambientCG 把每种分辨率作为一个 ZIP 压缩包提供，其中还有供其他程序使用的材质文件和一张预览图。一次下载把压缩包取到临时文件夹，按素材列表校验其大小，按 ambientCG 文件主机给出的值校验其 SHA-1 摘要，读取压缩包的目录，只解出贴图图片，每张图片都按目录中的 CRC-32 校验；之后删除临时文件夹。一次下载要么写入全部图片，要么一张也不写入。失败或取消的下载一张也不写入，它创建的文件夹在本插件没有其他正在运行的下载使用后、仍为空时会被删除，因此无论本插件的多次失败下载以何种顺序结束，都不会留下文件夹；跨进程时成立的保证见 [kit](../game-mcp/README.zh.md#helpers-for-game-tool-plugins)。已在原位且内容相同的图片不会再次写入；内容不同的图片，例如用户编辑过的纹理，会在写入任何内容之前中止下载，除非 `replace` 为 true。插件记住它读过的每个压缩包的目录，因此图片全部在原位的重复下载不会取得任何内容。
 
-通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `ambientcg` 下使用这些工具，不需要会话：`ambientcg_search` 与 `ambientcg_asset` 标记为只读，预览图以 JPEG 字节的形式跟在结果文本之后，`ambientcg_download` 要求 `directory` 为绝对路径。
+工具预期的每个失败都是一个 `AmbientCgError`，其代码说明下一步怎么做，因此工具结果会记录类名和代码：`AMBIENTCG_ASSET_NOT_FOUND`；`AMBIENTCG_FILES_NOT_FOUND`，表示素材缺少所指定的格式、分辨率或贴图；`AMBIENTCG_TOO_LARGE`；`AMBIENTCG_ALREADY_EXISTS`；`AMBIENTCG_DOWNLOAD_CORRUPT`，也用于数据无法解压的图片；`AMBIENTCG_STALE_LISTING`，表示压缩包已与素材列表不符；`AMBIENTCG_DISK_FAILED`，表示磁盘无法创建、读取、写入或移动某个文件夹、压缩包的临时副本或某张图片，消息中写明文件和错误代码；以及 `AMBIENTCG_REQUEST_FAILED`，其 `cause` 保留请求的 HTTP 状态码。[`src/errors.ts`](src/errors.ts) 给出每个代码的含义。违反参数 schema 无法表达的规则的参数，例如格式错误的 id 或超出范围的 `limit`，以 `ToolArgsError`（`INVALID_ARGS`）失败；工作目录服务报告它自己的失败；被取消的调用以其取消结束。
+
+通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `ambientcg` 下使用这些工具，不需要会话：`ambientcg_search` 与 `ambientcg_asset` 标记为只读，预览图以 ambientCG 发送的字节跟在结果文本之后，是 JPEG，或者对于没有 JPEG 缩略图的素材是 PNG，`ambientcg_download` 要求 `directory` 为绝对路径。
 
 在 Godot 游戏中，`wasd-materials` 扩展的 `WasdSurface.from_folder()` 用下载的文件夹生成材质，`WasdSurface.cutout()` 用带 `Opacity` 图片的文件夹生成镂空材质；`wasd-look` 的 `WasdLook3D.panorama` 接受 HDRI 的 `.exr`。
 
@@ -85,17 +87,18 @@ ambientCG 的素材采用 CC0 许可，游戏可以使用它们，包括商业�
 
 插件读取 API 的两个端点，并从它们给出的 URL 下载压缩包。`GET /assets?q=<words>&type=<kinds>&limit=<n>&offset=<n>&include=<fields>` 返回包含每个词的素材中的一页，按受欢迎程度从高到低，并给出匹配数量；`GET /assets?id=<id>&type=<kinds>` 返回一个素材；`GET /categories` 返回分类及其素材数量。每一页以其 URL 为键保留在内存中，最多 64 页，每个素材以其 id 为键，最多 2,048 个，保留 `catalogMaxAgeMs`；刷新失败时用上一次读到的内容作答。素材的 `downloads` 给出它的压缩包；插件提供其中以分辨率命名的 ZIP 文件，表面带图片格式（`1K-JPG`），HDRI 不带（`1K`），并略去动画贴花和 Substance 压缩包。其他种类的素材，例如 Substance 材质、3D 模型和地形，不会列出。
 
-下载 URL 会重定向到 ambientCG 的文件主机。游戏工具 kit 中共用的客户端（[`asset-library.ts`](../game-mcp/src/asset-library.ts)）只访问所配置 `apiUrl` 的主机（使用其协议）以及 `ambientcg.com` 和 `struffelproductions.com` 的 HTTPS 主机，并自行跟随最多五次重定向，每次都只到这样的主机，因此素材列表和重定向都不会把请求发往别处。JSON 响应最多读取 64 MiB，预览图最多 8 MiB，HTTP 429 会变成说明何时重试的消息。kit 还包含两类调用方的预览图、连接的 agent 调用的工具，以及要么全部写入要么一个也不写入的文件写入，Poly Haven 插件与本插件共用它们。
+下载 URL 会重定向到 ambientCG 的文件主机。游戏工具 kit 中共用的客户端（[`asset-library.ts`](../game-mcp/src/asset-library.ts)）只访问所配置 `apiUrl` 的主机（使用其协议）以及 `ambientcg.com` 和 `struffelproductions.com` 的 HTTPS 主机，并自行跟随最多五次重定向，每次都只到这样的主机，因此素材列表和重定向都不会把请求发往别处。JSON 响应最多读取 64 MiB，预览图最多 8 MiB，HTTP 429 会变成说明何时重试的消息，重定向到格式错误的地址或者响应到达途中连接中断，都会变成说明什么也没有保存的失败请求。kit 还包含两类调用方的预览图、连接的 agent 调用的工具，以及要么全部写入要么一个也不写入的文件写入，Poly Haven 插件与本插件共用它们。
 
 压缩包把每张图片命名为 `<id>_<archive>_<Map>.<extension>`，例如 `Bricks097_1K-JPG_Color.jpg`。插件取压缩包根目录下名称以素材 id 开头、以 `_<Map>` 加图片扩展名结尾、两者之间只有字母、数字、`-` 和 `_` 的文件，因此预览图 `<id>.png` 以及 `.blend`、`.usdc`、`.mtlx` 和 `.tres` 文件永远不会写入。名称只有大小写不同的两张图片在 macOS 和 Windows 的磁盘上是同一个文件，它们会在写入任何内容之前中止下载。当压缩包的大小与素材列表不符时，例如 ambientCG 更新了该素材之后，下载会中止，忘掉该素材和该压缩包的目录，并要求再调用一次，以读取新的列表。
 
 | 文件 | 作用 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Config、工具注册、会话的预览图附件，以及游戏 MCP 提供方 |
+| [`src/index.ts`](src/index.ts) | Config、工具注册、会话的预览图附件、插件持有的下载文件夹，以及游戏 MCP 提供方 |
 | [`src/api.ts`](src/api.ts) | API 客户端：保留在内存中的搜索页、素材和分类，建立在 kit 的客户端之上，由后者获取预览图和压缩包 |
 | [`src/files.ts`](src/files.ts) | 一种分辨率和格式的压缩包、贴图的名称，以及一次下载从压缩包中取的图片 |
 | [`src/download.ts`](src/download.ts) | 取得并校验压缩包、读取其目录并解出其图片 |
 | [`src/tools.ts`](src/tools.ts) | 工具定义、按部分关键词的搜索，以及结果文本 |
+| [`src/errors.ts`](src/errors.ts) | `AmbientCgError` 及其代码，以及插件为 kit 的失败提供的错误 |
 | [`src/mcp.ts`](src/mcp.ts) | 面向连接的 agent 的工具，以及提供方的说明 |
 
 </details>
@@ -135,7 +138,7 @@ ambientCG 的素材采用 CC0 许可，游戏可以使用它们，包括商业�
 
 #### 模型可见内容
 
-搜索结果写明查询、匹配数量，并为每个素材列出一行：id、名称、种类、真实尺寸、制作方式、最大分辨率、贴图和标签，并说明每个素材都采用 CC0 许可；当没有素材包含全部关键词、列表为包含部分关键词的素材排序时，结果会说明这一点，没有查询的结果还会列出分类及其素材数量。素材结果列出各图片格式及每种分辨率压缩包的大小，当会话的模型接受图像时，后面附上作为附件的预览图。下载结果写明文件夹、图片及其总大小、其中多少张是新下载、替换或已在原位的、来源页面与许可、每张保存的贴图包含什么，以及一次重复覆盖的尺寸。失败结果写明素材提供的内容，例如其分辨率或贴图，或者 ambientCG 拒绝的原因。
+搜索结果写明查询、匹配数量，并为每个素材列出一行：id、名称、种类、真实尺寸、制作方式、最大分辨率、贴图和标签，并说明每个素材都采用 CC0 许可；当没有素材包含全部关键词、列表为包含部分关键词的素材排序时，结果会说明这一点，没有查询的结果还会列出分类及其素材数量。素材结果列出各图片格式及每种分辨率压缩包的大小，当会话的模型接受图像时，后面附上作为附件的预览图。下载结果写明文件夹、图片及其总大小、其中多少张是新下载、替换或已在原位的、来源页面与许可、每张保存的贴图包含什么，以及一次重复覆盖的尺寸；其 `downloadedBytes` 是这次调用取得的压缩包的大小，只有当插件仍记得该压缩包且每张图片都在原位时才为 0。失败结果写明素材提供的内容，例如其分辨率或贴图、ambientCG 拒绝的原因，或者对于磁盘上的失败写明文件和错误代码，例如 `The download failed on the disk while it wrote Bricks097_1K-JPG_Color.jpg: ENOSPC: no space left on device, write; nothing was saved.`，后面接着说明要检查什么；参数 schema 无法拒绝的参数，其说明前面带有 `invalid arguments: `，例如 `invalid arguments: limit must be an integer from 1 to 50.`。
 
 #### Token 影响
 
@@ -159,6 +162,7 @@ ambientCG 的素材采用 CC0 许可，游戏可以使用它们，包括商业�
 - **通用对话行**——Web 界面用通用工具行显示这些工具调用，不显示缩略图。
 - **预览需要图像输入**——模型只接受文本的会话得不到预览图。
 - **ambientCG 的服务**——该网站由一个人运营，它的 API 或压缩包内的名称可能在没有通知的情况下变更。
+- **跨进程的空文件夹**——插件对所持有文件夹的计数只涵盖它自己在同一进程中的下载；当另一个进程或 Poly Haven 插件的下载在一个由失败的 ambientCG 下载创建的文件夹中工作并且也失败时，该文件夹可能作为空文件夹留下。
 
 <a id="dev-note"></a>
 ### 开发备注
@@ -166,6 +170,6 @@ ambientCG 的素材采用 CC0 许可，游戏可以使用它们，包括商业�
 <details>
 <summary>维护者工作背景——点击展开</summary>
 
-API 的文档位于 `https://docs.ambientcg.com/api/v3/`。素材 id 由字母和数字组成，例如 `PavingStones036`，ambientCG 匹配它们时不区分大小写。预览图是素材的 `512-JPG-FFFFFF` 缩略图，一张白底渲染图。ambientCG 的文件主机是 Backblaze B2，它在 `x-bz-content-sha1` 中给出文件的 SHA-1 摘要，分块上传的文件则在 `x-bz-info-large_file_sha1` 中给出；两者都没有的响应只按其大小和每张图片的 CRC-32 校验。`dimensions` 的单位是厘米，ambientCG 不知道时为 0。
+API 的文档位于 `https://docs.ambientcg.com/api/v3/`。素材 id 由字母和数字组成，例如 `PavingStones036`，ambientCG 匹配它们时不区分大小写。预览图是素材的 `512-JPG-FFFFFF`、`512-PNG`、`256-JPG-FFFFFF` 和 `1024-JPG-FFFFFF` 缩略图中的第一张，除 PNG 外都是白底渲染图，附件名称以 ambientCG 所发送类型的扩展名结尾。ambientCG 的文件主机是 Backblaze B2，它在 `x-bz-content-sha1` 中给出文件的 SHA-1 摘要，分块上传的文件则在 `x-bz-info-large_file_sha1` 中给出；两者都没有的响应只按其大小和每张图片的 CRC-32 校验。`dimensions` 的单位是厘米，ambientCG 不知道时为 0。
 
 </details>

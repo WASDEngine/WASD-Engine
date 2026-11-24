@@ -14,11 +14,11 @@ uniform float density = 0.08;
 uniform float thinning = 3.0;
 // How far in from the sides the fog thins out, as a part of the box.
 uniform float soft_edges : hint_range(0.0, 0.5) = 0.25;
-// Drifting clouds in it: how strong, how large in meters, and how fast in meters a second along X and Z.
+// Drifting clouds in it: how strong, how large in meters, and how far they have drifted in meters along X and Z.
 uniform sampler2D cloud_noise : repeat_enable, filter_linear_mipmap;
 uniform float clouds : hint_range(0.0, 1.0) = 0.6;
 uniform float cloud_size = 14.0;
-uniform vec2 cloud_drift = vec2(0.25, 0.1);
+uniform vec2 cloud_offset = vec2(0.0);
 uniform sampler2D depth_texture : hint_depth_texture, repeat_disable, filter_nearest;
 
 varying flat vec3 local_camera;
@@ -67,7 +67,7 @@ void fragment() {
 	float billow = 1.0;
 	if (clouds > 0.0) {
 		vec3 middle_world = CAMERA_POSITION_WORLD + world_ray * (enters + through * 0.5);
-		vec2 at = (middle_world.xz + cloud_drift * TIME) / cloud_size;
+		vec2 at = (middle_world.xz + cloud_offset) / cloud_size;
 		// Gathered into banks with thin air between them.
 		billow = mix(1.0, smoothstep(0.25, 0.8, texture(cloud_noise, at).r * 0.65 + texture(cloud_noise, at * 2.7 + vec2(0.31, 0.57)).r * 0.35) * 2.2, clouds);
 	}

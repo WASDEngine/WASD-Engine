@@ -112,20 +112,33 @@ func reset() -> void:
 
 ## How many points the rope has: its segments and one.
 func point_count() -> int:
-	return _points.size()
+	return _points.size() if _laid else segments + 1
 
 
-## A point of the rope in the world, from 0 at this node to `point_count() - 1` at the far end.
+## A point of the rope in the world, from 0 at this node to `point_count() - 1` at the far end. Before the rope is laid
+## out in its `_ready()`, the points hang straight down from where the node is: in the world once it is in the scene,
+## else in its parent.
 func get_point(index: int) -> Vector3:
+	if not _laid:
+		return _top() + Vector3.DOWN * length * float(clampi(index, 0, segments)) / float(segments)
 	return _points[clampi(index, 0, _points.size() - 1)]
 
 
 ## The place in the world a share of the way along the rope, from 0 at this node to 1 at the far end: where to hang a
-## lantern on a line, or to put a hand that holds it.
+## lantern on a line, or to put a hand that holds it. Before the rope is laid out, it hangs straight down from where
+## the node is, as for get_point().
 func get_position_at(part: float) -> Vector3:
+	if not _laid:
+		return _top() + Vector3.DOWN * length * clampf(part, 0.0, 1.0)
 	var at := clampf(part, 0.0, 1.0) * float(_points.size() - 1)
 	var index := mini(int(at), _points.size() - 2)
 	return _points[index].lerp(_points[index + 1], at - float(index))
+
+
+## Where the rope hangs from before it is laid out: the node's place in the world once it is in the scene, else in its
+## parent.
+func _top() -> Vector3:
+	return global_position if is_inside_tree() else position
 
 
 ## Pushes the rope: adds `speed` in meters a second to the points round a share of the way along it, most at `part`

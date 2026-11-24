@@ -79,6 +79,13 @@ func retarget(path: String, map_path: String) -> String:
 	nodes[key] = options
 	subresources["nodes"] = nodes
 	config.set_value("params", "_subresources", subresources)
+	# Godot tells a changed .import file by its modification time in whole seconds, so a rewrite in the second the last
+	# import wrote it, as when godot_script imports a new model just before this runs, would go unnoticed and the
+	# next import would keep the model as it was. Waiting for the next second makes the change seen.
+	var written := FileAccess.get_modified_time(import_path)
+	var give_up := Time.get_ticks_msec() + 2000
+	while floori(Time.get_unix_time_from_system()) <= written and Time.get_ticks_msec() < give_up:
+		OS.delay_msec(50)
 	if config.save(import_path) != OK:
 		return "RETARGET_FAILED %s: %s cannot be written." % [path, import_path]
 	return "RETARGETED %s: skeleton %s, bone map %s (%d of its %d bones found), saved as %s. The next import renames the bones; godot_check, godot_script, and godot_run import first." % [path, key.trim_prefix("PATH:"), choice["name"], choice["found"], choice["mapped"], saved]

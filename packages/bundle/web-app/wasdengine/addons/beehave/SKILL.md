@@ -5,7 +5,7 @@ description: Beehave 2.9.3 is installed in this project for behavior trees in NP
 
 # Beehave 2.9.3
 
-Installed in `res://addons/beehave/` with the autoloads `BeehaveGlobalMetrics` and `BeehaveGlobalDebugger`; a `BeehaveTree` fails in `_ready` without them, so never remove them. Do not edit the add-on folder.
+Installed in `res://addons/beehave/` with the autoloads `BeehaveGlobalMetrics` and `BeehaveGlobalDebugger`; a `BeehaveTree` fails in `_ready` without them, so never remove them. Do not edit the add-on folder. The add-on takes the global class names `BeehaveDebuggerMessages`, `BeehaveDebuggerTab`, `BeehaveNode`, `Composite`, `Decorator`, `Leaf`, `RandomizedComposite`, and `TreeNode`, and the name of every node below: give the game's own classes other names, such as `FallingLeaf` for a leaf that drifts down and `SkillTreeNode` for a node of a skill tree. A game class named `Leaf` stops every behavior tree from compiling, with errors such as `Function "get_class_name()" not found in base Leaf` that do not name the clash.
 
 ## Nodes
 

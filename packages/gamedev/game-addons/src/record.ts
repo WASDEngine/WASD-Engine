@@ -5,9 +5,12 @@
  * someone else wrote, so a path counts only when it is relative, with `/` separators, and names nothing another
  * platform reads as a separator or a drive. Writers hold the record's file lock and replace the file atomically; an
  * installation or removal holds the lock while it changes the project's files, so the changes of one project never
- * interleave, in this process or another. Beside the record, `.wasdengine/addon-settings.json` keeps the value each
- * project setting held before an add-on's installation changed it, so that its removal can give the value back; it is a
- * file of its own because the record's format admits no new fields, which the readers of earlier versions would refuse.
+ * interleave, in this process or another. Beside the record, `.wasdengine/addon-settings.json` keeps each project
+ * setting that an add-on's installation wrote, with the value it wrote and the value the setting held before, so that an
+ * update or removal takes out what the installation wrote and a removal gives the project's value back; it is a file of
+ * its own because the record's format admits no new fields, which the readers of earlier versions would refuse. WASD
+ * Engine 0.2.4 and earlier wrote into it only the settings of an installation that replaced a value of the project's,
+ * without the values they wrote; {@link UNRECORDED_SETTINGS} gives those.
  * @module @deepseek-ai/dsh-game-addons/src/record
  */
 import { readFile, rm } from 'node:fs/promises'
@@ -17,7 +20,7 @@ import { z } from 'zod'
 import { ADDON_ID_PATTERN } from './catalog.ts'
 import { GameAddonError } from './errors.ts'
 import { isProjectPath, projectFolder } from './paths.ts'
-import type { InstalledGameAddon } from './types.ts'
+import type { GodotProjectSetting, InstalledGameAddon } from './types.ts'
 
 /** Folder of WASD Engine's per-project state, relative to the project folder. */
 export const STATE_DIR = '.wasdengine'
@@ -28,18 +31,35 @@ export const RECORD_FILE = 'addons.json'
 /** Version of the record's format. */
 export const RECORD_FORMAT = 1
 
-/** File name, inside {@link STATE_DIR}, of the project settings that installations changed and their values before. */
+/** File name, inside {@link STATE_DIR}, of the project settings that installations wrote, with the project's own values. */
 export const SETTINGS_FILE = 'addon-settings.json'
 
-/** One project setting an add-on's installation changed, and the value it held before. */
-export interface SettingBefore {
+/** One project setting that an add-on's installation wrote, and the value it held before. */
+export interface InstalledSetting {
   /** Section of `project.godot`. */
   readonly section: string
   /** Key within the section. */
   readonly key: string
-  /** The value's text before the add-on's first installation; absent when the project had no such key. */
+  /** The value that the installation wrote, as the add-on's catalog entry gives it; absent in a file of WASD Engine 0.2.4 or earlier. */
+  readonly value?: string
+  /** The project's own value, which the add-on's replaced; absent when the project had no such key. */
   readonly before?: string
 }
+
+/**
+ * The settings that installations of WASD Engine 0.2.4 and earlier wrote, by add-on id and version, for every Godot
+ * add-on version of those releases that sets any: their settings files name only the settings of an installation that
+ * replaced a value of the project's, without the values the installation wrote. Every later installation records its
+ * settings with their values.
+ */
+export const UNRECORDED_SETTINGS: ReadonlyMap<string, ReadonlyMap<string, readonly GodotProjectSetting[]>> = new Map([
+  ['extra-import-hints', new Map([['1.0', [
+    { section: 'importer_defaults', key: 'scene', value: '{"import_script/path": "res://addons/extra_import_hints/extra_import_hints.gd"}' },
+    { section: 'filesystem', key: 'import/blender/enabled', value: 'false' },
+  ]]])],
+  ['protonscatter', new Map([['4.2.0-dev+7198cc0', [{ section: 'filesystem', key: 'import/blender/enabled', value: 'false' }]]])],
+  ['smartshape2d', new Map([['3.3.2', [{ section: 'addons', key: 'ss2d/version', value: '"3.3.2"' }]]])],
+])
 
 /** How long a writer waits for another writer of the same record, whose change moves folders and rewrites small files. */
 const LOCK_WAIT_MS = 10_000
@@ -68,7 +88,7 @@ const SettingsFile = z.object({
   format: z.literal(1),
   addons: z.record(
     z.string().regex(ADDON_ID_PATTERN),
-    z.array(z.object({ section: z.string(), key: z.string(), before: z.string().exactOptional() })),
+    z.array(z.object({ section: z.string(), key: z.string(), value: z.string().exactOptional(), before: z.string().exactOptional() })),
   ),
 })
 
@@ -134,12 +154,12 @@ export async function readRecord(projectDir: string): Promise<InstalledGameAddon
 }
 
 /**
- * Read the settings that a project's installations changed.
+ * Read the settings that a project's installations wrote.
  * @param projectDir - absolute project folder.
- * @returns each add-on's changed settings by id; empty when the project has no such file.
+ * @returns each add-on's settings by id; empty when the project has no such file.
  * @throws {GameAddonRecordError} when the file exists but is not valid.
  */
-async function readSettings(projectDir: string): Promise<Map<string, readonly SettingBefore[]>> {
+async function readSettings(projectDir: string): Promise<Map<string, readonly InstalledSetting[]>> {
   const path = join(projectDir, STATE_DIR, SETTINGS_FILE)
   const json = await readStateJson(path)
   if (json === undefined) return new Map()
@@ -152,18 +172,18 @@ async function readSettings(projectDir: string): Promise<Map<string, readonly Se
 export interface HeldRecord {
   /** The installed add-ons as the record held them when the lock was taken. */
   readonly entries: readonly InstalledGameAddon[]
-  /** The project settings each installed add-on changed, by add-on id, with the values they held before. */
-  readonly settings: ReadonlyMap<string, readonly SettingBefore[]>
+  /** The project settings that each add-on's installation wrote, by add-on id, with the values they held before. */
+  readonly settings: ReadonlyMap<string, readonly InstalledSetting[]>
   /**
    * Replace the record's entries atomically.
    * @param next - the installed add-ons, in any order; the file lists them by id.
    */
   write(next: readonly InstalledGameAddon[]): Promise<void>
   /**
-   * Replace the changed settings atomically; without any, the file goes.
-   * @param next - each add-on's changed settings by id.
+   * Replace the written settings atomically; without any, the file goes.
+   * @param next - the settings that each add-on's installation wrote, by id.
    */
-  writeSettings(next: ReadonlyMap<string, readonly SettingBefore[]>): Promise<void>
+  writeSettings(next: ReadonlyMap<string, readonly InstalledSetting[]>): Promise<void>
 }
 
 /**

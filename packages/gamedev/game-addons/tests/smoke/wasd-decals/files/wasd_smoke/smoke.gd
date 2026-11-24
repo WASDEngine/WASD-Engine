@@ -3,9 +3,12 @@ extends Node3D
 ## capacity, and fade after their lifetime, also when the pool's clock has run for most of a day; the marks drawn in
 ## code show without a texture, in the tint the screen shows, and turn toward a direction; a walking body leaves
 ## footprints, left and right in turn, and none in the air; a blob shadow darkens the ground under a body, follows it,
-## and fades as the body rises.
+## and fades as the body rises; see-through things before a mark or a blob shadow, such as a puff of dust, are drawn
+## over them; and marks and blob shadows lie over a soft mark of WASD Materials, such as a road line.
 
 const ID := "wasd-decals"
+
+var camera: Camera3D
 
 
 func _ready() -> void:
@@ -62,7 +65,7 @@ func _run() -> void:
 	world.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	world.environment.ambient_light_color = Color.WHITE
 	add_child(world)
-	var camera := Camera3D.new()
+	camera = Camera3D.new()
 	camera.position = Vector3(0, 6, 6)
 	camera.rotation_degrees = Vector3(-45, 0, 0)
 	add_child(camera)
@@ -246,6 +249,73 @@ func _run() -> void:
 	await get_tree().create_timer(0.3).timeout
 	if shadow.visible:
 		return _fail("the shadow still shows beyond its reach")
+
+	# A pale see-through card, as a puff of dust, stands before a scorch mark and before the blob shadow: marks and
+	# shadows lie on the floor, so the card is drawn over them. Each card stands a third of the way from what lies on
+	# the floor to the camera.
+	var puff_paint := StandardMaterial3D.new()
+	puff_paint.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	puff_paint.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	puff_paint.albedo_color = Color(0.95, 0.95, 0.95, 0.97)
+	var lying: Array[Vector3] = [Vector3(-2, 0, 0.5), Vector3(2, 0, 1)]
+	var puffs: Array[MeshInstance3D] = []
+	for floor_place: Vector3 in lying:
+		var puff := MeshInstance3D.new()
+		puff.mesh = QuadMesh.new()
+		(puff.mesh as QuadMesh).size = Vector2(1.4, 1.4)
+		puff.material_override = puff_paint
+		puff.rotation_degrees = Vector3(-45, 0, 0)
+		puff.position = floor_place.lerp(camera.position, 0.3)
+		add_child(puff)
+		puffs.append(puff)
+	var puffs_bare := await _frame("puffs_bare.png")
+	var burnt := WasdDecals3D.new()
+	burnt.mark = "scorch"
+	burnt.lifetime = 0.0
+	add_child(burnt)
+	burnt.add(lying[0], Vector3.UP, 2.0, 0.0, 5)
+	hover.position = lying[1] + Vector3.UP
+	await get_tree().create_timer(0.3).timeout
+	var puffs_marked := await _frame("puffs_marked.png")
+	var to_pixels := Vector2(puffs_marked.get_size()) / get_viewport().get_visible_rect().size
+	if not shadow.visible or shadow.global_position.distance_to(lying[1]) > 0.05:
+		return _fail("the shadow shows %s at %s" % [shadow.visible, shadow.global_position])
+	for index: int in puffs.size():
+		var at := Vector2i(camera.unproject_position(puffs[index].position) * to_pixels)
+		var bare_shade := puffs_bare.get_pixelv(at).get_luminance()
+		var marked_shade := puffs_marked.get_pixelv(at).get_luminance()
+		if marked_shade < bare_shade - 0.05:
+			return _fail("a pale card before %s shows %f, before the bare floor %f" % [["a scorch mark", "a blob shadow"][index], marked_shade, bare_shade])
+	burnt.queue_free()
+	for puff: MeshInstance3D in puffs:
+		puff.queue_free()
+
+	# A soft mark of WASD Materials, a pale road line on a quad just above the floor, lies under marks and blob
+	# shadows: a scorch mark and the shadow over the line darken it.
+	hover.position = Vector3(2.0, 9.0, 1.0)
+	var line := MeshInstance3D.new()
+	line.mesh = PlaneMesh.new()
+	(line.mesh as PlaneMesh).size = Vector2(0.8, 8)
+	line.material_override = WasdSurface.cutout("res://wasd_smoke/line", {"soft": true})
+	line.position = Vector3(0, 0.002, 0)
+	add_child(line)
+	var line_alone := await _frame("line_alone.png")
+	var line_marks := WasdDecals3D.new()
+	line_marks.mark = "scorch"
+	line_marks.lifetime = 0.0
+	add_child(line_marks)
+	line_marks.add(Vector3(0, 0, -1), Vector3.UP, 1.6, 0.0, 5)
+	hover.position = Vector3(0, 1.0, 1.5)
+	await get_tree().create_timer(0.3).timeout
+	var line_marked := await _frame("line_marked.png")
+	var line_shades: Array[float] = []
+	for place: Vector3 in [Vector3(0, 0, -1), Vector3(0, 0, 1.5)]:
+		var at := Vector2i(camera.unproject_position(place) * to_pixels)
+		line_shades.append_array([line_alone.get_pixelv(at).get_luminance(), line_marked.get_pixelv(at).get_luminance()])
+	if line_shades[0] < 0.6 or line_shades[1] > line_shades[0] - 0.2 or line_shades[3] > line_shades[2] - 0.15:
+		return _fail("a road line shows %f, under a scorch mark %f; %f, under a blob shadow %f" % line_shades)
+	line.queue_free()
+	line_marks.queue_free()
 	print("marks ", share)
 	print("SMOKE_PASS ", ID)
 	get_tree().quit(0)

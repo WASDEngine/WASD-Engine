@@ -1,10 +1,11 @@
 /** The multiplayer tools, as the Session's agent and connected agents call them, against an in-memory WASD Engine site. */
 import { createHmac } from 'node:crypto'
-import { readFile, readdir, writeFile } from 'node:fs/promises'
+import { readFile, readdir, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GodotInstancesReport, GodotInstancesRequest } from '@deepseek-ai/dsh-godot'
+import { HarnessError } from '@deepseek-ai/dsh-llm'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { LocalizedPrompt } from '../src/multiplayer-prompts.ts'
@@ -166,6 +167,22 @@ describe('wasd_multiplayer_setup', () => {
     expect(await readFile(join(dir, 'wasd_multiplayer.cfg'), 'utf8')).toBe(
       `[wasd]\nmode="dedicated"\nserver_fps=30\ncount_traffic=false\nmax_players=32\napi_origin="${ORIGIN}"\napp_origin="${ORIGIN}"\ngame_id="${GAME.id}"\nversion=0\n`,
     )
+  })
+
+  it('changes nothing and fails with a coded refusal when the project\'s addons folder leads outside the project', async () => {
+    const site = multiplayerSite()
+    const dir = await multiplayerProject({ config: '[wasd]\nmode="player_hosted"\n' })
+    // Add-ons that several projects share, in a folder of their own.
+    const shared = await multiplayerProject({ linked: false })
+    await olderAddon(shared)
+    await symlink(join(shared, 'addons'), join(dir, 'addons'))
+    const project = await readFile(join(dir, 'project.godot'), 'utf8')
+    const definitions = multiplayerToolDefinitions(toolHost(site, dir).host, appSurface().surface)
+    const refused = await call(definitions, 'wasd_multiplayer_setup', { mode: 'dedicated' }).catch((error: unknown) => error)
+    expect(refused).toBeInstanceOf(HarnessError)
+    expect(refused).toMatchObject({ name: 'MultiplayerSetupError', code: 'WASD_MULTIPLAYER_OUTSIDE_PROJECT' })
+    expect(await readFile(join(dir, 'project.godot'), 'utf8')).toBe(project)
+    expect(await readFile(join(dir, 'wasd_multiplayer.cfg'), 'utf8')).toBe('[wasd]\nmode="player_hosted"\n')
   })
 })
 

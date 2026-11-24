@@ -1,12 +1,14 @@
 extends Node3D
 ## WASD Weather smoke test (render run on the Compatibility renderer, the one every Web build uses): rain and snow
 ## show in the air and stop under a roof, a weather comes over the seconds it is given, rain wets and snow covers
-## what the node was told to cover and nothing else, a character's model too, the cover comes off when things are
-## dry, lightning flashes and dies away, also at once when the game pauses or the weather leaves, the sky, the fog,
-## and the wind are handed to the nodes that ask for them, also to one that asks later, and the weather takes back all
-## it gave when it leaves: the sky, the fog, the wind, and the cover, while a material of the game's own over a mesh
-## is never covered over. The weather's own cards and light are children that a walk through the scene does not
-## reach.
+## what the node was told to cover and nothing else, a character's model and CSG shapes too but no see-through CSG
+## shape, a mesh that comes and goes in one frame leaves no error, what stands beyond the middle of covered ground,
+## such as a fire, shows over the snow and the wet, and WASD Decals' marks show on the snow, the cover comes off when
+## things are dry, lightning flashes and dies away, also at once when the game pauses or the weather leaves, the sky,
+## the fog, and the wind are handed to the nodes that ask for them, also to one that asks later, and the weather takes
+## back all it gave when it leaves: the sky, the fog, the wind, and the cover, while a material of the game's own over
+## a mesh is never covered over, and the cover comes back once the game takes it off, unless the mesh is to stay bare
+## by then. The weather's own cards and light are children that a walk through the scene does not reach.
 
 const ID := "wasd-weather"
 
@@ -70,6 +72,16 @@ func _changed(now: Image, before: Image) -> int:
 			if absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b) > 0.09:
 				count += 1
 	return count
+
+
+## The mean color of the picture round a place in the world.
+func _color(image: Image, place: Vector3) -> Color:
+	var at := Vector2i(camera.unproject_position(place) * Vector2(image.get_size()) / get_viewport().get_visible_rect().size)
+	var total := Color(0, 0, 0, 0)
+	for y: int in range(at.y - 4, at.y + 5):
+		for x: int in range(at.x - 4, at.x + 5):
+			total += image.get_pixel(x, y)
+	return total / 81.0
 
 
 ## The brightness of the picture round a place in the world.
@@ -160,6 +172,15 @@ func _run() -> void:
 	rock.mesh = box
 	rock.position = Vector3(8, 1, -4)
 	add_child(rock)
+	# CSG shapes take the cover, unless they are see-through.
+	var block := CSGBox3D.new()
+	block.material = gray
+	block.position = Vector3(5, 0.5, 5)
+	level.add_child(block)
+	var window := CSGBox3D.new()
+	window.material = clear
+	window.position = Vector3(-5, 0.5, 5)
+	level.add_child(window)
 
 	var weather := WasdWeather3D.new()
 	weather.change_seconds = 0.0
@@ -221,6 +242,14 @@ func _run() -> void:
 		return _fail("with snow the ground, the crate's top, and its side went from %s to %s" % [bare, white])
 	if ground.material_overlay == null or glass.material_overlay != null or statue.material_overlay != null or rock.material_overlay != null or tree.material_overlay != null:
 		return _fail("covered: ground %s, glass %s, marked statue %s, rock outside %s, cut-out tree %s" % [ground.material_overlay, glass.material_overlay, statue.material_overlay, rock.material_overlay, tree.material_overlay])
+	if block.material_overlay == null or window.material_overlay != null:
+		return _fail("covered: a CSG block %s, a see-through CSG window %s" % [block.material_overlay, window.material_overlay])
+	# A mesh that comes into the level and is freed in the same frame is let go without an error.
+	var fleeting := MeshInstance3D.new()
+	fleeting.mesh = box
+	level.add_child(fleeting)
+	fleeting.free()
+	await get_tree().process_frame
 	# What comes into the level later is covered too, also the model of a WASD Character, which draws nothing itself.
 	var late := MeshInstance3D.new()
 	late.mesh = box
@@ -238,6 +267,41 @@ func _run() -> void:
 		return _fail("what came into the level later took no cover: a mesh %s, a character's model %s" % [late.material_overlay, model.material_overlay])
 	late.queue_free()
 	hero.queue_free()
+
+	# 5b. What stands on covered ground further off than the ground's middle, such as a fire, is drawn over the snow and
+	# the wet: the cover is drawn before every other see-through thing. WASD Decals' marks still show on the snow.
+	var flame := MeshInstance3D.new()
+	var card := QuadMesh.new()
+	card.size = Vector2(2, 2)
+	var glow := StandardMaterial3D.new()
+	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glow.albedo_color = Color(1.0, 0.45, 0.05, 0.9)
+	card.material = glow
+	flame.mesh = card
+	flame.position = Vector3(-3, 1, -6)
+	add_child(flame)
+	var soot := WasdDecals3D.new()
+	soot.mark = "scorch"
+	soot.lifetime = 0.0
+	add_child(soot)
+	soot.add(Vector3(3, 0, 4), Vector3.UP, 2.5, 0.0, 3)
+	weather.snow_cover = 1.0
+	await _wait(0.2)
+	var fire_on_snow := _color(await _picture("flame_snow.png"), flame.position)
+	var mark_on_snow := _shade(await _picture("mark_snow.png"), Vector3(3, 0, 4))
+	weather.snow_cover = 0.0
+	weather.wetness = 1.0
+	await _wait(0.2)
+	var fire_on_wet := _color(await _picture("flame_wet.png"), flame.position)
+	flame.queue_free()
+	soot.queue_free()
+	weather.wetness = 0.0
+	if fire_on_snow.r - fire_on_snow.b < 0.6 or fire_on_wet.r - fire_on_wet.b < 0.6:
+		return _fail("a flame beyond the ground's middle shows %s on snow and %s on wet ground" % [fire_on_snow, fire_on_wet])
+	if mark_on_snow > white[0] - 0.2:
+		return _fail("a scorch mark on the snow shows %f, the snow %f" % [mark_on_snow, white[0]])
+	await _wait(0.2)
 
 	# 6. Rain wets: the ground darkens, and the cover comes off when all is dry and clear.
 	weather.snow_cover = 0.0
@@ -321,6 +385,39 @@ func _run() -> void:
 	await get_tree().process_frame
 	if ground.material_overlay == null or crate.material_overlay != own:
 		return _fail("the rain came: the ground has %s over it, and the crate %s over it in place of its own %s" % [ground.material_overlay, crate.material_overlay, own])
+	# Once the game takes its own material off again, the cover comes back while things are wet.
+	crate.material_overlay = null
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if crate.material_overlay == null or crate.material_overlay != ground.material_overlay:
+		return _fail("the game took its material off the wet crate, which now has %s over it" % [crate.material_overlay])
+	crate.material_overlay = own
+	# It does not come back on a mesh that the rules leave bare by then: one that joined the bare group, and one that
+	# turned see-through, as a wall the camera fades.
+	var joining := MeshInstance3D.new()
+	joining.mesh = box
+	joining.position = Vector3(2, 1, 6)
+	level.add_child(joining)
+	var fading := MeshInstance3D.new()
+	fading.mesh = box
+	fading.position = Vector3(-2, 1, 6)
+	level.add_child(fading)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var both_covered := joining.material_overlay != null and fading.material_overlay != null
+	joining.add_to_group(WasdWeather3D.BARE_GROUP)
+	joining.material_overlay = null
+	var faded := StandardMaterial3D.new()
+	faded.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	faded.albedo_color = Color(1, 1, 1, 0.3)
+	fading.material_override = faded
+	fading.material_overlay = null
+	for _frame: int in 3:
+		await get_tree().process_frame
+	if not both_covered or joining.material_overlay != null or fading.material_overlay != null:
+		return _fail("covered at first %s; then a mesh in the bare group has %s over it, and a see-through one %s" % [both_covered, joining.material_overlay, fading.material_overlay])
+	joining.queue_free()
+	fading.queue_free()
 	# The weather leaves wet and in the middle of a flash: the sky, the fog, the wind, and the cover are taken back, the
 	# grass gets its own wind again, the sky is as bright as before the flash, and the crate keeps its own material.
 	weather.strike()

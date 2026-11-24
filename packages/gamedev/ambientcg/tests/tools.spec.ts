@@ -6,9 +6,9 @@
 import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as AmbientCg from '../src/index.ts'
-import { callTool, compose, text, type Composition } from './composition.ts'
+import { callTool, compose, failure, text, type Composition } from './composition.ts'
 import { archiveBytes, pictureBytes, PREVIEW } from './fixtures.ts'
 
 let composition: Composition | undefined
@@ -74,6 +74,21 @@ describe('ambientcg_search', () => {
     expect(text(decals)).toContain('Most popular ambientCG decals: 1 in all.')
   })
 
+  it('lists the most popular assets without the kinds when ambientCG cannot list the categories, unless the call is cancelled', async () => {
+    const current = await composed()
+    current.fake.categoriesStatus = 503
+    const browse = await callTool(current, 'ambientcg_search', {})
+    expect(browse).toMatchObject({ isError: false, value: { query: '', total: 5, categories: [] } })
+    expect(text(browse)).toContain('Most popular ambientCG assets: 5 in all.')
+    expect(text(browse)).not.toContain('Kinds to search for')
+    current.fake.categoriesStatus = 0
+    const controller = new AbortController()
+    const cancelled = callTool(current, 'ambientcg_search', { type: 'materials' }, current.agent, controller.signal)
+    await vi.waitFor(() => { expect(current.fake.requests.filter(request => request.url === '/api/v3/categories')).toHaveLength(2) }, { timeout: 10_000 })
+    controller.abort()
+    expect(failure(await cancelled)).toEqual({ name: 'AbortError', code: 'ABORTED' })
+  })
+
   it('pages with offset and limit, and refuses limits outside 1 to 50', async () => {
     const current = await composed()
     const page = await callTool(current, 'ambientcg_search', { limit: 2, offset: 1 })
@@ -84,12 +99,14 @@ describe('ambientcg_search', () => {
     for (const limit of [0, 51]) {
       const refused = await callTool(current, 'ambientcg_search', { limit })
       expect(refused.isError).toBe(true)
-      expect(text(refused)).toContain('limit must be an integer from 1 to 50.')
+      expect(text(refused)).toContain('invalid arguments: limit must be an integer from 1 to 50.')
+      expect(failure(refused)).toEqual({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
     }
     current.fake.listStatus = 429
     const limited = await callTool(current, 'ambientcg_search', { query: 'rust' })
     expect(limited.isError).toBe(true)
     expect(text(limited)).toContain('ambientCG is limiting requests from this computer; try again in 12 seconds.')
+    expect(failure(limited)).toEqual({ name: 'AmbientCgError', code: 'AMBIENTCG_REQUEST_FAILED' })
   })
 })
 
@@ -127,11 +144,26 @@ describe('ambientcg_asset', () => {
     expect(text(failed)).toContain('The preview image could not be shown: ambientCG sent the preview image as text/html.')
   })
 
+  it('names the preview attachment by the type of picture ambientCG sends, a PNG for an asset without a JPEG thumbnail', async () => {
+    const current = await composed()
+    current.fake.pngPreviews.add('LeafSet030')
+    const result = await callTool(current, 'ambientcg_asset', { id: 'LeafSet030' })
+    expect(result.content.at(-1)).toMatchObject({ type: 'image', attachment: { mediaType: 'image/png', name: 'ambientcg-LeafSet030.png' } })
+    expect(current.saved).toEqual([{ data: PREVIEW, mediaType: 'image/png', name: 'ambientcg-LeafSet030.png' }])
+    expect(current.fake.requests.at(-1)?.url).toBe('/thumbs/512/LeafSet030.png')
+  })
+
   it('names a missing id, an id of a kind the tools do not offer, and a malformed id', async () => {
     const current = await composed()
-    expect(text(await callTool(current, 'ambientcg_asset', { id: 'Nothing001' }))).toContain('ambientCG has no material, decal, atlas, or HDRI with the id "Nothing001"; find one with ambientcg_search.')
-    expect(text(await callTool(current, 'ambientcg_asset', { id: 'BricksSubstance008' }))).toContain('ambientCG has no material, decal, atlas, or HDRI with the id "BricksSubstance008"')
-    expect(text(await callTool(current, 'ambientcg_asset', { id: '../etc' }))).toContain('"../etc" is not an ambientCG asset id')
+    const missing = await callTool(current, 'ambientcg_asset', { id: 'Nothing001' })
+    expect(text(missing)).toContain('ambientCG has no material, decal, atlas, or HDRI with the id "Nothing001"; find one with ambientcg_search.')
+    expect(failure(missing)).toEqual({ name: 'AmbientCgError', code: 'AMBIENTCG_ASSET_NOT_FOUND' })
+    const substance = await callTool(current, 'ambientcg_download', { id: 'BricksSubstance008' })
+    expect(text(substance)).toContain('ambientCG has no material, decal, atlas, or HDRI with the id "BricksSubstance008"')
+    expect(failure(substance)).toEqual({ name: 'AmbientCgError', code: 'AMBIENTCG_ASSET_NOT_FOUND' })
+    const malformed = await callTool(current, 'ambientcg_asset', { id: '../etc' })
+    expect(text(malformed)).toContain('invalid arguments: "../etc" is not an ambientCG asset id')
+    expect(failure(malformed)).toEqual({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
   })
 })
 
@@ -183,11 +215,20 @@ describe('ambientcg_download', () => {
 
   it('refuses what the asset lacks before it downloads, and a download over the size limit', async () => {
     const current = await composed({ maxDownloadBytes: 1000 })
-    expect(text(await callTool(current, 'ambientcg_download', { id: 'Wood099', resolution: '8k' }))).toContain('Wood 099 has no 8k in jpg; it offers: 1k, 2k.')
-    expect(text(await callTool(current, 'ambientcg_download', { id: 'Wood099', maps: ['metalness'] }))).toContain('Wood 099 has no "metalness" map; its maps are: color, displacement, normal, roughness.')
+    const resolution = await callTool(current, 'ambientcg_download', { id: 'Wood099', resolution: '8k' })
+    expect(text(resolution)).toContain('Wood 099 has no 8k in jpg; it offers: 1k, 2k.')
+    expect(failure(resolution)).toEqual({ name: 'AmbientCgError', code: 'AMBIENTCG_FILES_NOT_FOUND' })
+    const format = await callTool(current, 'ambientcg_download', { id: 'EveningSkyHDRI049B', format: 'jpg' })
+    expect(text(format)).toContain('Evening Sky HDRI 049 B has no jpg files; an HDRI is an exr panorama; leave format out.')
+    expect(failure(format)).toEqual({ name: 'AmbientCgError', code: 'AMBIENTCG_FILES_NOT_FOUND' })
+    const map = await callTool(current, 'ambientcg_download', { id: 'Wood099', maps: ['metalness'] })
+    expect(text(map)).toContain('Wood 099 has no "metalness" map; its maps are: color, displacement, normal, roughness.')
+    expect(failure(map)).toEqual({ name: 'AmbientCgError', code: 'AMBIENTCG_FILES_NOT_FOUND' })
+    expect(failure(await callTool(current, 'ambientcg_download', { id: 'Wood099', maps: [] }))).toEqual({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
     const large = await callTool(current, 'ambientcg_download', { id: 'Bricks097', format: 'png' })
     expect(large.isError).toBe(true)
     expect(text(large)).toContain('The 1k png archive of Bricks 097 is 9 KB, more than the 1 KB that one download may be; choose a lower resolution or jpg.')
+    expect(failure(large)).toEqual({ name: 'AmbientCgError', code: 'AMBIENTCG_TOO_LARGE' })
     expect(current.fake.requests.filter(request => request.url.startsWith('/get'))).toEqual([])
   })
 
@@ -199,6 +240,7 @@ describe('ambientcg_download', () => {
     const kept = await callTool(current, 'ambientcg_download', { id: 'Wood099' })
     expect(kept.isError).toBe(true)
     expect(text(kept)).toContain('already exists with other contents: Wood099_1K-JPG_Color.jpg. Pass replace: true to overwrite it')
+    expect(failure(kept)).toEqual({ name: 'AmbientCgError', code: 'AMBIENTCG_ALREADY_EXISTS' })
     const replaced = await callTool(current, 'ambientcg_download', { id: 'Wood099', replace: true })
     expect(text(replaced)).toContain('(1 replaced, 3 already in place)')
     expect(await readFile(join(directory, 'Wood099_1K-JPG_Color.jpg'))).toEqual(pictureBytes('Wood099_1K-JPG_Color.jpg'))
@@ -206,9 +248,11 @@ describe('ambientcg_download', () => {
     const damaged = await callTool(current, 'ambientcg_download', { id: 'Leaking019C' })
     expect(damaged.isError).toBe(true)
     expect(text(damaged)).toContain('The archive of Leaking 019 C arrived damaged: its SHA-1 digest differs from ambientCG\'s; nothing was saved.')
+    expect(failure(damaged)).toEqual({ name: 'AmbientCgError', code: 'AMBIENTCG_DOWNLOAD_CORRUPT' })
     current.fake.digests = false
     const unchecked = await callTool(current, 'ambientcg_download', { id: 'Leaking019C' })
     expect(text(unchecked)).toContain('Leaking019C_1K-JPG_Color.jpg arrived damaged: its checksum differs from the archive\'s; nothing was saved.')
+    expect(failure(unchecked)).toEqual({ name: 'AmbientCgError', code: 'AMBIENTCG_DOWNLOAD_CORRUPT' })
     // The failed downloads leave no folder of their own beside the earlier download's.
     expect(await readdir(join(current.work, 'assets', 'ambientcg'))).toEqual(['Wood099'])
   })
@@ -219,10 +263,30 @@ describe('ambientcg_download', () => {
     const stale = await callTool(current, 'ambientcg_download', { id: 'Wood099' })
     expect(stale.isError).toBe(true)
     expect(text(stale)).toContain('ambientCG\'s files of Wood 099 differ from its listing, as after an update of the asset; nothing was saved. Call again to read the new listing.')
+    expect(failure(stale)).toEqual({ name: 'AmbientCgError', code: 'AMBIENTCG_STALE_LISTING' })
     current.fake.listedSizeOffset = 0
     const fresh = await callTool(current, 'ambientcg_download', { id: 'Wood099' })
     expect(fresh.isError).toBe(false)
     expect(current.fake.requests.filter(request => request.url.startsWith('/api/v3/assets'))).toHaveLength(2)
+  })
+
+  it('reports a folder it cannot make as a failure on the disk', async () => {
+    const current = await composed()
+    await writeFile(join(current.work, 'assets'), 'not a folder')
+    const blocked = await callTool(current, 'ambientcg_download', { id: 'Wood099' })
+    expect(blocked.isError).toBe(true)
+    expect(text(blocked)).toMatch(/^Error: The download failed on the disk while it .+: E[A-Z]+: .+; nothing was saved\./u)
+    expect(failure(blocked)).toEqual({ name: 'AmbientCgError', code: 'AMBIENTCG_DISK_FAILED' })
+  })
+
+  it('reports a connection that breaks off while the archive arrives as a failed request that saved nothing', async () => {
+    const current = await composed()
+    current.fake.cut.add('Wood099_1K-JPG.zip')
+    const cut = await callTool(current, 'ambientcg_download', { id: 'Wood099' })
+    expect(cut.isError).toBe(true)
+    expect(text(cut)).toBe(`Error: The connection to ambientCG broke off while it sent the archive ${current.fake.origin}/get?file=Wood099_1K-JPG.zip; nothing was saved. Try again.`)
+    expect(failure(cut)).toEqual({ name: 'AmbientCgError', code: 'AMBIENTCG_REQUEST_FAILED' })
+    expect(await readdir(current.work)).toEqual([])
   })
 })
 

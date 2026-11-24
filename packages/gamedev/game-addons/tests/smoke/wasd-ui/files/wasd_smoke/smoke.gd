@@ -7,9 +7,13 @@ extends Node3D
 ## within its most; toasts come and go, also over the panels of a theme of the game's own (the project's theme/custom,
 ## empty until the test fills it); numbers rise from places before the camera and not from behind it; the prompt, the
 ## hurt flash, the fades, and menus over a dimmed game show and leave, show a captured mouse pointer, and give the
-## focus and the pointer back unless the game, another menu, or a change of scene takes them first; a label placed in
-## a corner reads over the game; the crosshair and the radar draw, and the radar follows a center that turns only its
-## model and looks through a camera rig, as a WasdCharacter3D does.
+## focus and the pointer back unless the game, another menu, or a change of scene takes them first; a menu whose first
+## button is hidden gives the focus to its first button that shows, also when a menu over it closes; a hidden menu of
+## a scene shows while it is open and, kept, goes back to its place there, hidden, laid out as it was on the Center
+## and the Full Rect presets, with the scene's `%` names, and when its scene leaves the tree it goes back into it while
+## a menu made in code is freed, and the dim goes and the pointer stays shown; a label placed in a corner reads over
+## the game; the crosshair and the radar draw, and the radar follows a center that turns only its model and looks
+## through a camera rig, as a WasdCharacter3D does.
 
 const ID := "wasd-ui"
 
@@ -422,7 +426,135 @@ func _run() -> void:
 			or resumed != Input.MOUSE_MODE_CAPTURED or on_title != Input.MOUSE_MODE_VISIBLE):
 		return _fail("mouse modes: %d as one menu closed, %d as another opened in its place, %d after, %d once both closed, and %d on a scene changed to after the last close" % [closing, between, after, resumed, on_title])
 
-	# 11. A label placed in a corner reads over the game; the crosshair and the radar draw without an error.
+	# 11. A menu whose first button is hidden, as a Continue with no save to continue, gives the focus to its first button
+	# that shows, and ui_down moves it on; a menu closed over it gives the focus to that button again when no control had
+	# the focus as it opened, and when the button that had it is hidden by then.
+	var title_menu := PanelContainer.new()
+	var title_rows := VBoxContainer.new()
+	title_menu.add_child(title_rows)
+	var continue_button := Button.new()
+	continue_button.text = "Continue"
+	continue_button.visible = false
+	title_rows.add_child(continue_button)
+	var new_game := Button.new()
+	new_game.text = "New game"
+	title_rows.add_child(new_game)
+	var quit_button := Button.new()
+	quit_button.text = "Quit"
+	title_rows.add_child(quit_button)
+	var focused := func() -> String:
+		var owner_now := get_viewport().gui_get_focus_owner() as Button
+		return owner_now.text if owner_now != null else "nothing"
+	ui.open(title_menu)
+	await _frames(2)
+	var first_shown: String = focused.call()
+	var down := InputEventAction.new()
+	down.action = &"ui_down"
+	down.pressed = true
+	Input.parse_input_event(down)
+	await _frames(2)
+	var moved_on: String = focused.call()
+	var let_go := down.duplicate() as InputEventAction
+	let_go.pressed = false
+	Input.parse_input_event(let_go)
+	get_viewport().gui_release_focus()
+	var over := PanelContainer.new()
+	var over_button := Button.new()
+	over_button.text = "Over"
+	over.add_child(over_button)
+	ui.open(over)
+	await _frames(2)
+	ui.close(over)
+	await _frames(2)
+	var beneath: String = focused.call()
+	# The button that had the focus before a menu over it opened is hidden when that menu closes.
+	quit_button.grab_focus()
+	var over_again := PanelContainer.new()
+	over_again.add_child(Button.new())
+	ui.open(over_again)
+	await _frames(2)
+	quit_button.hide()
+	ui.close(over_again)
+	await _frames(2)
+	var instead_of_hidden: String = focused.call()
+	ui.close(title_menu)
+	await _frames(2)
+	if [first_shown, moved_on, beneath, instead_of_hidden] != ["New game", "Quit", "New game", "New game"]:
+		return _fail("a menu whose first button is hidden gave the focus to %s, ui_down to %s, a menu closed over it to %s, and one closed after the button that had the focus was hidden to %s" % [first_shown, moved_on, beneath, instead_of_hidden])
+
+	# 12. A menu of a scene, hidden there until it opens, shows while it is open; closed to be kept, it goes back to its
+	# place, hidden, laid out as it was, on the Center preset, as a menu on the Full Rect preset does too, and the
+	# scene's `%` names reach it again. When its scene leaves the tree, as on a change of scene, the menu goes back into
+	# it, a menu made in code over it is freed, the dim goes, and the pointer that the menus showed stays shown for the
+	# next scene.
+	var level := Node.new()
+	var first_child := Node.new()
+	level.add_child(first_child)
+	var pause_menu := PanelContainer.new()
+	pause_menu.name = "PauseMenu"
+	pause_menu.visible = false
+	pause_menu.set_anchors_preset(Control.PRESET_CENTER)
+	for side: Side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+		pause_menu.set_offset(side, [-100.0, -60.0, 100.0, 60.0][side])
+	level.add_child(pause_menu)
+	var pause_rows := VBoxContainer.new()
+	pause_menu.add_child(pause_rows)
+	var resume := Button.new()
+	resume.name = "Resume"
+	resume.text = "Resume"
+	pause_rows.add_child(resume)
+	level.add_child(Node.new())
+	var full_menu := Control.new()
+	full_menu.visible = false
+	full_menu.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var full_box := PanelContainer.new()
+	full_box.set_anchors_preset(Control.PRESET_CENTER)
+	full_box.add_child(Button.new())
+	full_menu.add_child(full_box)
+	level.add_child(full_menu)
+	for part: Node in [first_child, pause_menu, pause_rows, resume]:
+		part.owner = level
+	resume.unique_name_in_owner = true
+	get_tree().root.add_child(level)
+	var smoke_scene := get_tree().current_scene
+	get_tree().current_scene = level
+	var menus: Control = ui.get(&"_menus")
+	var dim_sheet: Control = ui.get(&"_dim")
+	var layout_of := func(control: Control) -> String:
+		return "anchors %s offsets %s rect %s" % [[control.anchor_left, control.anchor_top, control.anchor_right, control.anchor_bottom], [control.offset_left, control.offset_top, control.offset_right, control.offset_bottom], control.get_rect()]
+	await _frames(1)
+	var laid_out := [layout_of.call(pause_menu), layout_of.call(full_menu)]
+	ui.open(pause_menu)
+	await _frames(2)
+	var while_open := [pause_menu.is_visible_in_tree(), get_viewport().gui_get_focus_owner() == resume]
+	ui.close(pause_menu, true)
+	await _frames(2)
+	var returned := [pause_menu.get_parent() == level, pause_menu.get_index(), pause_menu.visible, level.get_node_or_null("%Resume") == resume, dim_sheet.visible]
+	ui.open(full_menu)
+	await _frames(2)
+	ui.close(full_menu, true)
+	await _frames(2)
+	var laid_out_again := [layout_of.call(pause_menu), layout_of.call(full_menu)]
+	if laid_out_again != laid_out:
+		get_tree().current_scene = smoke_scene
+		level.free()
+		return _fail("menus of a scene kept and closed are laid out as %s, not as before, %s" % [laid_out_again, laid_out])
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	ui.open(pause_menu)
+	var options_menu := PanelContainer.new()
+	options_menu.add_child(Button.new())
+	ui.open(options_menu)
+	await _frames(2)
+	get_tree().root.remove_child(level)
+	await _frames(2)
+	var scene_left := [pause_menu.get_parent() == level, pause_menu.visible, is_instance_valid(options_menu), menus.get_child_count(), dim_sheet.visible, Input.mouse_mode]
+	get_tree().current_scene = smoke_scene
+	level.free()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if while_open != [true, true] or returned != [true, 1, false, true, false] or scene_left != [true, false, false, 0, false, Input.MOUSE_MODE_VISIBLE]:
+		return _fail("a menu of a scene: while open %s, kept and closed %s, after its scene left %s" % [while_open, returned, scene_left])
+
+	# 13. A label placed in a corner reads over the game; the crosshair and the radar draw without an error.
 	var score := Label.new()
 	score.text = "Score 10"
 	ui.place(score, CORNER_BOTTOM_RIGHT)

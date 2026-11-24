@@ -5,7 +5,8 @@
  * package's `archives/` folder, outside `app.asar`, where one with the pinned size is read in place, never downloaded
  * and never removed. Unpacking reads the archive's central directory and streams one folder's files into a new
  * folder, so memory stays bounded however large the archive is; entry names with absolute paths, `..` segments, or
- * backslashes stop it, and macOS metadata entries are skipped.
+ * backslashes stop it, and macOS metadata entries are skipped. A failure of the computer's files while unpacking, such
+ * as a full disk or a folder without permission, comes as Node reports it, never as a damaged archive.
  * @module @deepseek-ai/dsh-game-addons/src/archive
  */
 import { createHash, randomUUID } from 'node:crypto'
@@ -157,9 +158,20 @@ function safeRelative(name: string): string | undefined {
 // yauzl's own checks of entry names, which stop the whole archive.
 const UNSAFE_NAME = /^(?:invalid relative path|absolute path|invalid characters in fileName): (.*)$/su
 
-/** The archive error for a failure of the zip reader. */
+/**
+ * Whether a failure is one of the computer's, such as `ENOSPC` or `EACCES` from a file system call, which names the
+ * call: the zip reader's own failures and those of decompression name none.
+ */
+function isSystemError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && typeof (error as NodeJS.ErrnoException).syscall === 'string'
+}
+
+/**
+ * The failure of reading or unpacking an archive as a caller gets it: a failure of the computer's, an archive error,
+ * and a cancellation as they are, and any other failure of the zip reader as a damaged archive.
+ */
 function readerError(archivePath: string, error: unknown): Error {
-  if (error instanceof GameAddonArchiveError || (error instanceof Error && error.name === 'AbortError')) return error
+  if (error instanceof GameAddonArchiveError || (error instanceof Error && error.name === 'AbortError') || isSystemError(error)) return error
   const message = error instanceof Error ? error.message : String(error)
   const unsafe = UNSAFE_NAME.exec(message)
   if (unsafe !== null) return new GameAddonArchiveError(`The archive entry ${unsafe[1] as string} would leave the add-on folder; nothing was installed.`, 'GAME_ADDON_ARCHIVE_CORRUPT', { cause: error })
@@ -231,6 +243,8 @@ function under(path: string, at: string): boolean {
  * @returns the written paths relative to `destination`, with `/` separators, sorted.
  * @throws {GameAddonArchiveError} for a damaged archive, an entry that would leave the folder, a root without files, or
  *   an `exclude` path that the archive does not have, which means the list no longer fits the archive.
+ * @throws the file system's own error, with its `code` and `syscall`, when the computer fails to read the archive or to
+ *   write a file, such as `ENOSPC`, `EACCES`, or `EEXIST` for a `destination` that exists.
  */
 export async function unpackFolder(
   archivePath: string, root: string, destination: string, signal: AbortSignal, omit: UnpackOmissions = {},
@@ -266,7 +280,6 @@ export async function unpackFolder(
     }
     return selected.map(item => item.relative).sort()
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw error
     throw readerError(archivePath, error)
   } finally {
     zipfile.close()

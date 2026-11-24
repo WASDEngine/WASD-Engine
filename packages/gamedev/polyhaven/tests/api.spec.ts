@@ -1,6 +1,5 @@
 /** The Poly Haven API client against a fake Poly Haven: the cached asset list, the search, file trees, and images. */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { AssetLibraryRequestError } from '@deepseek-ai/dsh-game-mcp/kit'
 import { PolyHavenApi, type PolyHavenApiOptions } from '../src/api.ts'
 import { PREVIEW, startFakePolyHaven, type FakePolyHaven } from './fixtures.ts'
 
@@ -20,6 +19,11 @@ afterEach(async () => {
 
 function api(overrides: Partial<PolyHavenApiOptions> = {}): PolyHavenApi {
   return new PolyHavenApi({ apiUrl: fake.url, userAgent: 'WASD Engine', catalogMaxAgeMs: 60_000, fetch: (input, init) => fetch(input, init), now: () => now, ...overrides })
+}
+
+/** A failed request as the plugin throws it: its own error, with the kit's request and its HTTP status as the cause. */
+function refused(message: string, status: number): Record<string, unknown> {
+  return { name: 'PolyHavenError', code: 'POLYHAVEN_REQUEST_FAILED', message, cause: { name: 'AssetLibraryRequestError', status } }
 }
 
 describe('PolyHavenApi', () => {
@@ -55,7 +59,7 @@ describe('PolyHavenApi', () => {
     fake.listStatus = 503
     expect((await client.assets(signal)).size).toBe(3)
     expect(fake.requests).toHaveLength(2)
-    await expect(api().assets(signal)).rejects.toThrow(new AssetLibraryRequestError(503, 'Poly Haven answered HTTP 503 for the asset list.'))
+    await expect(api().assets(signal)).rejects.toMatchObject(refused('Poly Haven answered HTTP 503 for the asset list.', 503))
   })
 
   it('searches with the trimmed, lowercased query and the kind\'s filter, and leaves ranking to the caller when the API cannot', async () => {
@@ -66,29 +70,32 @@ describe('PolyHavenApi', () => {
     fake.searchStatus = 503
     expect(await client.search('rock', undefined, signal)).toBeUndefined()
     fake.searchStatus = 429
-    await expect(client.search('rock', undefined, signal)).rejects.toThrow('Poly Haven is limiting requests from this computer; try again in 12 seconds.')
+    await expect(client.search('rock', undefined, signal)).rejects.toMatchObject(refused('Poly Haven is limiting requests from this computer; try again in 12 seconds.', 429))
   })
 
   it('reads an asset\'s file tree, and reports a missing asset as HTTP 404', async () => {
     const tree = await api().files('kiara_8_sunset', signal)
     expect([...tree.keys()]).toEqual(['hdri', 'backplates'])
     expect([...tree.get('hdri')?.keys() ?? []]).toEqual(['1k', '2k'])
-    await expect(api().files('nothing_here', signal)).rejects.toMatchObject({ status: 404, message: 'Poly Haven answered HTTP 404 for the files of nothing_here.' })
+    await expect(api().files('nothing_here', signal)).rejects.toMatchObject(refused('Poly Haven answered HTTP 404 for the files of nothing_here.', 404))
   })
 
   it('downloads preview images of supported types only', async () => {
     const image = await api().image(`${fake.url}/thumbs/mossy_rock.png?format=jpeg`, signal)
     expect(image).toEqual({ data: PREVIEW, mediaType: 'image/jpeg' })
     fake.previewType = 'text/html; charset=utf-8'
-    await expect(api().image(`${fake.url}/thumbs/mossy_rock.png`, signal)).rejects.toThrow('Poly Haven sent the preview image as text/html.')
+    await expect(api().image(`${fake.url}/thumbs/mossy_rock.png`, signal)).rejects.toMatchObject(refused('Poly Haven sent the preview image as text/html.', 200))
   })
 
   it('reports an unreachable Poly Haven and refuses URLs and redirects that do not lead to Poly Haven', async () => {
     const offline = api({ fetch: () => Promise.reject(new TypeError('fetch failed')) })
-    await expect(offline.assets(signal)).rejects.toThrow(`Could not reach Poly Haven at ${new URL(fake.url).host} for the asset list: fetch failed`)
+    await expect(offline.assets(signal)).rejects.toMatchObject(refused(`Could not reach Poly Haven at ${new URL(fake.url).host} for the asset list: fetch failed`, 0))
     for (const url of ['file:///etc/passwd', 'https://attacker.example/mossy_rock.zip', 'http://dl.polyhaven.org/file.zip']) {
-      await expect(api().download(url, signal)).rejects.toThrow(`Poly Haven named the file ${url} at ${url}, which is not a Poly Haven address, so nothing was downloaded from it.`)
+      await expect(api().download(url, signal)).rejects.toMatchObject(
+        refused(`Poly Haven named the file ${url} at ${url}, which is not a Poly Haven address, so nothing was downloaded from it.`, 0))
     }
+    const strange = api({ fetch: () => Promise.resolve(Response.json(['not', 'a', 'list'])) })
+    await expect(strange.assets(signal)).rejects.toMatchObject({ name: 'PolyHavenError', code: 'POLYHAVEN_REQUEST_FAILED', message: 'Poly Haven sent an asset list in an unknown format.' })
     const fetched: string[] = []
     const redirecting = api({
       fetch: async (input) => {

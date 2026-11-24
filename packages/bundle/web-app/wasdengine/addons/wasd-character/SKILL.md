@@ -58,7 +58,7 @@ A missing gait uses the nearest one. `hero.clips` holds what was found, to read 
 | `model_turn` | 0 | 180 for a model that faces -Z, as Kenney's do |
 | `blend` | 0.2 s | cross-fade between clips |
 
-Signals: `jumped`, and `landed(speed)` with the speed of the fall. `hero.teleport(place, facing)` puts it somewhere at rest, `hero.face_toward(direction)` turns the model at once, `hero.get_ground_speed()` reads its speed. To knock it back, add to `hero.velocity`.
+Signals: `jumped`, and `landed(speed)` with the speed of the fall. `hero.teleport(place, facing)` puts it at rest, on a floor up to 0.3 m below, with no landing; `hero.face_toward(direction)` turns the model at once, `hero.get_ground_speed()` reads its speed. To knock it back, add to `hero.velocity`.
 
 ## Stairs and feet
 
@@ -101,9 +101,9 @@ The camera also works alone, for a car or a ball: `var rig := WasdOrbitCamera3D.
 
 ## Pitfalls
 
-- The model must face +Z with its feet at its origin, as Godot's humanoid imports do. A character that runs backward needs `model_turn = 180`.
+- The model must face +Z with its feet at its origin, as Godot's humanoid imports do; one that runs backward needs `model_turn = 180`.
 - It moves itself: do not call `move_and_slide()` on it or set its position each frame. Set `wish_direction`, or `velocity` for a push.
-- It walks slopes of up to 45 degrees and steps of up to `step_height`. A higher ledge needs a jump; a ladder, code of the game's own.
+- It walks slopes of up to 45 degrees. A ledge higher than `step_height` needs a jump; a ladder, code of the game's own.
 - For a first-person shooter, `starter-kit-fps` is the start.
 
 ## Check it

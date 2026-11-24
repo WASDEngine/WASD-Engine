@@ -1,21 +1,41 @@
 /**
  * The record of every shipped WASD Multiplayer add-on, and what installs and updates of a project's add-on do with the
  * files a game changed: an update brings an older copy up to date only while the game left the add-on's own code alone,
- * an install replaces that code after keeping the game's changes in a backup, neither overwrites an example or a
- * Markdown file the game changed, and neither writes through a link.
+ * an install replaces that code after keeping the game's changes in a backup, where a moved link still leads to the
+ * game's files, neither overwrites an example or a Markdown file the game changed, neither writes through a link, and
+ * neither writes an add-on folder or an addons folder that leads outside the project, where an update reads only the
+ * version, and the setup nothing. A setup that cannot keep the game's entries in its backup changes nothing.
  */
+import type { PathLike } from 'node:fs'
 import { cp, lstat, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { extname, join, sep } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { addonFileDigest, SHIPPED_ADDON_DOCS, SHIPPED_ADDON_FILES } from '../src/multiplayer-addon-files.ts'
 import {
   ADDON_BACKUPS_DIR, installMultiplayerAddon, olderAddonVersion, pluginVersion, updateMultiplayerAddon,
 } from '../src/multiplayer-project.ts'
 import { ADDON_SOURCE as ADDON, multiplayerProject, olderAddon, PLUGIN_1_2_0, removeProjects } from './multiplayer-site.ts'
 
+/** Whether the system refuses to make symbolic links, as Windows does for accounts outside Developer Mode. */
+const system = vi.hoisted(() => ({ refusesLinks: false }))
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...actual,
+    symlink: async (target: PathLike, path: PathLike, type?: string | null): Promise<void> => {
+      if (system.refusesLinks) {
+        throw Object.assign(new Error(`EPERM: operation not permitted, symlink '${String(target)}' -> '${String(path)}'`), { code: 'EPERM', syscall: 'symlink' })
+      }
+      await actual.symlink(target, path, type)
+    },
+  }
+})
+
 const scratch: string[] = []
 afterEach(async () => {
+  system.refusesLinks = false
   await removeProjects()
   await Promise.all(scratch.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
 })
@@ -42,6 +62,29 @@ async function recordedDigests(folder: string, prefix = ''): Promise<Record<stri
 async function olderProject(): Promise<{ readonly dir: string; readonly addon: string }> {
   const dir = await multiplayerProject({ config: '[wasd]\nmode="player_hosted"\n' })
   return { dir, addon: await olderAddon(dir) }
+}
+
+/**
+ * An older copy of the add-on outside any project, as projects that link to one folder share it: `<shared>/addons/` holds
+ * its folder.
+ */
+async function sharedAddon(): Promise<{ readonly shared: string; readonly addon: string }> {
+  const shared = await mkdtemp(join(tmpdir(), 'dsh-wasd-addon-shared-'))
+  scratch.push(shared)
+  return { shared, addon: await olderAddon(shared) }
+}
+
+/** Every entry in a folder by its forward-slash path there: a file's text, or `-> <target>` for a link. */
+async function entriesOf(folder: string, prefix = ''): Promise<Record<string, string>> {
+  const entries: Record<string, string> = {}
+  for (const entry of await readdir(folder, { withFileTypes: true })) {
+    const path = `${prefix}${entry.name}`
+    const at = join(folder, entry.name)
+    if (entry.isSymbolicLink()) entries[path] = `-> ${await readlink(at)}`
+    else if (entry.isDirectory()) Object.assign(entries, await entriesOf(at, `${path}/`))
+    else entries[path] = await readFile(at, 'utf8')
+  }
+  return entries
 }
 
 describe('the record of shipped add-ons', () => {
@@ -142,6 +185,29 @@ describe('an update of a project\'s add-on', () => {
     expect(await readFile(join(addon, 'plugin.cfg'), 'utf8')).toBe(PLUGIN_1_2_0)
   })
 
+  it('leaves an older add-on behind an add-on folder or an addons folder that leads outside the project as it is, and names where it leads', async () => {
+    const dir = await multiplayerProject({ config: '[wasd]\nmode="player_hosted"\n' })
+    const { shared, addon } = await sharedAddon()
+    const before = await entriesOf(shared)
+    await mkdir(join(dir, 'addons'))
+    await symlink(addon, join(dir, 'addons', 'wasd_multiplayer'))
+    const to = await shippedVersion()
+    expect(await updateMultiplayerAddon(dir, ADDON)).toEqual({ outcome: 'linked', from: '1.2.0', to, folder: 'addons/wasd_multiplayer', target: await realpath(addon) })
+    await rm(join(dir, 'addons'), { recursive: true })
+    await symlink(join(shared, 'addons'), join(dir, 'addons'))
+    expect(await updateMultiplayerAddon(dir, ADDON)).toEqual({ outcome: 'linked', from: '1.2.0', to, folder: 'addons', target: await realpath(join(shared, 'addons')) })
+    // The copy that every project linking there shares stays as it was.
+    expect(await entriesOf(shared)).toEqual(before)
+  })
+
+  it('says nothing of an add-on as new as the shipped one behind an addons folder that leads outside the project', async () => {
+    const dir = await multiplayerProject({ config: '[wasd]\nmode="player_hosted"\n' })
+    const { shared, addon } = await sharedAddon()
+    await cp(ADDON, addon, { recursive: true })
+    await symlink(join(shared, 'addons'), join(dir, 'addons'))
+    expect(await updateMultiplayerAddon(dir, ADDON)).toBeUndefined()
+  })
+
   it('keeps the Markdown files the game changed and a link in place of the examples, and replaces the ones WASD Engine shipped', async () => {
     const { dir, addon } = await olderProject()
     const examples = join(dir, 'menus')
@@ -234,6 +300,93 @@ describe('an install of the add-on', () => {
     expect((await lstat(join(addon, 'wasd_multiplayer.gd'))).isFile()).toBe(true)
   })
 
+  it('keeps each relative link it moves into the backup leading to the game\'s files, which the backup\'s paths then reach', async () => {
+    const { dir, addon } = await olderProject()
+    await cp(join(addon, 'internal'), join(dir, 'own'), { recursive: true })
+    await writeFile(join(dir, 'own', 'config.gd'), 'extends RefCounted\n# The game\'s config.\n')
+    await rm(join(addon, 'internal'), { recursive: true })
+    await symlink(join('..', '..', 'own'), join(addon, 'internal'))
+    await writeFile(join(dir, 'main.gd'), 'extends Node\n')
+    await rm(join(addon, 'wasd_multiplayer.gd'))
+    await symlink(join('..', '..', 'main.gd'), join(addon, 'wasd_multiplayer.gd'))
+    const installed = await installMultiplayerAddon(dir, ADDON)
+    expect(installed.backup?.files).toEqual(['internal', 'wasd_multiplayer.gd'])
+    const backup = join(dir, installed.backup?.folder ?? '', 'addons', 'wasd_multiplayer')
+    const root = await realpath(dir)
+    expect(await readlink(join(backup, 'internal'))).toBe(join(root, 'own'))
+    expect(await readlink(join(backup, 'wasd_multiplayer.gd'))).toBe(join(root, 'main.gd'))
+    expect(await readFile(join(backup, 'internal', 'config.gd'), 'utf8')).toBe('extends RefCounted\n# The game\'s config.\n')
+    expect(await readFile(join(backup, 'wasd_multiplayer.gd'), 'utf8')).toBe('extends Node\n')
+    expect((await lstat(join(addon, 'internal'))).isDirectory()).toBe(true)
+  })
+
+  it('changes nothing when the system refuses the link that would keep a relative link in the backup, as Windows does outside Developer Mode', async () => {
+    const { dir, addon } = await olderProject()
+    // In the backup's order, a link with an absolute target and a changed file come before the relative link.
+    const own = join(dir, 'own')
+    await cp(join(addon, 'internal'), own, { recursive: true })
+    await rm(join(addon, 'internal'), { recursive: true })
+    await symlink(own, join(addon, 'internal'))
+    await writeFile(join(addon, 'plugin.gd'), 'extends EditorPlugin\n# The game\'s patch.\n')
+    await writeFile(join(dir, 'main.gd'), 'extends Node\n')
+    await rm(join(addon, 'wasd_multiplayer.gd'))
+    await symlink(join('..', '..', 'main.gd'), join(addon, 'wasd_multiplayer.gd'))
+    const before = await entriesOf(addon)
+    system.refusesLinks = true
+    const refused = await installMultiplayerAddon(dir, ADDON).catch((error: unknown) => error)
+    system.refusesLinks = false
+    expect(refused).toBeInstanceOf(HarnessError)
+    expect(refused).toMatchObject({
+      name: 'MultiplayerSetupError',
+      code: 'WASD_MULTIPLAYER_LINK_REFUSED',
+      message: `The setup changed nothing: the system refused to make the link in the backup folder that keeps addons/wasd_multiplayer/wasd_multiplayer.gd, the game's link to ${join(await realpath(dir), 'main.gd')}. On Windows, turn on Developer Mode, which lets programs make links, or replace addons/wasd_multiplayer/wasd_multiplayer.gd with a copy of what it leads to; then call wasd_multiplayer_setup again.`,
+    })
+    // Nothing left the add-on folder, and the backup folder is gone.
+    expect(await entriesOf(addon)).toEqual(before)
+    expect(await readdir(join(dir, ADDON_BACKUPS_DIR))).toEqual([])
+  })
+
+  it('refuses an add-on folder or an addons folder that is a link leading outside the project, or to no folder, before it reads or changes anything', async () => {
+    const dir = await multiplayerProject({ config: '[wasd]\nmode="player_hosted"\n' })
+    const { shared, addon } = await sharedAddon()
+    // A change of the shared copy's code, which a setup through the link would back up and replace there.
+    await writeFile(join(addon, 'wasd_multiplayer.gd'), 'extends Node\n# The studio\'s patch.\n')
+    const before = await entriesOf(shared)
+    await mkdir(join(dir, 'addons'))
+    await symlink(addon, join(dir, 'addons', 'wasd_multiplayer'))
+    const refused = await installMultiplayerAddon(dir, ADDON).catch((error: unknown) => error)
+    expect(refused).toBeInstanceOf(HarnessError)
+    expect(refused).toMatchObject({
+      name: 'MultiplayerSetupError',
+      code: 'WASD_MULTIPLAYER_OUTSIDE_PROJECT',
+      message: `The setup changed nothing: addons/wasd_multiplayer in ${dir} leads outside the project, to ${await realpath(addon)}, where the setup would write the add-on's files and change them for every project that links there. Make it a folder of the project, then call wasd_multiplayer_setup again.`,
+    })
+    await rm(join(dir, 'addons'), { recursive: true })
+    await symlink(join(shared, 'addons'), join(dir, 'addons'))
+    await expect(installMultiplayerAddon(dir, ADDON)).rejects.toThrow(
+      `The setup changed nothing: addons in ${dir} leads outside the project, to ${await realpath(join(shared, 'addons'))}, where the setup would write the add-on's files and change them for every project that links there.`,
+    )
+    expect(await entriesOf(shared)).toEqual(before)
+    await rm(join(dir, 'addons'))
+    await mkdir(join(dir, 'addons'))
+    await symlink(join('..', 'gone'), join(dir, 'addons', 'wasd_multiplayer'))
+    await expect(installMultiplayerAddon(dir, ADDON)).rejects.toMatchObject({
+      code: 'WASD_MULTIPLAYER_OUTSIDE_PROJECT',
+      message: `The setup changed nothing: addons/wasd_multiplayer in ${dir} is a link to ${join(await realpath(dir), 'gone')}, where no folder exists. Make it a folder of the project, then call wasd_multiplayer_setup again.`,
+    })
+    await expect(lstat(join(dir, '.wasdengine', 'backups'))).rejects.toThrow(/ENOENT/u)
+  })
+
+  it('follows an addons folder that is a link inside the project, for an install and an update', async () => {
+    const dir = await multiplayerProject({ config: '[wasd]\nmode="player_hosted"\n' })
+    const addon = await olderAddon(join(dir, 'vendor'))
+    await symlink(join('vendor', 'addons'), join(dir, 'addons'))
+    expect(await updateMultiplayerAddon(dir, ADDON)).toMatchObject({ outcome: 'updated', from: '1.2.0', to: await shippedVersion() })
+    await writeFile(join(addon, 'plugin.gd'), 'extends EditorPlugin\n')
+    expect((await installMultiplayerAddon(dir, ADDON)).backup?.files).toEqual(['plugin.gd'])
+    for (const path of ['plugin.cfg', 'plugin.gd']) expect(await readFile(join(addon, path), 'utf8')).toBe(await readFile(join(ADDON, path), 'utf8'))
+  })
+
   it('refuses a backup folder that leads outside the project, before it changes anything, and follows one inside it', async () => {
     const { dir, addon } = await olderProject()
     const outside = await mkdtemp(join(tmpdir(), 'dsh-wasd-addon-outside-'))
@@ -251,6 +404,7 @@ describe('an install of the add-on', () => {
     await rm(join(dir, '.wasdengine'), { recursive: true })
     await symlink(outside, join(dir, '.wasdengine'))
     await expect(installMultiplayerAddon(dir, ADDON)).rejects.toThrow(/^The setup changed nothing: \.wasdengine in /u)
+    await expect(installMultiplayerAddon(dir, ADDON)).rejects.toMatchObject({ name: 'MultiplayerSetupError', code: 'WASD_MULTIPLAYER_OUTSIDE_PROJECT' })
     expect(await readdir(outside)).toEqual([])
     // A link that stays inside the project leads to a backup inside it.
     await rm(join(dir, '.wasdengine'))

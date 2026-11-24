@@ -76,14 +76,11 @@ In code: `var water := WasdWater3D.new()`, set `preset` first, then other proper
 
 ```gdscript
 var water := WasdWater3D.find(get_tree(), global_position)  # null away from water
-if water != null:
-	var surface := water.height_at(global_position)         # world Y of the waves here, now
-	if water.is_underwater(global_position):
-		velocity += water.flow_at(global_position) * delta  # the current carries the swimmer
-	water.add_ripple(global_position, 1.0)                  # rings: 1 a footstep, 3 a splash
+if water != null and water.is_underwater(global_position):
+	velocity += water.flow_at(global_position) * delta  # the current carries the swimmer
 ```
 
-Also `depth_at(position)` (m of water over a point), `contains(position)`, and `depth` (how far down the water reaches, 50 m).
+`water.add_ripple(position, strength)` starts rings for a moment, not each frame: 3 a splash as a swimmer goes in, 1 a wading step. Also `height_at(position)` (world Y of the waves now), `depth_at(position)` (m of water over a point), `contains(position)`, and `depth` (how far down the water reaches, 50 m).
 
 A RigidBody3D floats with `WasdWaterFloater3D` children, added before the body enters the tree: one in the middle of a crate, or one per corner of a hull, level with the center of mass or higher. Each has `buoyancy` (2 floats half under), `submerge_depth` (about the hull's height), `drag`, `current_pull`, and signals `entered_water(speed)` and `left_water`.
 

@@ -5,7 +5,8 @@
  * @module @deepseek-ai/dsh-polyhaven/src/api
  */
 import { z } from 'zod'
-import { AssetLibraryClient, AssetLibraryRequestError } from '@deepseek-ai/dsh-game-mcp/kit'
+import { AssetLibraryClient } from '@deepseek-ai/dsh-game-mcp/kit'
+import { POLYHAVEN_ERRORS, PolyHavenError, requestStatus } from './errors.ts'
 import type { PolyHavenAsset, PolyHavenAssetKind, PolyHavenFile, PolyHavenFileEntry, PolyHavenFileTree } from './types.ts'
 
 /** Pattern of an asset id. */
@@ -146,6 +147,7 @@ export class PolyHavenApi extends AssetLibraryClient {
       userAgent: options.userAgent,
       fetch: options.fetch,
       downloads: 'the file',
+      errors: POLYHAVEN_ERRORS,
     })
   }
 
@@ -154,20 +156,20 @@ export class PolyHavenApi extends AssetLibraryClient {
    * answers instead, so a Poly Haven outage leaves search on the list it last read.
    * @param signal - cancellation.
    * @returns every asset by id.
-   * @throws AssetLibraryRequestError when the list cannot be read and none is cached.
+   * @throws PolyHavenError `POLYHAVEN_REQUEST_FAILED` when the list cannot be read and none is cached.
    */
   async assets(signal: AbortSignal): Promise<ReadonlyMap<string, PolyHavenAsset>> {
     const cached = this.cached
     if (cached !== undefined && this.options.now() - cached.fetchedAt < this.options.catalogMaxAgeMs) return cached.assets
     try {
       const json = await this.http.json(new URL('assets?type=all', this.base), 'the asset list', signal)
-      if (!isRecord(json)) throw new AssetLibraryRequestError(200, 'Poly Haven sent an asset list in an unknown format.')
+      if (!isRecord(json)) throw new PolyHavenError('Poly Haven sent an asset list in an unknown format.', 'POLYHAVEN_REQUEST_FAILED')
       const assets = new Map<string, PolyHavenAsset>()
       for (const [id, value] of Object.entries(json)) {
         const asset = parseAsset(id, value)
         if (asset !== undefined) assets.set(id, asset)
       }
-      if (assets.size === 0 && Object.keys(json).length > 0) throw new AssetLibraryRequestError(200, 'Poly Haven sent an asset list in an unknown format.')
+      if (assets.size === 0 && Object.keys(json).length > 0) throw new PolyHavenError('Poly Haven sent an asset list in an unknown format.', 'POLYHAVEN_REQUEST_FAILED')
       this.cached = { assets, fetchedAt: this.options.now() }
       return assets
     } catch (error) {
@@ -183,7 +185,7 @@ export class PolyHavenApi extends AssetLibraryClient {
    * @param signal - cancellation.
    * @returns the ids of every matching asset, most relevant first; undefined when the API cannot rank this query now
    * (HTTP 503), in which case the caller ranks by keywords itself.
-   * @throws AssetLibraryRequestError for every other failure.
+   * @throws PolyHavenError `POLYHAVEN_REQUEST_FAILED` for every other failure.
    */
   async search(query: string, kind: PolyHavenAssetKind | undefined, signal: AbortSignal): Promise<readonly string[] | undefined> {
     const url = new URL('search', this.base)
@@ -191,10 +193,10 @@ export class PolyHavenApi extends AssetLibraryClient {
     url.searchParams.set('t', kind === undefined ? 'all' : TYPE_FILTER[kind])
     try {
       const parsed = SearchJson.safeParse(await this.http.json(url, 'search results', signal))
-      if (!parsed.success) throw new AssetLibraryRequestError(200, 'Poly Haven sent search results in an unknown format.')
+      if (!parsed.success) throw new PolyHavenError('Poly Haven sent search results in an unknown format.', 'POLYHAVEN_REQUEST_FAILED')
       return parsed.data.results.map(result => result.slug)
     } catch (error) {
-      if (error instanceof AssetLibraryRequestError && error.status === 503) return undefined
+      if (requestStatus(error) === 503) return undefined
       throw error
     }
   }
@@ -204,7 +206,8 @@ export class PolyHavenApi extends AssetLibraryClient {
    * @param id - asset id.
    * @param signal - cancellation.
    * @returns the asset's files.
-   * @throws AssetLibraryRequestError when the request fails; status 404 when Poly Haven has no such asset.
+   * @throws PolyHavenError `POLYHAVEN_REQUEST_FAILED` when the request fails, whose {@link requestStatus} is 404 when
+   * Poly Haven has no such asset.
    */
   async files(id: string, signal: AbortSignal): Promise<PolyHavenFileTree> {
     return parseFileTree(await this.http.json(new URL(`files/${encodeURIComponent(id)}`, this.base), `the files of ${id}`, signal))

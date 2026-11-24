@@ -1,7 +1,7 @@
 /**
  * Agents connected through WASD Engine's MCP server use the ambientCG tools: the whole chain from the official MCP
  * client over HTTP, through the game MCP server and the ambientCG provider, to a fake ambientCG, with preview images
- * sent as JPEG bytes and downloads written to the absolute folder the agent names.
+ * sent as image bytes and downloads written to the absolute folder the agent names.
  */
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -81,7 +81,7 @@ describe('the ambientCG tools over WASD Engine\'s MCP server', () => {
     const { client, work } = await connected()
     const relative = await client.callTool({ name: 'ambientcg_download', arguments: { id: 'Wood099', directory: 'textures' } })
     expect(relative.isError).toBe(true)
-    expect(text(relative)).toBe('directory must be an absolute path.')
+    expect(text(relative)).toBe('invalid arguments: directory must be an absolute path.')
     const directory = join(work, 'game', 'assets', 'ambientcg', 'Wood099')
     const saved = await client.callTool({ name: 'ambientcg_download', arguments: { id: 'Wood099', directory, resolution: '2k', maps: ['color', 'normal'] } })
     expect(saved.isError).toBeFalsy()

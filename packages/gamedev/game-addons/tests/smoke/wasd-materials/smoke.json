@@ -1,1 +1,1 @@
-{ "run": "render", "path": "res://wasd_smoke/smoke.tscn", "with": ["wasd-light"], "expect": ["SMOKE_PASS wasd-materials"], "timeoutSeconds": 120 }
+{ "run": "render", "path": "res://wasd_smoke/smoke.tscn", "with": ["wasd-light", "wasd-fx"], "expect": ["SMOKE_PASS wasd-materials"], "timeoutSeconds": 120 }

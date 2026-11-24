@@ -2,7 +2,7 @@
   "id": "protonscatter",
   "title": "ProtonScatter",
   "host": "godot",
-  "version": "4.2.0-dev+7198cc0",
+  "version": "4.2.0-dev+7198cc0.wasd.1",
   "category": "environment",
   "cue": "rule-based scattering of rocks, plants, props",
   "summary": "Rule-based 3D scattering: fills box, sphere or path areas with MultiMesh instances or scene copies through a modifier stack, built at runtime from a seed.",

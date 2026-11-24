@@ -34,20 +34,22 @@ func add(place: Transform3D, clip := "", pace := 1.0, phase := -1.0, color := Co
 	if data == null:
 		push_error("WasdCrowd3D has no data: bake a model with bake_crowd.gd and load the file it saves.")
 		return -1
+	# The clip is checked before a number is taken: a number taken and given back would show what it held before.
+	var entry := _clip(clip)
+	if entry.is_empty():
+		return -1
 	var member := -1
 	if not _free.is_empty():
 		member = _free.pop_back()
 	elif _used < capacity:
 		member = _used
 		_used += 1
-		multimesh.visible_instance_count = _used
 	else:
 		return -1
-	if not set_member_clip(member, clip, pace, phase):
-		_free.append(member)
-		return -1
+	_set_clip(member, entry, pace, phase)
 	multimesh.set_instance_transform(member, place)
 	multimesh.set_instance_color(member, color)
+	multimesh.visible_instance_count = _used
 	return member
 
 
@@ -64,14 +66,25 @@ func get_member_transform(member: int) -> Transform3D:
 func set_member_clip(member: int, clip: String, pace := 1.0, phase := -1.0) -> bool:
 	if data == null:
 		return false
+	var entry := _clip(clip)
+	if entry.is_empty():
+		return false
+	_set_clip(member, entry, pace, phase)
+	return true
+
+
+## The baked clip of that name, the first one for an empty name; empty, with a warning, when the data has none.
+func _clip(clip: String) -> Dictionary:
 	if clip == "":
 		clip = data.clips.keys()[0]
 	if not data.clips.has(clip):
 		push_warning("WasdCrowd3D: no clip named \"%s\". The baked clips are: %s." % [clip, ", ".join(data.names())])
-		return false
-	var entry: Dictionary = data.clips[clip]
+		return {}
+	return data.clips[clip]
+
+
+func _set_clip(member: int, entry: Dictionary, pace: float, phase: float) -> void:
 	multimesh.set_instance_custom_data(member, Color(entry["start"], entry["frames"], phase if phase >= 0.0 else randf(), float(entry["fps"]) * pace))
-	return true
 
 
 ## Tints a member: the model's own colors are multiplied by it, for a crowd whose members do not all look alike.

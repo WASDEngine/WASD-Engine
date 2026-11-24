@@ -22,12 +22,12 @@
  * A project set up for multiplayer (`res://wasd_multiplayer.cfg`) gets its game's id and the site's origins written
  * into that file before the export once the project is linked, and after its first release, so builds know their game
  * and their site where no URL names them. Before the export, a project's WASD Multiplayer add-on older than this WASD
- * Engine's becomes this one, unless the game changed the add-on's own code, and the result says which happened
- * ({@link addonNote}), as does the failure of a later step after an update. The upload names the project's mode and
- * the version of the add-on its builds carry. In `dedicated` mode, the release then exports the Linux dedicated server
- * build into `.wasdengine/server/`, zips `server.x86_64` with any GDExtension libraries the export wrote next to it,
- * and stores it on the site with the new version's number, which updates the game's servers; a server build that
- * fails leaves the version released and becomes a warning.
+ * Engine's becomes this one, unless the game changed the add-on's own code or the add-on's folder leads outside the
+ * project, and the result says which happened ({@link addonNote}), as does the failure of a later step after an
+ * update. The upload names the project's mode and the version of the add-on its builds carry. In `dedicated` mode, the
+ * release then exports the Linux dedicated server build into `.wasdengine/server/`, zips `server.x86_64` with any
+ * GDExtension libraries the export wrote next to it, and stores it on the site with the new version's number, which
+ * updates the game's servers; a server build that fails leaves the version released and becomes a warning.
  * @module @deepseek-ai/dsh-wasd-plugins/src/release
  */
 import { randomUUID } from 'node:crypto'
@@ -383,19 +383,39 @@ export interface ReleaseDependencies {
 }
 
 /**
- * What a release's result says of the project's WASD Multiplayer add-on, once the release updated it or found it older
- * and changed by the game, and what the release's failure says after an update.
+ * What a release's result says of the project's WASD Multiplayer add-on, once the release updated it, or found it older
+ * and changed by the game or behind a folder leading outside the project, and what the release's failure says after an
+ * update.
  * @param update - what the release did.
  * @returns the note.
  */
 export function addonNote(update: AddonUpdate): string {
-  if (update.outcome === 'updated') {
-    const was = update.from === undefined ? 'named no version' : `was ${update.from}`
-    const kept = update.kept.length === 0 ? '' : ` The add-on files the game changed or added stayed as they were: ${update.kept.join(', ')}.`
-    return `This project's WASD Multiplayer add-on ${was}; the release updated it to ${update.to} before the export.${kept}`
+  switch (update.outcome) {
+    case 'updated': {
+      const was = update.from === undefined ? 'named no version' : `was ${update.from}`
+      const kept = update.kept.length === 0 ? '' : ` The add-on files the game changed or added stayed as they were: ${update.kept.join(', ')}.`
+      return `This project's WASD Multiplayer add-on ${was}; the release updated it to ${update.to} before the export.${kept}`
+    }
+    case 'changed': {
+      const is = update.from === undefined ? 'names no version' : `is ${update.from}`
+      return `This project's WASD Multiplayer add-on ${is}, older than WASD Engine's ${update.to}, and the game changed the add-on's own code (${update.changed.join(', ')}), so the release built the game with it as it is. Ask the user whether to call wasd_multiplayer_setup, which replaces the add-on's own files with ${update.to}'s, first keeping the ones the game changed in a backup folder that its result names, and keeps the files the game added and the example files it changed; then apply the game's changes again from that backup where ${update.to} still needs them.`
+    }
+    case 'linked': {
+      const copy = update.from === undefined ? 'the WASD Multiplayer add-on there, which names no version,' : `the WASD Multiplayer add-on ${update.from} there`
+      return `This project's ${update.folder} leads outside the project, to ${update.target}, so the release built the game with ${copy} as it is: updating it to WASD Engine's ${update.to} would change it for every project that links there. Ask the user whether to make ${update.folder} a folder of the project with its own copy of those files, so that releases can update the add-on.`
+    }
+    default:
+      return assertNever(update)
   }
-  const is = update.from === undefined ? 'names no version' : `is ${update.from}`
-  return `This project's WASD Multiplayer add-on ${is}, older than WASD Engine's ${update.to}, and the game changed the add-on's own code (${update.changed.join(', ')}), so the release built the game with it as it is. Ask the user whether to call wasd_multiplayer_setup, which replaces the add-on's own files with ${update.to}'s, first keeping the ones the game changed in a backup folder that its result names, and keeps the files the game added and the example files it changed; then apply the game's changes again from that backup where ${update.to} still needs them.`
+}
+
+/**
+ * Mark a case of a closed union that no switch case matched.
+ * @param value - the value, which its type rules out.
+ * @returns never: it throws.
+ */
+function assertNever(value: never): never {
+  throw new Error(`unexpected value ${JSON.stringify(value)}`)
 }
 
 /** The add-on versions the site takes with an online release: `major.minor.patch`. */

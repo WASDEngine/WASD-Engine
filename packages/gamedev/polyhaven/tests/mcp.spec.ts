@@ -82,7 +82,7 @@ describe('the Poly Haven tools over WASD Engine\'s MCP server', () => {
     const { client, work } = await connected()
     const relative = await client.callTool({ name: 'polyhaven_download', arguments: { id: 'kiara_8_sunset', directory: 'sky' } })
     expect(relative.isError).toBe(true)
-    expect(text(relative)).toBe('directory must be an absolute path.')
+    expect(text(relative)).toBe('invalid arguments: directory must be an absolute path.')
     const directory = join(work, 'game', 'sky')
     const saved = await client.callTool({ name: 'polyhaven_download', arguments: { id: 'kiara_8_sunset', directory, resolution: '2k' } })
     expect(saved.isError).toBeFalsy()

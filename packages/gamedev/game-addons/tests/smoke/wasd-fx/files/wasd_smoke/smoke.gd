@@ -4,9 +4,12 @@ extends Node3D
 ## it again without the connections of its last play, a layer that lies flat on the ground draws, a direction, a
 ## size, a color, and a parent do what they say, a running effect runs until it is stopped, smoke is as bright as the
 ## scene's light level and is drawn as far as a rising wind carries it, a flash, an outline, and a dissolve on a
-## thing undo each other in any order, keep off a blob shadow of WASD Decals, and take a sheet of WASD Cloth like any
-## mesh, the wet cover of WASD Weather waits under them and goes with the weather, as the weather's wind does, and
-## every effect plays without an error.
+## thing undo each other in any order, overlapping dissolves give every mesh its own materials back, a dissolve keeps
+## a thing's vertex colors, sRGB ones too, holes, and picture scale and stands still while the game is paused, the
+## effects keep off a blob shadow of WASD Decals and take a sheet of WASD Cloth like any mesh, the wet cover of WASD
+## Weather waits under them and goes with the weather, as the weather's wind does, a near effect shows over a far one,
+## a new wind carries smoke on without moving it at once, also in its first second, and every effect plays without an
+## error.
 
 const ID := "wasd-fx"
 
@@ -14,7 +17,7 @@ var camera: Camera3D
 
 
 func _ready() -> void:
-	get_tree().create_timer(80.0).timeout.connect(func() -> void: _fail("timed out"))
+	get_tree().create_timer(100.0).timeout.connect(func() -> void: _fail("timed out"))
 	_run()
 
 
@@ -32,6 +35,39 @@ func _picture(file: String) -> Image:
 
 func _wait(seconds: float) -> void:
 	await get_tree().create_timer(seconds).timeout
+
+
+## A box whose vertices all have one color, drawn by a material that shows them, as an sRGB color or as it is.
+func _colored_box(color: Color, srgb: bool) -> MeshInstance3D:
+	var arrays := BoxMesh.new().get_mesh_arrays()
+	var colors := PackedColorArray()
+	colors.resize((arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size())
+	colors.fill(color)
+	arrays[Mesh.ARRAY_COLOR] = colors
+	var colored := ArrayMesh.new()
+	colored.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var by_vertex := StandardMaterial3D.new()
+	by_vertex.vertex_color_use_as_albedo = true
+	by_vertex.vertex_color_is_srgb = srgb
+	colored.surface_set_material(0, by_vertex)
+	var box := MeshInstance3D.new()
+	box.mesh = colored
+	return box
+
+
+## How many samples change at all from each picture to the next.
+func _moved(frames: Array[Image]) -> Array[int]:
+	var moved: Array[int] = []
+	for step: int in frames.size() - 1:
+		var count := 0
+		for y: int in range(0, frames[step].get_height(), 2):
+			for x: int in range(0, frames[step].get_width(), 2):
+				var a := frames[step + 1].get_pixel(x, y)
+				var b := frames[step].get_pixel(x, y)
+				if absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b) > 0.02:
+					count += 1
+		moved.append(count)
+	return moved
 
 
 ## How many sampled pixels of a part of the picture differ from the same pixels of another picture, and where their
@@ -360,6 +396,157 @@ func _run() -> void:
 	if blowing == Vector3.ZERO or fx.wind != Vector3.ZERO:
 		return _fail("WasdFx had the wind %s with the weather and %s once it left" % [blowing, fx.wind])
 	crate.queue_free()
+	# Overlapping dissolves share what each mesh wore of its own: the sword in a body's hand appears while the body
+	# dissolves, and once the body appears again both wear their own materials.
+	var holder := Node3D.new()
+	add_child(holder)
+	var sword := MeshInstance3D.new()
+	sword.mesh = BoxMesh.new()
+	var steel := StandardMaterial3D.new()
+	sword.material_override = steel
+	holder.add_child(sword)
+	fx.dissolve(holder, 0.3)
+	await _wait(0.1)
+	fx.appear(sword, 0.5)
+	await _wait(0.8)
+	var after_both := [sword.material_override, sword.get_surface_override_material(0)]
+	await fx.appear(holder, 0.2)
+	if after_both[0] != steel or after_both[1] != null or sword.material_override != steel or sword.get_surface_override_material(0) != null or not holder.visible:
+		return _fail("after a dissolve of a body and an appear of its sword, the sword wears %s, then %s and %s" % [after_both, sword.material_override, sword.get_surface_override_material(0)])
+	holder.queue_free()
+	# While it dissolves, a thing keeps its vertex colors, sRGB ones as its own material shows them, a cut-out its holes,
+	# and a tiled picture its scale.
+	var painted := _colored_box(Color(0.9, 0.1, 0.1), false)
+	painted.position = Vector3(-2.5, 3, 6)
+	add_child(painted)
+	var orange := _colored_box(Color(0.8, 0.3, 0.1), true)
+	orange.position = Vector3(-2.5, 4.4, 6)
+	add_child(orange)
+	var leaf_picture := Image.create(32, 32, false, Image.FORMAT_RGB8)
+	leaf_picture.fill(Color(0.1, 0.8, 0.1))
+	var half_holes := Image.create(32, 32, false, Image.FORMAT_L8)
+	half_holes.fill(Color.WHITE)
+	half_holes.fill_rect(Rect2i(16, 0, 16, 32), Color.BLACK)
+	var cutout := ShaderMaterial.new()
+	cutout.shader = Shader.new()
+	cutout.shader.code = "shader_type spatial;\nrender_mode cull_disabled;\nuniform sampler2D color_map : source_color;\nuniform sampler2D opacity_map;\nuniform float threshold = 0.5;\nvoid fragment() {\n\tALBEDO = texture(color_map, UV).rgb;\n\tALPHA = texture(opacity_map, UV).r;\n\tALPHA_SCISSOR_THRESHOLD = threshold;\n}\n"
+	cutout.set_shader_parameter(&"color_map", ImageTexture.create_from_image(leaf_picture))
+	cutout.set_shader_parameter(&"opacity_map", ImageTexture.create_from_image(half_holes))
+	var leaf := MeshInstance3D.new()
+	leaf.mesh = QuadMesh.new()
+	(leaf.mesh as QuadMesh).size = Vector2(1.6, 1.6)
+	leaf.material_override = cutout
+	leaf.position = Vector3(0, 3, 6)
+	add_child(leaf)
+	var halves := Image.create(64, 1, false, Image.FORMAT_RGB8)
+	halves.fill(Color(0.9, 0.1, 0.1))
+	halves.fill_rect(Rect2i(32, 0, 32, 1), Color(0.1, 0.1, 0.9))
+	var tiled := StandardMaterial3D.new()
+	tiled.albedo_texture = ImageTexture.create_from_image(halves)
+	tiled.uv1_scale = Vector3(0.5, 1, 1)
+	var strip := MeshInstance3D.new()
+	strip.mesh = QuadMesh.new()
+	(strip.mesh as QuadMesh).size = Vector2(1.6, 1.6)
+	strip.material_override = tiled
+	strip.position = Vector3(2.5, 3, 6)
+	add_child(strip)
+	var at_point := func(image: Image, place: Vector3) -> Color:
+		return image.get_pixelv(Vector2i(camera.unproject_position(place) * Vector2(whole.size) / get_viewport().get_visible_rect().size))
+	var bare := await _picture("before_dissolves.png")
+	for going_away: Node3D in [painted, orange, leaf, strip]:
+		fx.dissolve(going_away, 6.0)
+	await _wait(0.1)
+	var going := await _picture("dissolving.png")
+	var vertex_red := at_point.call(going, painted.position + Vector3(0, 0, 0.5)) as Color
+	var leaf_kept := at_point.call(going, leaf.position + Vector3(-0.4, 0, 0)) as Color
+	var leaf_hole := at_point.call(going, leaf.position + Vector3(0.4, 0, 0)) as Color
+	var hole_before := at_point.call(bare, leaf.position + Vector3(0.4, 0, 0)) as Color
+	var strip_right := at_point.call(going, strip.position + Vector3(0.4, 0, 0)) as Color
+	var orange_own := at_point.call(bare, orange.position + Vector3(0, 0, 0.5)) as Color
+	var orange_going := at_point.call(going, orange.position + Vector3(0, 0, 0.5)) as Color
+	for going_away: Node3D in [painted, orange, leaf, strip]:
+		going_away.queue_free()
+	if absf(orange_going.r - orange_own.r) > 0.06 or absf(orange_going.g - orange_own.g) > 0.06 or absf(orange_going.b - orange_own.b) > 0.06:
+		return _fail("a box of sRGB vertex colors shows %s, dissolving %s" % [orange_own, orange_going])
+	if vertex_red.r < vertex_red.g * 2.0 or leaf_kept.g < leaf_kept.r * 2.0 or absf(leaf_hole.get_luminance() - hole_before.get_luminance()) > 0.03 or strip_right.r < strip_right.b * 2.0:
+		return _fail("dissolving, a vertex-colored box shows %s, a cut-out leaf %s and %s in its hole (%s before), and a picture of half scale %s" % [vertex_red, leaf_kept, leaf_hole, hole_before, strip_right])
+	# A dissolve stands still while the game is paused, and ends once it goes on.
+	var paused_thing := MeshInstance3D.new()
+	paused_thing.mesh = SphereMesh.new()
+	paused_thing.position = Vector3(0, 3, 6)
+	add_child(paused_thing)
+	fx.dissolve(paused_thing, 0.4)
+	await _wait(0.1)
+	get_tree().paused = true
+	await get_tree().create_timer(0.6).timeout
+	var while_paused := paused_thing.visible and paused_thing.get_surface_override_material(0) is ShaderMaterial
+	get_tree().paused = false
+	await _wait(0.6)
+	if not while_paused or paused_thing.visible:
+		return _fail("a dissolve went on while the game was paused (still there %s), or did not end after (visible %s)" % [while_paused, paused_thing.visible])
+	paused_thing.queue_free()
+
+	# 7b. Effects draw by how far they are: a torch near the camera shows over the smoke of an explosion far behind it.
+	var torch := fx.play("torch", Vector3(0, 2.5, 6), {"scale": 2.0})
+	await _wait(0.6)
+	torch.set_process(false)
+	var flame_at := Vector3(0, 2.7, 6)
+	var alone := await _picture("torch_alone.png")
+	var blast := fx.play("explosion", Vector3(0, 4.8, -12), {"scale": 2.0})
+	await _wait(1.1)
+	blast.set_process(false)
+	var together := await _picture("torch_blast.png")
+	torch.visible = false
+	var blast_alone := await _picture("blast_alone.png")
+	torch.visible = true
+	torch.set_process(true)
+	torch.stop(0.05)
+	blast.set_process(true)
+	var flame_shade := [(at_point.call(alone, flame_at) as Color).get_luminance(), (at_point.call(together, flame_at) as Color).get_luminance()]
+	if flame_shade[0] < 0.6 or absf((at_point.call(blast_alone, flame_at) as Color).get_luminance() - (at_point.call(before, flame_at) as Color).get_luminance()) < 0.03:
+		return _fail("the torch's flame shows %f, and the explosion's smoke does not reach behind it" % [flame_shade[0]])
+	if flame_shade[1] < flame_shade[0] - 0.15:
+		return _fail("a near torch's flame shows %f alone and %f before a far explosion" % [flame_shade[0], flame_shade[1]])
+	await _wait(2.6)
+
+	# 7c. A new wind carries on what is in the air without moving it at once: the frame in which a running smoke's wind
+	# steps by 0.2 m/s, as WASD Weather tells it, changes the picture as little as the frames before it.
+	fx.set_wind(Vector3(4, 0, 0))
+	var drifting := fx.play("smoke", Vector3(0, 0, 0), {"scale": 1.5})
+	await _wait(3.0)
+	drifting.set_process(false)
+	var frames: Array[Image] = []
+	for step: int in 4:
+		if step == 3:
+			fx.set_wind(Vector3(4.2, 0, 0))
+		drifting._process(1.0 / 60.0)
+		frames.append(await _picture("smoke_step_%d.png" % [step]))
+	var moved := _moved(frames)
+	drifting.set_process(true)
+	drifting.stop(0.05)
+	fx.set_wind(Vector3.ZERO)
+	if moved[2] > maxi(moved[0], moved[1]) * 1.3 + 20:
+		return _fail("frames of a smoke in the wind change %d and %d samples, the frame in which the wind steps %d" % [moved[0], moved[1], moved[2]])
+	await _wait(0.3)
+	# Also half a second into a smoke, while the particles it began with, which were in the air before it, still fly.
+	fx.set_wind(Vector3(4, 0, 0))
+	var young := fx.play("smoke", Vector3(0, 0, 0), {"scale": 1.5})
+	young.set_process(false)
+	for step: int in 27:
+		young._process(1.0 / 60.0)
+	var early_frames: Array[Image] = []
+	for step: int in 4:
+		if step == 3:
+			fx.set_wind(Vector3(4.2, 0, 0))
+		young._process(1.0 / 60.0)
+		early_frames.append(await _picture("early_step_%d.png" % [step]))
+	var early := _moved(early_frames)
+	young.set_process(true)
+	young.stop(0.05)
+	fx.set_wind(Vector3.ZERO)
+	if early[2] > maxi(early[0], early[1]) * 1.3 + 20:
+		return _fail("frames of a young smoke in the wind change %d and %d samples, the frame in which the wind steps %d" % [early[0], early[1], early[2]])
+	await _wait(0.3)
 
 	# 8. Every effect plays, and the warm-up runs.
 	for name: String in fx.names():

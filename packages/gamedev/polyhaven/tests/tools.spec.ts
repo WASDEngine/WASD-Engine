@@ -3,12 +3,12 @@
  * fake Poly Haven, previews become attachments for a model that accepts images, and downloads land in the Session's
  * working directory.
  */
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as PolyHaven from '../src/index.ts'
-import { callTool, compose, text, type Composition } from './composition.ts'
+import { callTool, compose, failure, text, type Composition } from './composition.ts'
 import { fileBytes, PREVIEW } from './fixtures.ts'
 
 let composition: Composition | undefined
@@ -78,7 +78,8 @@ describe('polyhaven_search', () => {
     for (const limit of [0, 51]) {
       const refused = await callTool(current, 'polyhaven_search', { limit })
       expect(refused.isError).toBe(true)
-      expect(text(refused)).toContain('limit must be an integer from 1 to 50.')
+      expect(text(refused)).toContain('invalid arguments: limit must be an integer from 1 to 50.')
+      expect(failure(refused)).toEqual({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
     }
     expect(text(await callTool(current, 'polyhaven_search', { limit: 2.5 }))).toContain('"limit" must be an integer')
   })
@@ -92,6 +93,7 @@ describe('polyhaven_search', () => {
     const limited = await callTool(current, 'polyhaven_search', { query: 'rock' })
     expect(limited.isError).toBe(true)
     expect(text(limited)).toContain('Poly Haven is limiting requests from this computer; try again in 12 seconds.')
+    expect(failure(limited)).toEqual({ name: 'PolyHavenError', code: 'POLYHAVEN_REQUEST_FAILED' })
   })
 })
 
@@ -128,8 +130,16 @@ describe('polyhaven_asset', () => {
   it('finds an id in any letter case, and names a missing or malformed id', async () => {
     const current = await composed()
     expect(await callTool(current, 'polyhaven_asset', { id: 'woodenchair_01', preview: false })).toMatchObject({ value: { id: 'WoodenChair_01', polycount: 19_992 } })
-    expect(text(await callTool(current, 'polyhaven_asset', { id: 'nothing' }))).toContain('Poly Haven has no asset with the id "nothing"; find one with polyhaven_search.')
-    expect(text(await callTool(current, 'polyhaven_asset', { id: '../etc' }))).toContain('"../etc" is not a Poly Haven asset id')
+    const missing = await callTool(current, 'polyhaven_asset', { id: 'nothing' })
+    expect(text(missing)).toContain('Poly Haven has no asset with the id "nothing"; find one with polyhaven_search.')
+    expect(failure(missing)).toEqual({ name: 'PolyHavenError', code: 'POLYHAVEN_ASSET_NOT_FOUND' })
+    const malformed = await callTool(current, 'polyhaven_asset', { id: '../etc' })
+    expect(text(malformed)).toContain('invalid arguments: "../etc" is not a Poly Haven asset id')
+    expect(failure(malformed)).toEqual({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
+    current.fake.withoutFiles.add('mossy_rock')
+    const listedOnly = await callTool(current, 'polyhaven_download', { id: 'mossy_rock' })
+    expect(text(listedOnly)).toContain('Poly Haven lists mossy_rock but has no files for it.')
+    expect(failure(listedOnly)).toEqual({ name: 'PolyHavenError', code: 'POLYHAVEN_ASSET_NOT_FOUND' })
   })
 })
 
@@ -171,6 +181,11 @@ describe('polyhaven_download', () => {
     const large = await callTool(current, 'polyhaven_download', { id: 'WoodenChair_01' })
     expect(large.isError).toBe(true)
     expect(text(large)).toContain('This download of Wooden Chair 01 is 5 KB, more than the 1 KB that one download may be; choose a lower resolution or another format.')
+    expect(failure(large)).toEqual({ name: 'PolyHavenError', code: 'POLYHAVEN_TOO_LARGE' })
+    const resolution = await callTool(current, 'polyhaven_download', { id: 'kiara_8_sunset', resolution: '16k' })
+    expect(text(resolution)).toContain('Kiara 8 Sunset has no hdr files at 16k; it offers 1k and 2k.')
+    expect(failure(resolution)).toEqual({ name: 'PolyHavenError', code: 'POLYHAVEN_FILES_NOT_FOUND' })
+    expect(failure(await callTool(current, 'polyhaven_download', { id: 'kiara_8_sunset', maps: ['Diffuse'] }))).toEqual({ name: 'ToolArgsError', code: 'INVALID_ARGS' })
     await current.unload()
     composition = undefined
     await current.cleanup()
@@ -179,8 +194,20 @@ describe('polyhaven_download', () => {
     const failed = await callTool(damaged, 'polyhaven_download', { id: 'WoodenChair_01' })
     expect(failed.isError).toBe(true)
     expect(text(failed)).toContain('WoodenChair_01.bin arrived damaged: its MD5 digest differs from Poly Haven\'s; the download stopped.')
+    expect(failure(failed)).toEqual({ name: 'PolyHavenError', code: 'POLYHAVEN_DOWNLOAD_CORRUPT' })
     // Nor does it leave the folders it created for the files.
     expect(await readdir(damaged.work)).toEqual([])
+  })
+})
+
+describe('polyhaven_download on a disk it cannot write', () => {
+  it('reports a folder it cannot make as a failure on the disk', async () => {
+    const current = await composed()
+    await writeFile(join(current.work, 'assets'), 'not a folder')
+    const blocked = await callTool(current, 'polyhaven_download', { id: 'kiara_8_sunset' })
+    expect(blocked.isError).toBe(true)
+    expect(text(blocked)).toMatch(/^Error: The download failed on the disk while it .+: E[A-Z]+: .+; nothing was saved\./u)
+    expect(failure(blocked)).toEqual({ name: 'PolyHavenError', code: 'POLYHAVEN_DISK_FAILED' })
   })
 })
 

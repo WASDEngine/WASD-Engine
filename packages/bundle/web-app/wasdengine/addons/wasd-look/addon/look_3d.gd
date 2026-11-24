@@ -101,7 +101,6 @@ var _cloud_offset := Vector2.ZERO
 var _wind_drives := false
 var _own_drift := Vector2.ZERO
 var _compatibility := RenderingServer.get_current_rendering_method() == "gl_compatibility"
-var _inside_tree := false
 var _night := false
 ## True while several values change at once, so that the picture is worked out once at the end.
 var _holding := false
@@ -165,13 +164,16 @@ func _init() -> void:
 	_apply()
 
 
+func _enter_tree() -> void:
+	# The quality belongs to the viewport the node is in, which may be another one each time the node enters a tree.
+	_apply_quality()
+
+
 func _ready() -> void:
-	_inside_tree = true
 	# Other WASD packs find the scene's look in this group, and ask it for the light and the horizon's color; WASD
 	# Weather tells the wind to every node of the second group that has a `set_wind`.
 	add_to_group(&"wasd_look")
 	add_to_group(&"wasd_wind")
-	_apply_quality()
 
 
 func _process(delta: float) -> void:
@@ -567,7 +569,8 @@ func _apply() -> void:
 
 
 func _apply_quality() -> void:
-	if not _inside_tree or quality > 2:
+	# Out of the tree there is no viewport to set: entering one applies the quality.
+	if not is_inside_tree() or quality > 2:
 		return
 	get_viewport().msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][quality]
 	# A little noise that keeps the sky's wide gradients from showing steps.

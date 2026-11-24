@@ -44,7 +44,7 @@ MakeHuman's own faces are plain, and a game's lights turn its assets into a mask
 
 ## In the game
 
-Install `wasd-face` and `wasd-materials`, and for one that walks `universal-animation-library` and `wasd-character`. Once the project has imported the .glb, run that library's `retarget.gd` on it with `godot_script`, as its guide says: it knows this skeleton and names the eye bones `LeftEye` and `RightEye`, and without it the human gets no clips or feet. Then a `WasdCharacter3D` with the .glb as its model, or `WasdFace3D.add_to(model)`, gives the human its face, which WASD Materials dress: skin that light enters, wet eyes with a catchlight, a dark mouth, soft brows, thin lashes, hair with a hairline. Without those two add-ons the face is not fit to be seen up close: a stock material smears the lashes into a band over each eye.
+Install `wasd-face` and `wasd-materials`, and for one that walks `universal-animation-library` and `wasd-character`. Once the project has imported the .glb, run that library's `retarget.gd` on it with `godot_script`: it knows this skeleton and names the eye bones `LeftEye` and `RightEye`, and without it the human gets no clips or feet. Then a `WasdCharacter3D` with the .glb as its model, or `WasdFace3D.add_to(model)`, gives the human its face, which WASD Materials dress: skin that light enters, wet eyes, soft brows, thin lashes, a hairline. Without those two add-ons the face is not fit to be seen up close: a stock material smears the lashes into a band over each eye.
 
 ```gdscript
 var hero := WasdCharacter3D.new()
@@ -54,7 +54,7 @@ hero.face.look_target = player_camera
 hero.face.feel("smile")
 ```
 
-Light matters as much as the model: a sun to the side of a face shapes it, and a sun overhead blacks out its eyes. Of the `wasd-look` add-on's looks, `golden_hour`, `overcast`, and `studio` flatter a face, and `noon` is the hardest on it. Frame a face from a meter or more with a `fov` of 20 to 30: a wide lens up close swells the nose.
+A sun to the side of a face shapes it, and a sun overhead blacks out its eyes. Of the `wasd-look` add-on's looks, `golden_hour`, `overcast`, and `studio` flatter a face, and `noon` is the hardest on it. Frame a face from a meter or more with a `fov` of 20 to 30: a wide lens up close swells the nose.
 
 ## Check it
 
@@ -70,8 +70,8 @@ from bl_ext.wasd.mpfb.services import HumanService, TargetService, RigService
 ```
 
 - `HumanService.add_mhclo_asset(os.path.join(wasd_addons.assets("mpfb"), "clothes/fedora01/fedora01.mhclo"), body, asset_type="Clothes", subdiv_levels=0)` adds a part to a body that has its rig; do it before `add_face`.
-- `TargetService.get_default_macro_info_dict()`, `HumanService.create_human(macro_detail_dict=macro)`, and `HumanService.add_builtin_rig(body, "game_engine")` (also `mixamo`, `default`, `rigify.human`) build a bare human with MakeHuman's own plain face; `wasd_mpfb.add_face` and `export` take it too, and in Godot `WasdSurface.human(model)` dresses it.
-- Pose `Human.rig`'s bones directly (`rig.pose.bones["upperarm_l"].rotation_euler`, `keyframe_insert`), or `rigify`'s guide for controls.
+- `TargetService.get_default_macro_info_dict()`, `HumanService.create_human(macro_detail_dict=macro)`, and `HumanService.add_builtin_rig(body, "game_engine")` (also `mixamo`, `default`, `rigify.human`, which `human()` refuses) build a bare human with MakeHuman's own plain face; `wasd_mpfb.add_face` and `export` take it too, and in Godot `WasdSurface.human(model)` dresses it.
+- Pose `Human.rig`'s bones directly (`rig.pose.bones["upperarm_l"].rotation_euler`, `keyframe_insert`; `export` writes its action and unmuted one-strip NLA tracks as clips), or `rigify`'s guide for controls.
 
 ## Pitfalls
 

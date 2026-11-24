@@ -5,6 +5,8 @@
  * resolutions such as `1k` and `4k`. Every path a plan writes is checked to stay inside the download folder.
  * @module @deepseek-ai/dsh-polyhaven/src/files
  */
+import { ToolArgsError } from '@deepseek-ai/dsh-tools'
+import { PolyHavenError } from './errors.ts'
 import type { PolyHavenAssetKind, PolyHavenDownloadPlan, PolyHavenFileEntry, PolyHavenFileTree, PolyHavenPlannedFile } from './types.ts'
 
 /** Ready-made formats of each kind: one file with the files it references. */
@@ -105,12 +107,13 @@ function mapsOf(kind: PolyHavenAssetKind, tree: PolyHavenFileTree): string[] {
  * Check that a path from a file tree stays inside the download folder.
  * @param path - relative path with `/` separators.
  * @returns the path.
- * @throws Error for an empty, absolute, or parent-relative path, or one with a backslash, colon, or NUL.
+ * @throws PolyHavenError `POLYHAVEN_DOWNLOAD_CORRUPT` for an empty, absolute, or parent-relative path, or one with a
+ * backslash, colon, or NUL.
  */
 export function safeRelativePath(path: string): string {
   const segments = path.split('/')
   const unsafe = path === '' || segments.some(segment => segment === '' || segment === '.' || segment === '..' || /[\\:\0]/u.test(segment))
-  if (unsafe) throw new Error(`Poly Haven named a file ${JSON.stringify(path)}, which would leave the download folder; the download stopped.`)
+  if (unsafe) throw new PolyHavenError(`Poly Haven named a file ${JSON.stringify(path)}, which would leave the download folder; the download stopped.`, 'POLYHAVEN_DOWNLOAD_CORRUPT')
   return path
 }
 
@@ -118,16 +121,18 @@ export function safeRelativePath(path: string): string {
  * The file name of a download URL.
  * @param url - file URL.
  * @returns the URL's last path segment, decoded.
- * @throws Error when the URL has no safe file name.
+ * @throws PolyHavenError `POLYHAVEN_DOWNLOAD_CORRUPT` when the URL has no safe file name.
  */
 export function fileNameOf(url: string): string {
   let name: string
   try {
     name = decodeURIComponent(new URL(url).pathname.split('/').at(-1) ?? '')
   } catch (error) {
-    throw new Error(`Poly Haven named a file at ${JSON.stringify(url)}, which has no file name; the download stopped.`, { cause: error })
+    throw new PolyHavenError(`Poly Haven named a file at ${JSON.stringify(url)}, which has no file name; the download stopped.`, 'POLYHAVEN_DOWNLOAD_CORRUPT', { cause: error })
   }
-  if (name.includes('/')) throw new Error(`Poly Haven named a file ${JSON.stringify(name)}, which would leave the download folder; the download stopped.`)
+  if (name.includes('/')) {
+    throw new PolyHavenError(`Poly Haven named a file ${JSON.stringify(name)}, which would leave the download folder; the download stopped.`, 'POLYHAVEN_DOWNLOAD_CORRUPT')
+  }
   return safeRelativePath(name)
 }
 
@@ -178,7 +183,9 @@ export function downloadOptions(kind: PolyHavenAssetKind, tree: PolyHavenFileTre
  * @param tree - the asset's files.
  * @param request - format, resolution, and maps.
  * @returns the plan, the entry file first.
- * @throws Error naming what the asset offers when it lacks the format, the resolution, or a map, or when a path is unsafe.
+ * @throws PolyHavenError `POLYHAVEN_FILES_NOT_FOUND` naming what the asset offers when it lacks the format, the
+ * resolution, or a map, and `POLYHAVEN_DOWNLOAD_CORRUPT` when a path is unsafe; ToolArgsError when `maps` names no map
+ * or goes with a format that has no maps.
  */
 export function planDownload(
   name: string,
@@ -191,20 +198,20 @@ export function planDownload(
   const offered = options.formats.find(option => option.format === format)
   if (offered === undefined) {
     const formats = options.formats.map(option => option.format)
-    throw new Error(formats.length === 0
+    throw new PolyHavenError(formats.length === 0
       ? `${name} has no files that polyhaven_download can fetch.`
-      : `${name} has no ${format} files; it offers ${listing(formats)}.`)
+      : `${name} has no ${format} files; it offers ${listing(formats)}.`, 'POLYHAVEN_FILES_NOT_FOUND')
   }
   const isMapFormat = kind === 'texture' && MAP_FORMATS.includes(format)
-  if (request.maps !== undefined && !isMapFormat) throw new Error(`maps applies only to the jpg, png, and exr texture maps, not to ${format}.`)
+  if (request.maps !== undefined && !isMapFormat) throw new ToolArgsError([`maps applies only to the jpg, png, and exr texture maps, not to ${format}.`])
   const available = offered.resolutions.map(option => option.resolution)
   const resolution = request.resolution
     ?? (available.includes(DEFAULT_RESOLUTION) ? DEFAULT_RESOLUTION : available[0] ?? DEFAULT_RESOLUTION)
-  if (!available.includes(resolution)) throw new Error(`${name} has no ${format} files at ${resolution}; it offers ${listing(available)}.`)
+  if (!available.includes(resolution)) throw new PolyHavenError(`${name} has no ${format} files at ${resolution}; it offers ${listing(available)}.`, 'POLYHAVEN_FILES_NOT_FOUND')
   if (isMapFormat) return planMaps(name, tree, options, format, resolution, request.maps)
   const group = kind === 'hdri' ? HDRI_GROUP : format
   const entry = tree.get(group)?.get(resolution)?.get(format)
-  if (entry === undefined) throw new Error(`${name} has no ${format} files at ${resolution}.`)
+  if (entry === undefined) throw new PolyHavenError(`${name} has no ${format} files at ${resolution}.`, 'POLYHAVEN_FILES_NOT_FOUND')
   const main = fileNameOf(entry.url)
   const files: PolyHavenPlannedFile[] = [
     { path: main, file: entry },
@@ -222,35 +229,40 @@ function planMaps(
   requested: readonly string[] | undefined,
 ): PolyHavenDownloadPlan {
   if (requested !== undefined) {
-    if (requested.length === 0) throw new Error('maps must name at least one map.')
+    if (requested.length === 0) throw new ToolArgsError(['maps must name at least one map.'])
     const unknown = requested.filter(map => !options.maps.includes(map))
-    if (unknown.length > 0) throw new Error(`${name} has no ${listing(unknown)} ${unknown.length === 1 ? 'map' : 'maps'}; its maps are ${listing(options.maps)}.`)
+    if (unknown.length > 0) {
+      const maps = unknown.length === 1 ? 'map' : 'maps'
+      throw new PolyHavenError(`${name} has no ${listing(unknown)} ${maps}; its maps are ${listing(options.maps)}.`, 'POLYHAVEN_FILES_NOT_FOUND')
+    }
   }
   const maps: string[] = []
   const files: PolyHavenPlannedFile[] = []
   for (const map of requested ?? options.defaultMaps) {
     const file = tree.get(map)?.get(resolution)?.get(format)
     if (file === undefined) {
-      if (requested !== undefined) throw new Error(`${name} has no ${format} ${map} map at ${resolution}.`)
+      if (requested !== undefined) throw new PolyHavenError(`${name} has no ${format} ${map} map at ${resolution}.`, 'POLYHAVEN_FILES_NOT_FOUND')
       continue
     }
     maps.push(map)
     files.push({ path: fileNameOf(file.url), file })
   }
-  if (files.length === 0) throw new Error(`${name} has no ${format} maps at ${resolution}.`)
+  if (files.length === 0) throw new PolyHavenError(`${name} has no ${format} maps at ${resolution}.`, 'POLYHAVEN_FILES_NOT_FOUND')
   return { format, resolution, maps, files: unique(files) }
 }
 
 /**
  * Drop repeated files: one path may appear twice, as when two maps share an image.
- * @throws Error when one path names two different files.
+ * @throws PolyHavenError `POLYHAVEN_DOWNLOAD_CORRUPT` when one path names two different files.
  */
 function unique(files: readonly PolyHavenPlannedFile[]): PolyHavenPlannedFile[] {
   const seen = new Map<string, PolyHavenPlannedFile>()
   for (const planned of files) {
     const earlier = seen.get(planned.path.toLowerCase())
     if (earlier === undefined) seen.set(planned.path.toLowerCase(), planned)
-    else if (earlier.file.md5 !== planned.file.md5) throw new Error(`Poly Haven names two different files ${JSON.stringify(planned.path)} in one download; the download stopped.`)
+    else if (earlier.file.md5 !== planned.file.md5) {
+      throw new PolyHavenError(`Poly Haven names two different files ${JSON.stringify(planned.path)} in one download; the download stopped.`, 'POLYHAVEN_DOWNLOAD_CORRUPT')
+    }
   }
   return [...seen.values()]
 }

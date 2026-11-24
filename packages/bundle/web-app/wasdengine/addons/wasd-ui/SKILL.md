@@ -36,11 +36,15 @@ Sizes follow the window: where the project stretches its window the scale is 1, 
 ## A menu over the game
 
 ```gdscript
-WasdUi.open(pause_menu)      # centered over a dimmed game and HUD; its first button takes the focus
-WasdUi.close(pause_menu)     # frees it; close(pause_menu, true) keeps it for the next time
+@onready var pause_menu: Control = $PauseMenu    # a menu of the scene, hidden until it opens
+
+WasdUi.open(pause_menu)          # shows it centered over a dimmed game and HUD; its first button that shows takes the focus
+WasdUi.close(pause_menu, true)   # puts it back in its place in the scene, hidden again, for the next time
 ```
 
-While menus are open, a mouse pointer that the game hid or captured shows. `close()` gives the focus back to what had it, and closing the last menu gives the pointer back as it was, except that a scene the game changes to after `close()`, such as a title screen, sets its own mouse mode, and in a browser a captured pointer stays shown until the game captures it again on a click. Pausing stays the game's: set `get_tree().paused = true` and the menu's `process_mode` to `PROCESS_MODE_ALWAYS`. WasdUi itself runs while the game is paused.
+`WasdUi.close(menu)` frees the menu instead, as suits one made in code. While a menu is open it stands under WasdUi, so keep it in a variable: `$PauseMenu`, and the `%` names the scene gives its parts, reach it again once `close(menu, true)` has put it back. A menu still open when the scene it opened in leaves the tree, as on `change_scene_to_file()` or `WasdLoader.change_scene()`, closes with its dim: one that had a parent goes back to it, and one made in code is freed, so a menu that must outlive its scene belongs, hidden, under an autoload. A "Quit to title" button sets `get_tree().paused = false` and changes the scene, with no `close()` first.
+
+While menus are open, a mouse pointer that the game hid or captured shows. `close()` gives the focus back to what had it, and closing the last menu gives the pointer back as it was, except after a change of scene, whose new scene sets its own mouse mode, and in a browser, where a captured pointer stays shown until the game captures it again on a click. Pausing stays the game's: set `get_tree().paused = true` and the menu's `process_mode` to `PROCESS_MODE_ALWAYS`. WasdUi itself runs while the game is paused.
 
 ## HUD
 

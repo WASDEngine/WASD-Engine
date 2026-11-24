@@ -1,11 +1,15 @@
-/** Saving an archive's map pictures: the archive checked, only the maps written, nothing written on failure, and changed files kept. */
+/**
+ * Saving an archive's map pictures: the archive checked, only the maps written, nothing written on failure, changed
+ * files kept, and each failure the plugin's own error with its code.
+ */
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zipSync } from 'fflate'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { AmbientCgArchiveChanged, writeDownload, type DownloadOptions } from '../src/download.ts'
+import { writeDownload, type DownloadOptions } from '../src/download.ts'
+import type { AmbientCgErrorCode } from '../src/errors.ts'
 import type { AmbientCgArchive, AmbientCgArchiveListing, AmbientCgAsset } from '../src/types.ts'
 
 const FILES: Readonly<Record<string, string>> = {
@@ -64,6 +68,7 @@ function options(
     maps: undefined,
     maxUnpackedBytes: 1_000_000,
     known,
+    folders: new Map(),
     signal: new AbortController().signal,
     open: (url) => {
       opened.push(url)
@@ -71,6 +76,31 @@ function options(
     },
     ...overrides,
   }
+}
+
+/** The plugin's error with a code and a message. */
+function failure(code: AmbientCgErrorCode, message: string | RegExp): Record<string, unknown> {
+  return { name: 'AmbientCgError', code, message: typeof message === 'string' ? message : expect.stringMatching(message) }
+}
+
+/**
+ * The archive with one file's compressed data, or its local header, changed, as a damaged download arrives; the
+ * archive's directory still lists the file as it was.
+ */
+function damaged(zip: Buffer, name: string, part: 'data' | 'header'): Buffer {
+  const copy = Buffer.from(zip)
+  for (let at = 0; copy.readUInt32LE(at) === 0x04034b50;) {
+    const nameLength = copy.readUInt16LE(at + 26)
+    const data = at + 30 + nameLength + copy.readUInt16LE(at + 28)
+    if (copy.toString('utf8', at + 30, at + 30 + nameLength) === name) {
+      // A deflate block of type 3, which does not exist, or a header without its signature.
+      if (part === 'data') copy[data] = 0x07
+      else copy.writeUInt32LE(0x12345678, at)
+      return copy
+    }
+    at = data + copy.readUInt32LE(at + 18)
+  }
+  throw new Error(`The archive holds no ${name}.`)
 }
 
 /** Every file below the folder, with temporary files. */
@@ -111,14 +141,14 @@ describe('writeDownload', () => {
     ])
     expect(restarted.fetchedBytes).toBe(ZIP.byteLength)
     expect(opened).toHaveLength(2)
-    await expect(writeDownload(WOOD, ARCHIVE, root, options({ maps: ['metalness'] }))).rejects.toThrow(
-      'The archive of Wood 099 has no "metalness" map; it holds: Color, NormalDX, NormalGL, Roughness.')
+    await expect(writeDownload(WOOD, ARCHIVE, root, options({ maps: ['metalness'] }))).rejects.toMatchObject(
+      failure('AMBIENTCG_FILES_NOT_FOUND', 'The archive of Wood 099 has no "metalness" map; it holds: Color, NormalDX, NormalGL, Roughness.'))
   })
 
   it('keeps a changed picture and writes nothing unless replace is true', async () => {
     await writeFile(join(root, 'Wood099_1K-JPG_Color.jpg'), 'edited by the user')
-    await expect(writeDownload(WOOD, ARCHIVE, root, options())).rejects.toThrow(
-      `A file in ${root} already exists with other contents: Wood099_1K-JPG_Color.jpg. Pass replace: true to overwrite it, or download into another directory.`)
+    await expect(writeDownload(WOOD, ARCHIVE, root, options())).rejects.toMatchObject(failure('AMBIENTCG_ALREADY_EXISTS',
+      `A file in ${root} already exists with other contents: Wood099_1K-JPG_Color.jpg. Pass replace: true to overwrite it, or download into another directory.`))
     expect((await listing(root)).filter(name => !name.startsWith('tmp'))).toEqual(['Wood099_1K-JPG_Color.jpg'])
     // The refusal reads the remembered directory: the archive is not fetched again to refuse a second time.
     await expect(writeDownload(WOOD, ARCHIVE, root, options())).rejects.toThrow('already exists with other contents')
@@ -135,11 +165,11 @@ describe('writeDownload', () => {
     damaged[at] = 0x4f
     const archive = { ...ARCHIVE, size: stored.byteLength }
     const digest = createHash('sha1').update(stored).digest('hex')
-    await expect(writeDownload(WOOD, archive, join(root, 'a'), options({ body: damaged, headers: { 'x-bz-content-sha1': `unverified:${digest}` } }))).rejects.toThrow(
-      'The archive of Wood 099 arrived damaged: its SHA-1 digest differs from ambientCG\'s; nothing was saved.')
+    await expect(writeDownload(WOOD, archive, join(root, 'a'), options({ body: damaged, headers: { 'x-bz-content-sha1': `unverified:${digest}` } }))).rejects.toMatchObject(
+      failure('AMBIENTCG_DOWNLOAD_CORRUPT', 'The archive of Wood 099 arrived damaged: its SHA-1 digest differs from ambientCG\'s; nothing was saved.'))
     known.clear()
-    await expect(writeDownload(WOOD, archive, join(root, 'b'), options({ body: damaged, headers: { 'x-bz-content-sha1': 'none' } }))).rejects.toThrow(
-      'Wood099_1K-JPG_NormalGL.jpg arrived damaged: its checksum differs from the archive\'s; nothing was saved.')
+    await expect(writeDownload(WOOD, archive, join(root, 'b'), options({ body: damaged, headers: { 'x-bz-content-sha1': 'none' } }))).rejects.toMatchObject(
+      failure('AMBIENTCG_DOWNLOAD_CORRUPT', 'Wood099_1K-JPG_NormalGL.jpg arrived damaged: its checksum differs from the archive\'s; nothing was saved.'))
     expect(await listing(join(root, 'a'))).toEqual([])
     expect(await listing(join(root, 'b'))).toEqual([])
     expect(await listing(temporary)).toEqual([])
@@ -149,34 +179,54 @@ describe('writeDownload', () => {
     expect(large.files).toHaveLength(3)
   })
 
+  it('reports a picture whose compressed data or header arrived damaged, and writes nothing', async () => {
+    for (const part of ['data', 'header'] as const) {
+      const body = damaged(ZIP, 'Wood099_1K-JPG_Color.jpg', part)
+      known.clear()
+      const failed = writeDownload(WOOD, { ...ARCHIVE, size: body.byteLength }, join(root, part), options({ body, headers: {} }))
+      await expect(failed).rejects.toMatchObject(failure('AMBIENTCG_DOWNLOAD_CORRUPT', /^Wood099_1K-JPG_Color\.jpg arrived damaged: .+; nothing was saved\.$/u))
+      expect(await listing(join(root, part)), part).toEqual([])
+    }
+    expect(await listing(temporary)).toEqual([])
+  })
+
+  it('reports a temporary folder it cannot make for the archive as a failure on the disk', async () => {
+    process.env.TMPDIR = join(root, 'missing', 'tmp')
+    const failed = writeDownload(WOOD, ARCHIVE, join(root, 'wood'), options())
+    await expect(failed).rejects.toMatchObject(
+      failure('AMBIENTCG_DISK_FAILED', /^The download failed on the disk while it fetched the archive of Wood 099: ENOENT: .+; nothing was saved\./u))
+    await expect(failed).rejects.toMatchObject({ cause: { code: 'ENOENT' } })
+    expect(opened).toEqual([])
+  })
+
   it('reports an archive whose size differs from its listing, and forgets its directory', async () => {
     await writeDownload(WOOD, ARCHIVE, join(root, 'first'), options())
     for (const body of [ZIP.subarray(0, ZIP.byteLength - 1), Buffer.concat([ZIP, Buffer.from('x')])]) {
       known.clear()
       const failed = writeDownload(WOOD, ARCHIVE, join(root, 'second'), options({ body }))
-      await expect(failed).rejects.toThrow('ambientCG\'s files of Wood 099 differ from its listing, as after an update of the asset; nothing was saved. Call again to read the new listing.')
-      await expect(failed).rejects.toBeInstanceOf(AmbientCgArchiveChanged)
+      await expect(failed).rejects.toMatchObject(failure('AMBIENTCG_STALE_LISTING',
+        'ambientCG\'s files of Wood 099 differ from its listing, as after an update of the asset; nothing was saved. Call again to read the new listing.'))
     }
     // A remembered directory that no longer fits the archive is dropped, so the next call reads the archive's own.
     known.set('Wood099/1K-JPG', { size: ZIP.byteLength, pictures: [{ name: 'Wood099_1K-JPG_Color.jpg', map: 'Color', bytes: 13, crc32: 1 }] })
-    await expect(writeDownload(WOOD, ARCHIVE, join(root, 'third'), options())).rejects.toBeInstanceOf(AmbientCgArchiveChanged)
+    await expect(writeDownload(WOOD, ARCHIVE, join(root, 'third'), options())).rejects.toMatchObject({ code: 'AMBIENTCG_STALE_LISTING' })
     expect(known.has('Wood099/1K-JPG')).toBe(false)
     expect(await listing(join(root, 'third'))).toEqual([])
   })
 
   it('refuses a file that is not a ZIP archive, an archive without maps, and maps larger than the limit', async () => {
     const text = Buffer.from('<html>not an archive</html>')
-    await expect(writeDownload(WOOD, { ...ARCHIVE, size: text.byteLength }, root, options({ body: text, headers: {} }))).rejects.toThrow(
-      /^The archive of Wood 099 is not a readable ZIP file: .+; nothing was saved\.$/u,
-    )
+    const notZip = writeDownload(WOOD, { ...ARCHIVE, size: text.byteLength }, root, options({ body: text, headers: {} }))
+    await expect(notZip).rejects.toMatchObject(failure('AMBIENTCG_DOWNLOAD_CORRUPT', /^The archive of Wood 099 is not a readable ZIP file: .+; nothing was saved\.$/u))
     known.clear()
     const other = zipped({ 'Other_1K-JPG_Color.jpg': 'not this asset', 'Wood099.png': 'preview' })
-    await expect(writeDownload(WOOD, { ...ARCHIVE, size: other.byteLength }, root, options({ body: other, headers: {} }))).rejects.toThrow('The archive of Wood 099 holds no map pictures; nothing was saved.')
+    const withoutMaps = writeDownload(WOOD, { ...ARCHIVE, size: other.byteLength }, root, options({ body: other, headers: {} }))
+    await expect(withoutMaps).rejects.toMatchObject(failure('AMBIENTCG_FILES_NOT_FOUND', 'The archive of Wood 099 holds no map pictures; nothing was saved.'))
     known.clear()
     const heavy = zipped({ 'Wood099_1K-JPG_Color.jpg': 'c'.repeat(3000), 'Wood099_1K-JPG_Roughness.jpg': 'r'.repeat(1200) })
     const small = options({ body: heavy, headers: {}, maxUnpackedBytes: 2048 })
-    await expect(writeDownload(WOOD, { ...ARCHIVE, size: heavy.byteLength }, root, small)).rejects.toThrow(
-      'The maps of this download are 4 KB unpacked, more than the 2 KB that one download may be; choose a lower resolution or fewer maps.')
+    await expect(writeDownload(WOOD, { ...ARCHIVE, size: heavy.byteLength }, root, small)).rejects.toMatchObject(
+      failure('AMBIENTCG_TOO_LARGE', 'The maps of this download are 4 KB unpacked, more than the 2 KB that one download may be; choose a lower resolution or fewer maps.'))
     expect((await listing(root)).filter(name => !name.startsWith('tmp'))).toEqual([])
     expect(await listing(temporary)).toEqual([])
   })
@@ -217,8 +267,8 @@ describe('writeDownload', () => {
   it('refuses an archive whose pictures differ only in letter case before anything is written', async () => {
     const colliding = zipped({ 'Wood099_1K-JPG_Color.jpg': 'upper', 'wood099_1k-jpg_color.jpg': 'lower' })
     const archive = { ...ARCHIVE, size: colliding.byteLength }
-    await expect(writeDownload(WOOD, archive, join(root, 'wood'), options({ body: colliding, headers: {} }))).rejects.toThrow(
-      'The files Wood099_1K-JPG_Color.jpg and wood099_1k-jpg_color.jpg would be one file in the download folder, since macOS and Windows ignore letter case in file names; the download stopped.')
+    await expect(writeDownload(WOOD, archive, join(root, 'wood'), options({ body: colliding, headers: {} }))).rejects.toMatchObject(failure('AMBIENTCG_DOWNLOAD_CORRUPT',
+      'The files Wood099_1K-JPG_Color.jpg and wood099_1k-jpg_color.jpg would be one file in the download folder, since macOS and Windows ignore letter case in file names; the download stopped.'))
     expect((await readdir(root)).sort()).toEqual(['tmp'])
     expect(await listing(temporary)).toEqual([])
   })

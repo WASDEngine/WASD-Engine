@@ -62,11 +62,12 @@ const CLIP_SPEEDS := {"walk": 1.17, "run": 6.6, "sprint": 10.2}
 @export var controlled := true
 ## true adds a WasdOrbitCamera3D behind the character. With false, movement is relative to the current camera.
 @export var orbit_camera := true
-## The input actions the character reads. A missing action is added with its usual keys and gamepad controls.
+## The input actions the character reads, by role. A dictionary set here renames the roles it names and keeps the
+## others: `{"jump": "leap"}` changes the jump alone. A missing action is added with its usual keys and gamepad controls.
 @export var actions := {
 	"left": "move_left", "right": "move_right", "forward": "move_forward", "back": "move_back",
 	"jump": "jump", "sprint": "sprint", "walk": "walk",
-}
+}: set = _set_actions
 
 @export_group("Model")
 ## The node that shows the character and turns toward where it goes; none takes the first Node3D child that is
@@ -119,6 +120,9 @@ var _lag := 0.0
 var _model_y := 0.0
 ## Whether the last physics step put the body on a stair's edge, which holds it though no floor is under its middle.
 var _on_step := false
+## The kind of movement each clip was found for by its name, by the clip: a clip that stands in for a missing kind
+## keeps the pace of its own.
+var _found_for := {}
 
 
 func _ready() -> void:
@@ -196,11 +200,18 @@ func stop_action() -> void:
 	_acting = ""
 
 
-## Puts the character somewhere at rest, with its camera: a respawn, a door to another level. `facing` is a direction in
-## the world.
+## Puts the character somewhere at rest, with its camera: a respawn, a door to another level. It stands on a floor no
+## further below than `floor_snap_length` (0.3 m). The fall it was in ends: touching the ground there is no landing,
+## and a fall from there lands at its own speed. `facing` is a direction in the world.
 func teleport(to: Vector3, facing := Vector3.ZERO) -> void:
 	global_position = to
 	velocity = Vector3.ZERO
+	var below := KinematicCollision3D.new()
+	if is_inside_tree() and test_move(global_transform, Vector3.DOWN * floor_snap_length, below) and below.get_normal().angle_to(Vector3.UP) <= floor_max_angle:
+		global_position += below.get_travel()
+	_fall_speed = 0.0
+	_was_on_floor = true
+	_landing = 0.0
 	if facing.length() > 0.001:
 		face_toward(facing)
 		if camera_rig != null:
@@ -275,16 +286,28 @@ func _physics_process(delta: float) -> void:
 	velocity.x = flat.x
 	velocity.z = flat.z
 	var stood := global_position
+	var floor_before := get_platform_velocity()
+	var floor_after := floor_before
 	# On a stair the body is placed on the step's edge; everywhere else it slides as bodies do.
 	_on_step = on_floor and step_height > 0.0 and velocity.y <= 0.0 and _step_up(flat * delta)
-	if not _on_step:
+	if _on_step:
+		# Placed on the step, the body did not go with its floor.
+		floor_before = Vector3.ZERO
+		floor_after = Vector3.ZERO
+	else:
 		move_and_slide()
+		floor_after = get_platform_velocity()
 		_on_step = on_floor and step_height > 0.0 and velocity.y <= 0.0 and not is_on_floor() and _step_down()
 	# A stair taken in one physics step would jolt the model; the feet, or the model, take it up over a moment. A step
-	# is a change of height that no slope the body can walk gives for the distance it went.
+	# is a change of height that no slope the body can walk gives for the distance it went over its floor.
 	if on_floor and is_grounded():
+		# A floor that moves, such as a lift, carried the body as it moved before this physics step or after it: the two
+		# differ for a step when the floor starts or stops, or when the body gets on or off.
 		var rose := global_position.y - stood.y
-		var went := Vector2(global_position.x - stood.x, global_position.z - stood.z).length()
+		var carried := floor_before if absf(rose - floor_before.y * delta) < absf(rose - floor_after.y * delta) else floor_after
+		var moved := global_position - stood - carried * delta
+		rose = moved.y
+		var went := Vector2(moved.x, moved.z).length()
 		if absf(rose) > went * 1.2 + 0.02 and absf(rose) < step_height + 0.1:
 			_floor_moved(rose)
 	if model != null and _lag != 0.0:
@@ -416,8 +439,12 @@ func _animate(delta: float) -> void:
 		kind = "sprint"
 	elif speed > (walk_speed + run_speed) * 0.5 and clips.has("run"):
 		kind = "run"
-	# Played at the pace that keeps a foot on the ground, within what still looks like the same gait.
-	var planted: float = CLIP_SPEEDS[kind] * _hips
+	if not clips.has(kind):
+		# A model with no clip for its gait goes on with the clip it plays.
+		return
+	# Played at the pace that keeps a foot on the ground, within what still looks like the same gait: that of the gait
+	# the clip was found for, also where it stands in for another.
+	var planted: float = float(CLIP_SPEEDS.get(_found_for.get(clips[kind], kind), CLIP_SPEEDS[kind])) * _hips
 	_play(kind, blend, clampf(speed / planted, 0.6, 1.8) if planted > 0.0 else 1.0)
 
 
@@ -454,12 +481,14 @@ func _find_animations() -> void:
 			if not animation_player.has_animation_library(&"ual"):
 				animation_player.add_animation_library(&"ual", library)
 	clips.clear()
+	_found_for.clear()
 	if animation_player == null:
 		return
 	for kind: String in CLIPS:
 		var found := _find_clip(CLIPS[kind])
 		if found != "":
 			clips[kind] = found
+			_found_for[found] = kind
 	# A model with fewer clips walks where it would run, and stands where it would fall.
 	for pair: Array in [["run", "walk"], ["walk", "run"], ["sprint", "run"], ["air", "jump"], ["air", "idle"]]:
 		if not clips.has(pair[0]) and clips.has(pair[1]):
@@ -513,6 +542,14 @@ func _camera_forward() -> Vector3:
 		forward = seen.global_basis.y
 		forward.y = 0.0
 	return forward.normalized()
+
+
+## Renames the roles that `to` names and keeps the others; a character that reads the player's input and is in the tree
+## already gets the actions the project lacks at once.
+func _set_actions(to: Dictionary) -> void:
+	actions = actions.merged(to, true)
+	if controlled and is_inside_tree():
+		_add_missing_actions()
 
 
 ## Adds the actions the project lacks: WASD and the arrow keys, Space, Shift, C, and a gamepad's left stick, its

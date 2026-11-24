@@ -27,6 +27,8 @@ export interface FakePolyHaven {
   listStatus: number
   /** File paths, as in {@link fileBytes}, whose download sends other bytes. */
   readonly damaged: Set<string>
+  /** Ids of listed assets whose file tree the fake does not have, as Poly Haven answers HTTP 404. */
+  readonly withoutFiles: Set<string>
   /** Content type of preview images. */
   previewType: string
   /** Stop listening. */
@@ -163,7 +165,8 @@ function route(fake: FakePolyHaven, base: string, url: URL): Reply {
   }
   const files = /^\/files\/([^/]+)$/u.exec(url.pathname)
   if (files !== null) {
-    const tree = trees(base)[decodeURIComponent(files[1] ?? '')]
+    const id = decodeURIComponent(files[1] ?? '')
+    const tree = fake.withoutFiles.has(id) ? undefined : trees(base)[id]
     return tree === undefined ? plain(404, 'not found') : json(tree)
   }
   if (url.pathname.startsWith('/thumbs/')) return { status: 200, body: PREVIEW, type: fake.previewType }
@@ -187,6 +190,7 @@ export async function startFakePolyHaven(): Promise<FakePolyHaven> {
     searchStatus: 200,
     listStatus: 200,
     damaged: new Set(),
+    withoutFiles: new Set(),
     previewType: 'image/jpeg',
     close: () => new Promise<void>((resolve, reject) => {
       server.close((error) => {

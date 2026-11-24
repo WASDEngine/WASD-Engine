@@ -12,6 +12,9 @@ const OUTLINE_SHADER := preload("res://addons/wasd_fx/thing_outline.gdshader")
 const DISSOLVE_SHADER := preload("res://addons/wasd_fx/thing_dissolve.gdshader")
 ## Effects of one name kept for use again.
 const STORE_SIZE := 16
+## Meters nearer each layer of an effect counts than the one before when see-through things are sorted, so that an
+## effect's layers draw in their order while effects and other see-through things draw by how far they are.
+const LAYER_SORTING := 0.01
 
 ## How brightly smoke, dust, and other covering particles are lit, from 0 to 1: 1 by day, about 0.25 at night. Left
 ## at -1, a WasdLook3D in the scene tells it, and without one it is 1.
@@ -28,10 +31,16 @@ var _swarms := {}
 var _stores := {}
 ## The effects on things, by the instance id of the node given. What flashes: {"material", "meshes" (their instance
 ## ids), "fade" (its tween)}; what is outlined: {"material", "meshes"}; what dissolves or appears: {"turn" (the
-## number of the call, as only a node's latest call finishes), "meshes", "kept" (what each surface wore before)}.
+## number of the call, as only a node's latest call finishes), "meshes", "clock" (the tween that runs its seconds)}.
 var _flashing := {}
 var _outlined := {}
 var _dissolving := {}
+## By the instance id of each mesh that dissolves or appears: {"own": what each of its surfaces wore before the first
+## call that reached it, "override": its material_override then, "calls": [the turn of each call that reaches it and
+## that call's materials, one a surface], the latest last}. Calls that overlap, such as a dissolve of a body and an
+## appear of the sword in its hand, share the record: the mesh wears the latest call that still runs, and its own
+## materials again once the last has ended.
+var _worn := {}
 ## By the instance id of each mesh that an effect on things draws on: {"base": what was over the mesh before, or what
 ## another hand has put there since, "shown": what WasdFx put there last, "flash" and "outline": the materials of
 ## those effects or null, "hidden": how many dissolves and appears keep everything off it}.
@@ -107,7 +116,7 @@ func play(effect: String, at: Vector3, options := {}) -> WasdFxInstance3D:
 		material.set_shader_parameter(&"light_level", lit)
 		material.set_shader_parameter(&"age", 0.0)
 		material.set_shader_parameter(&"fade", 1.0)
-	instance._fit(wind)
+	instance._fit(wind.length())
 	if instance._light != null:
 		var light: Dictionary = definition["light"]
 		instance._light.light_color = (light["color"] as Color) * Color(tint.r, tint.g, tint.b)
@@ -122,6 +131,8 @@ func play(effect: String, at: Vector3, options := {}) -> WasdFxInstance3D:
 	instance._fade_seconds = 0.0
 	instance._library = self
 	instance._wind = wind
+	instance._own_wind = to_own * wind
+	instance._start_way()
 	instance.visible = true
 	instance.set_process(true)
 	return instance
@@ -200,18 +211,19 @@ func put_under(mesh: GeometryInstance3D, material: Material, was: Material) -> v
 
 ## Dissolves a thing away over `seconds`: it is eaten in patches with a glowing edge, as a defeated enemy or a
 ## spent pickup goes. Await it; the thing is hidden at the end and, with `free` true, freed. For the seconds it
-## takes, each mesh wears a plain material in its own color and picture, with nothing drawn over it. A later
-## dissolve or appear of the same thing takes over, and this one ends without hiding it. Options: `color` (Color):
-## the edge's glow; `patch_size` (float, 1.0): meters across the patches; `free` (bool, false).
+## takes, each mesh wears a plain material in its own color, picture, vertex colors, and cut-out holes, with nothing
+## drawn over it. The seconds stand still while WasdFx is paused, as when the game pauses. A later dissolve or appear
+## of the same thing takes over, and this one ends without hiding it. Options: `color` (Color): the edge's glow;
+## `patch_size` (float, 1.0): meters across the patches; `free` (bool, false).
 func dissolve(node: Node, seconds := 0.8, options := {}) -> void:
 	var id := node.get_instance_id()
-	var turn := _wear_dissolve(node, options, 0.0, seconds)
-	await get_tree().create_timer(seconds).timeout
-	if not _finishes(id, turn):
+	var record := _wear_dissolve(node, options, 0.0, seconds)
+	await (record["clock"] as Tween).finished
+	if not _finishes(id, record["turn"]):
 		return
 	if node is Node3D:
 		(node as Node3D).visible = false
-	_restore_dissolve(id)
+	_end_dissolve(id)
 	if options.get("free", false):
 		node.queue_free()
 
@@ -221,12 +233,12 @@ func dissolve(node: Node, seconds := 0.8, options := {}) -> void:
 ## teleport is a dissolve here and an appear there.
 func appear(node: Node, seconds := 0.8, options := {}) -> void:
 	var id := node.get_instance_id()
-	var turn := _wear_dissolve(node, options, 1.0, seconds)
+	var record := _wear_dissolve(node, options, 1.0, seconds)
 	if node is Node3D:
 		(node as Node3D).visible = true
-	await get_tree().create_timer(seconds).timeout
-	if _finishes(id, turn):
-		_restore_dissolve(id)
+	await (record["clock"] as Tween).finished
+	if _finishes(id, record["turn"]):
+		_end_dissolve(id)
 
 
 ## The instance ids of the meshes under a node, `node` included, that the effects on things draw on: each
@@ -323,51 +335,146 @@ func _show_over(id: int) -> void:
 
 
 ## Gives every surface under a node the dissolving material in that surface's own color and picture, at `gone` and
-## going to the other end over `seconds`, keeps everything off the meshes meanwhile, and returns the call's turn. What
-## the surfaces wore is kept for _restore_dissolve(); a node that dissolves or appears already gets its own materials
-## back first, so that those, not the last call's, are kept again.
-func _wear_dissolve(node: Node, options: Dictionary, gone: float, seconds: float) -> int:
+## going to the other end over `seconds`, and keeps everything off the meshes meanwhile. Returns the call's record in
+## _dissolving. A node that dissolves or appears already ends that call first; what each mesh wore of its own is kept
+## in _worn by the first call that reaches it.
+func _wear_dissolve(node: Node, options: Dictionary, gone: float, seconds: float) -> Dictionary:
 	var id := node.get_instance_id()
 	if _dissolving.has(id):
-		_restore_dissolve(id)
+		_end_dissolve(id)
 	_turns += 1
+	# The call's seconds run as a tween of WasdFx's, which stands still while WasdFx is paused.
+	var clock := create_tween().set_parallel()
+	clock.tween_interval(maxf(seconds, 0.0))
 	var meshes := _parts(node, false)
-	var kept: Array = []
 	for part: int in meshes:
 		var mesh := instance_from_id(part) as MeshInstance3D
+		var worn: Dictionary = _worn.get(part, {})
+		if worn.is_empty():
+			var own: Array[Material] = []
+			for surface: int in mesh.mesh.get_surface_count():
+				own.append(mesh.get_surface_override_material(surface))
+			worn = {"own": own, "override": mesh.material_override, "calls": []}
+			_worn[part] = worn
+		var materials: Array[Material] = []
 		for surface: int in mesh.mesh.get_surface_count():
-			var own := mesh.get_active_material(surface)
-			var material := ShaderMaterial.new()
-			material.shader = DISSOLVE_SHADER
-			material.set_shader_parameter(&"noise", _noise)
-			material.set_shader_parameter(&"edge_color", options.get("color", Color(1.0, 0.55, 0.15)))
-			material.set_shader_parameter(&"patch_size", options.get("patch_size", 1.0))
-			var bounds := mesh.mesh.get_aabb()
-			material.set_shader_parameter(&"span", Vector2(bounds.position.y, bounds.end.y))
-			if own is BaseMaterial3D:
-				material.set_shader_parameter(&"color", (own as BaseMaterial3D).albedo_color)
-				material.set_shader_parameter(&"picture", (own as BaseMaterial3D).albedo_texture)
-				material.set_shader_parameter(&"roughness", (own as BaseMaterial3D).roughness)
-			elif own is ShaderMaterial:
-				# A shader of another make: its color and picture by the names such shaders commonly give them.
-				for name: StringName in [&"color", &"albedo", &"albedo_color", &"tint"]:
-					var value: Variant = (own as ShaderMaterial).get_shader_parameter(name)
-					if value is Color:
-						material.set_shader_parameter(&"color", value)
-						break
-				for name: StringName in [&"picture", &"texture_albedo", &"albedo_texture"]:
-					var value: Variant = (own as ShaderMaterial).get_shader_parameter(name)
-					if value is Texture2D:
-						material.set_shader_parameter(&"picture", value)
-						break
-			material.set_shader_parameter(&"gone", gone)
-			create_tween().tween_property(material, ^"shader_parameter/gone", 1.0 - gone, seconds)
-			kept.append([part, surface, mesh.get_surface_override_material(surface), mesh.material_override])
-			mesh.set_surface_override_material(surface, material)
-		mesh.material_override = null
+			var material := _dissolve_material(_own_material(mesh, worn, surface), mesh, options, gone)
+			clock.tween_property(material, ^"shader_parameter/gone", 1.0 - gone, maxf(seconds, 0.0))
+			materials.append(material)
+		(worn["calls"] as Array).append([_turns, materials])
+		_show_worn(part)
 		_hide_over(part, 1)
-	_dissolving[id] = {"turn": _turns, "meshes": meshes, "kept": kept}
-	return _turns
+	var record := {"turn": _turns, "meshes": meshes, "clock": clock}
+	_dissolving[id] = record
+	return record
+
+
+## What a surface of a mesh wears of its own, as the record in _worn kept it.
+static func _own_material(mesh: MeshInstance3D, worn: Dictionary, surface: int) -> Material:
+	if worn["override"] != null:
+		return worn["override"]
+	var own: Array = worn["own"]
+	if surface < own.size() and own[surface] != null:
+		return own[surface]
+	return mesh.mesh.surface_get_material(surface)
+
+
+## The dissolving material for a surface that wears `own`: its color and picture, laid on the UV map as `own` lays
+## them, its vertex colors where `own` shows them, and its holes where `own` is a cut-out. Materials of another make
+## are read by the names such shaders commonly give these, WASD Materials' among them.
+func _dissolve_material(own: Material, mesh: MeshInstance3D, options: Dictionary, gone: float) -> ShaderMaterial:
+	var material := ShaderMaterial.new()
+	material.shader = DISSOLVE_SHADER
+	material.set_shader_parameter(&"noise", _noise)
+	material.set_shader_parameter(&"edge_color", options.get("color", Color(1.0, 0.55, 0.15)))
+	material.set_shader_parameter(&"patch_size", options.get("patch_size", 1.0))
+	var bounds := mesh.mesh.get_aabb()
+	material.set_shader_parameter(&"span", Vector2(bounds.position.y, bounds.end.y))
+	material.set_shader_parameter(&"gone", gone)
+	if own is BaseMaterial3D:
+		var base := own as BaseMaterial3D
+		material.set_shader_parameter(&"color", base.albedo_color)
+		material.set_shader_parameter(&"picture", base.albedo_texture)
+		material.set_shader_parameter(&"roughness", base.roughness)
+		material.set_shader_parameter(&"uv_scale", Vector2(base.uv1_scale.x, base.uv1_scale.y))
+		material.set_shader_parameter(&"uv_offset", Vector2(base.uv1_offset.x, base.uv1_offset.y))
+		if base.vertex_color_use_as_albedo:
+			material.set_shader_parameter(&"vertex_colors", 2 if base.vertex_color_is_srgb else 1)
+		match base.transparency:
+			BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+				material.set_shader_parameter(&"holes_below", base.alpha_scissor_threshold)
+				material.set_shader_parameter(&"alpha_scale", base.albedo_color.a)
+			BaseMaterial3D.TRANSPARENCY_ALPHA_HASH:
+				material.set_shader_parameter(&"holes_below", 0.5)
+				material.set_shader_parameter(&"alpha_scale", base.albedo_color.a)
+			BaseMaterial3D.TRANSPARENCY_DISABLED:
+				pass
+			_:
+				# Blended: the holes of its picture, while a see-through color such as glass's shows solid.
+				material.set_shader_parameter(&"holes_below", 0.4)
+	elif own is ShaderMaterial:
+		var shader_material := own as ShaderMaterial
+		var color: Variant = _shader_value(shader_material, [&"color", &"albedo", &"albedo_color", &"tint"], TYPE_COLOR)
+		if color != null:
+			material.set_shader_parameter(&"color", color)
+		var picture: Variant = _shader_value(shader_material, [&"picture", &"texture_albedo", &"albedo_texture", &"color_map"], TYPE_OBJECT)
+		if picture is Texture2D:
+			material.set_shader_parameter(&"picture", picture)
+		var roughness: Variant = _shader_value(shader_material, [&"roughness"], TYPE_FLOAT)
+		if roughness != null:
+			material.set_shader_parameter(&"roughness", roughness)
+		var region: Variant = _shader_value(shader_material, [&"region"], TYPE_VECTOR4)
+		var scale: Variant = _shader_value(shader_material, [&"uv1_scale"], TYPE_VECTOR3)
+		var offset: Variant = _shader_value(shader_material, [&"uv1_offset"], TYPE_VECTOR3)
+		if region != null:
+			material.set_shader_parameter(&"uv_offset", Vector2((region as Vector4).x, (region as Vector4).y))
+			material.set_shader_parameter(&"uv_scale", Vector2((region as Vector4).z, (region as Vector4).w))
+		if scale != null:
+			material.set_shader_parameter(&"uv_scale", Vector2((scale as Vector3).x, (scale as Vector3).y))
+		if offset != null:
+			material.set_shader_parameter(&"uv_offset", Vector2((offset as Vector3).x, (offset as Vector3).y))
+		# A shader that writes ALPHA has holes: in its picture or in an opacity picture of its own.
+		if shader_material.shader != null and shader_material.shader.code.contains("ALPHA"):
+			var opacity: Variant = _shader_value(shader_material, [&"opacity_map", &"alpha_map", &"opacity_texture"], TYPE_OBJECT)
+			if opacity is Texture2D:
+				material.set_shader_parameter(&"holes", opacity)
+			var threshold: Variant = _shader_value(shader_material, [&"threshold", &"alpha_scissor_threshold"], TYPE_FLOAT)
+			material.set_shader_parameter(&"holes_below", threshold if threshold != null else 0.4)
+	return material
+
+
+## The first of `names` that a shader material has a value for, its own or its shader's default, of type `type`, or
+## null.
+static func _shader_value(material: ShaderMaterial, names: Array[StringName], type: Variant.Type) -> Variant:
+	for key: StringName in names:
+		var value: Variant = material.get_shader_parameter(key)
+		if value == null and material.shader != null:
+			value = RenderingServer.shader_get_parameter_default(material.shader.get_rid(), key)
+		if typeof(value) == type:
+			return value
+	return null
+
+
+## Has a mesh wear the materials of the latest call that reaches it, or its own again once none does.
+func _show_worn(id: int) -> void:
+	var mesh := instance_from_id(id) as MeshInstance3D
+	var worn: Dictionary = _worn.get(id, {})
+	if mesh == null or worn.is_empty():
+		_worn.erase(id)
+		return
+	var count := mesh.mesh.get_surface_count() if mesh.mesh != null else 0
+	var calls: Array = worn["calls"]
+	if calls.is_empty():
+		var own: Array = worn["own"]
+		for surface: int in mini(own.size(), count):
+			mesh.set_surface_override_material(surface, own[surface])
+		mesh.material_override = worn["override"]
+		_worn.erase(id)
+		return
+	var materials: Array = (calls.back() as Array)[1]
+	for surface: int in mini(materials.size(), count):
+		mesh.set_surface_override_material(surface, materials[surface])
+	mesh.material_override = null
 
 
 ## Whether a call of dissolve() or appear() is still its node's latest, the one that finishes. The record of a node
@@ -376,22 +483,25 @@ func _finishes(id: int, turn: int) -> bool:
 	if (_dissolving.get(id, {}) as Dictionary).get("turn", -1) != turn:
 		return false
 	if not is_instance_id_valid(id):
-		_restore_dissolve(id)
+		_end_dissolve(id)
 		return false
 	return true
 
 
-## Gives every surface back what it wore before the node's dissolve or appear, and its meshes what was over them.
-func _restore_dissolve(id: int) -> void:
-	var was: Dictionary = _dissolving.get(id, {})
+## Ends a node's dissolve or appear: each of its meshes wears the latest call that still reaches it, or what it wore
+## of its own, and gets back what was over it.
+func _end_dissolve(id: int) -> void:
+	var record: Dictionary = _dissolving.get(id, {})
 	_dissolving.erase(id)
-	for entry: Array in was.get("kept", []):
-		var mesh := instance_from_id(entry[0]) as MeshInstance3D
-		if mesh != null:
-			mesh.set_surface_override_material(entry[1], entry[2])
-			mesh.material_override = entry[3]
-	for mesh: int in was.get("meshes", []):
-		_hide_over(mesh, -1)
+	for part: int in record.get("meshes", []):
+		var worn: Dictionary = _worn.get(part, {})
+		if not worn.is_empty():
+			var calls: Array = worn["calls"]
+			for index: int in range(calls.size() - 1, -1, -1):
+				if (calls[index] as Array)[0] == record["turn"]:
+					calls.remove_at(index)
+			_show_worn(part)
+		_hide_over(part, -1)
 
 
 ## Draws every effect once, tiny and for a moment, before the camera that draws the scene, so that the one shader
@@ -451,8 +561,7 @@ func _take(effect: String) -> WasdFxInstance3D:
 		material.shader = SHADER
 		material.set_shader_parameter(&"noise", _noise)
 		material.set_shader_parameter(&"looping", instance.looping)
-		# Later layers draw over earlier ones: smoke over the fire it comes from.
-		material.render_priority = instance._materials.size()
+		material.set_shader_parameter(&"way_step", WasdFxInstance3D.WAY_STEP)
 		for key: StringName in [&"life", &"delay", &"spawn_over", &"shape", &"spread", &"radius", &"offset", &"speed", &"drag", &"wobble", &"carried", &"size", &"size_variance", &"stretch", &"spin", &"lies_flat", &"look",
 				&"color_start", &"color_mid", &"color_end", &"mid_at", &"energy", &"rainbow", &"through", &"self_lit"]:
 			material.set_shader_parameter(key, layer[key])
@@ -460,6 +569,9 @@ func _take(effect: String) -> WasdFxInstance3D:
 		cards.multimesh = _swarm(layer["count"])
 		cards.material_override = material
 		cards.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		# Effects sort among other see-through things by how far they are, as one: every layer's box has the effect's
+		# origin as its middle, and later layers, such as smoke over the fire it comes from, count a hair nearer.
+		cards.sorting_offset = LAYER_SORTING * instance._materials.size()
 		instance.add_child(cards)
 		instance._materials.append(material)
 		longest = maxf(longest, float(layer["life"]) + float(layer["delay"]) + float(layer["spawn_over"]))

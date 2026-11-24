@@ -1,1 +1,1 @@
-{ "run": "render", "path": "res://wasd_smoke/smoke.tscn", "expect": ["SMOKE_PASS wasd-weather"], "timeoutSeconds": 120, "with": ["wasd-character"] }
+{ "run": "render", "path": "res://wasd_smoke/smoke.tscn", "expect": ["SMOKE_PASS wasd-weather"], "timeoutSeconds": 120, "with": ["wasd-character", "wasd-decals"] }

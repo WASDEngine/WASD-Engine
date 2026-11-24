@@ -335,4 +335,9 @@ export interface GameAddonRemoveResult {
   readonly backup?: string
   /** Project files outside the add-on that still name its folder, at most 20, which now need changes. */
   readonly references: readonly string[]
+  /**
+   * `project.godot` settings that the installation wrote and the project changed since, which keep the project's values,
+   * as `[section] key`; absent when there are none.
+   */
+  readonly kept?: readonly string[]
 }

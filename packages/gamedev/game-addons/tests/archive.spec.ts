@@ -1,4 +1,7 @@
-/** Pinned archive downloads, the archive cache, the archives the Desktop app ships, and unpacking one folder of an archive. */
+/**
+ * Pinned archive downloads, the archive cache, the archives the Desktop app ships, and unpacking one folder of an archive,
+ * whose failures of the computer's files come as the file system reports them.
+ */
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -109,5 +112,36 @@ describe('unpackFolder', () => {
     await expect(unpackFolder(damaged, '', join(dir.root, 'e3'), signal)).rejects.toThrow(GameAddonArchiveError)
     await expect(unpackFolder(damaged, '', join(dir.root, 'e3'), signal)).rejects.toMatchObject({ name: 'GameAddonArchiveError', code: 'GAME_ADDON_ARCHIVE_CORRUPT' })
     await expect(unpackFolder(archivePath, 'camera-1.2.0', dir.root, signal)).rejects.toThrow(/EEXIST/u)
+  })
+
+  it('passes a failure of the computer\'s files through as the file system reports it, never as a damaged archive', async () => {
+    dir = await scratch('unpack')
+    const archivePath = join(dir.root, 'a.zip')
+    await writeFile(archivePath, CAMERA_ARCHIVE)
+    /** The failure of a call that must fail. */
+    const failure = (call: Promise<unknown>): Promise<unknown> => call.then(() => { throw new Error('The call succeeded.') }, (error: unknown) => error)
+    // A file stands where the destination's folder belongs, so the destination cannot be made.
+    const blocker = join(dir.root, 'file')
+    await writeFile(blocker, 'not a folder')
+    const unmade = await failure(unpackFolder(archivePath, 'camera-1.2.0/addons/test_camera', join(blocker, 'out'), signal))
+    expect(unmade).not.toBeInstanceOf(GameAddonArchiveError)
+    expect(unmade).toMatchObject({ syscall: 'mkdir' })
+    // A folder stands where the archive belongs, so it cannot be read.
+    const root = dir.root
+    for (const read of [() => unpackFolder(root, '', join(root, 'e1'), signal), () => readArchiveFile(root, 'x')]) {
+      const unread = await failure(read())
+      expect(unread).not.toBeInstanceOf(GameAddonArchiveError)
+      expect(unread).toMatchObject({ syscall: expect.any(String) as string })
+    }
+  })
+
+  it.skipIf(process.platform === 'win32')('passes a file that the file system cannot create through as it reports it', async () => {
+    dir = await scratch('unpack')
+    const archivePath = join(dir.root, 'long.zip')
+    // A name longer than the 255 bytes that macOS and Linux allow.
+    await writeFile(archivePath, zip({ [`root/${'a'.repeat(300)}.gd`]: 'extends Node\n' }))
+    const unwritten = await unpackFolder(archivePath, 'root', join(dir.root, 'out'), signal).then(() => undefined, (error: unknown) => error)
+    expect(unwritten).not.toBeInstanceOf(GameAddonArchiveError)
+    expect(unwritten).toMatchObject({ code: 'ENAMETOOLONG', syscall: 'open' })
   })
 })

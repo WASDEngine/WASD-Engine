@@ -1,10 +1,13 @@
 extends Node3D
 ## WASD Crowd smoke test (render run on the Compatibility renderer): a pole of two bones that waves is baked; the baked
-## textures hold the pole's tip where the skeleton puts it at each frame of each clip; the data saves to a file and
-## loads again; a crowd of two hundred shows red poles that wave, each in its own phase, and keeps them when its
-## capacity changes; members take other clips, tints only on named surfaces, and leave; a full crowd or an unknown clip
-## is refused, and a lower capacity drops the members it no longer holds. Then a flock of each kind, birds, fish, and
-## butterflies, shows creatures that move, in one draw call, takes another count, and flies apart from what startles it.
+## textures hold the pole's tip where the skeleton puts it at each frame of each clip, and so do those of a pole that
+## is not in the scene tree and those that bake_crowd.gd saved from the pole's scene file in the prepare step; the
+## data saves to a file and loads again; a crowd of two hundred shows red poles that wave, each in its own phase, and
+## keeps them when its capacity changes; members take other clips, tints only on named surfaces, and leave; a full
+## crowd or an unknown clip is refused, a lower capacity drops the members it no longer holds, and a member refused
+## for its clip after clear() brings back none that were there. Then a flock of each kind, birds, fish, and
+## butterflies, shows creatures that move, in one draw call, takes another count, and flies apart from what startles
+## it.
 
 const ID := "wasd-crowd"
 
@@ -171,6 +174,25 @@ func _run() -> void:
 		return _fail("in the still clip the tip is baked at %s" % [still_place])
 	if data.bounds.size.x < 1.0 or data.bounds.size.y < 1.9:
 		return _fail("the bounds are %s" % [data.bounds])
+	# A pole that is not in the scene tree, as a game bakes an instance it made only for that, bakes the same.
+	var loose := _pole()
+	var outside := WasdCrowdBaker.bake(loose, ["moves/Wave", "moves/Still"], 10.0)
+	loose.free()
+	if outside == null:
+		return _fail("the pole outside the scene tree did not bake")
+	var loose_swung := outside.positions.get_image().get_pixel(32, 5)
+	if (Vector3(loose_swung.r, loose_swung.g, loose_swung.b).distance_to(Vector3(1.0, 0.9, 0)) > 0.02
+			or outside.positions.get_image().get_data() != places.get_data() or outside.normals.get_image().get_data() != data.normals.get_image().get_data()):
+		return _fail("outside the scene tree the tip in mid-wave is baked at %s, and the textures differ from the pole's in the tree" % [loose_swung])
+	# bake_crowd.gd, which the smoke test's prepare step ran on the pole's scene file as godot_script runs it, before
+	# any scene tree runs, baked the wave too.
+	var tool_baked := ResourceLoader.load("res://wasd_smoke/pole_tool.res", "", ResourceLoader.CACHE_MODE_IGNORE) as WasdCrowdData
+	if tool_baked == null or tool_baked.names() != PackedStringArray(["Wave", "Still"]):
+		return _fail("bake_crowd.gd saved %s" % [tool_baked.clips if tool_baked != null else null])
+	var tool_rest := tool_baked.positions.get_image().get_pixel(32, 0)
+	var tool_swung := tool_baked.positions.get_image().get_pixel(32, 5)
+	if Vector3(tool_rest.r, tool_rest.g, tool_rest.b).distance_to(Vector3(0.1, 2, 0)) > 0.01 or Vector3(tool_swung.r, tool_swung.g, tool_swung.b).distance_to(Vector3(1.0, 0.9, 0)) > 0.02:
+		return _fail("bake_crowd.gd baked the tip at %s at rest and at %s in mid-wave" % [tool_rest, tool_swung])
 	# The data is a file of its own.
 	if ResourceSaver.save(data, "res://wasd_smoke/pole.res", ResourceSaver.FLAG_COMPRESS) != OK:
 		return _fail("the data did not save")
@@ -243,7 +265,10 @@ func _run() -> void:
 	if crowd.count() != 50 or crowd.add(Transform3D.IDENTITY, "Wave") != 98:
 		return _fail("with room for 100, the crowd counts %d" % [crowd.count()])
 	crowd.clear()
-	if crowd.count() != 0 or _red(await _frame("cleared.png")) > 20:
+	# A member refused for its clip takes no number, so no slot that a member left shows again.
+	if crowd.add(Transform3D.IDENTITY, "NoSuchClip") != -1 or crowd.count() != 0 or crowd.multimesh.visible_instance_count != 0:
+		return _fail("after clear() and a member refused for its clip, the crowd counts %d and draws %d slots" % [crowd.count(), crowd.multimesh.visible_instance_count])
+	if _red(await _frame("cleared.png")) > 20:
 		return _fail("clear() left members")
 	crowd.queue_free()
 

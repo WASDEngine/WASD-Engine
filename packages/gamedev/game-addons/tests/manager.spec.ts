@@ -1,7 +1,8 @@
 /**
  * Installing, reinstalling, and removing add-ons in a game project, the backups of what removals and replacements take
- * out, installations and removals that run at once or beside other writers of `project.godot`, changes that stay inside
- * the project, the Blender add-on store, and add-ons that the user turned off.
+ * out, installations and removals that run at once or beside other writers of `project.godot`, the project settings that
+ * updates, reinstallations, and removals take out, put back, or keep, changes that stay inside the project, the Blender
+ * add-on store, and add-ons that the user turned off.
  */
 import { appendFile, lstat, mkdir, readdir, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, posix, win32 } from 'node:path'
@@ -40,8 +41,11 @@ function replacedNote(settings: string): string {
   return `It replaced the project's own values of these project.godot settings: ${settings}. Removing the add-on puts back each one that still holds the add-on's value.`
 }
 
+/** What installing the camera add-on adds at the end of `project.godot` before its settings. */
+const CAMERA_PLUGIN = '\n[editor_plugins]\n\nenabled=PackedStringArray("res://addons/test_camera/plugin.cfg")\n\n[autoload]\n\nTestCameraManager="*res://addons/test_camera/manager.gd"\n'
+
 /** What installing the camera add-on adds at the end of `project.godot`. */
-const CAMERA_ENTRIES = '\n[editor_plugins]\n\nenabled=PackedStringArray("res://addons/test_camera/plugin.cfg")\n\n[autoload]\n\nTestCameraManager="*res://addons/test_camera/manager.gd"\n\n[test_camera]\n\ngeneral/smoothing=true\n'
+const CAMERA_ENTRIES = `${CAMERA_PLUGIN}\n[test_camera]\n\ngeneral/smoothing=true\n`
 
 /** A fetch in front of the test archives, with which a spec acts while an archive downloads. */
 type FetchHook = (url: string, signal: AbortSignal, serve: FakeDownloads['fetch']) => Promise<Response>
@@ -169,8 +173,12 @@ describe('GameAddonManager.install for Godot', () => {
     expect(imports).toEqual([project, project])
     expect(changed).toEqual([project])
     expect(downloads.requests).toEqual([URLS.camera])
-    // No staging or trash folders are left behind.
-    expect(await readdir(join(project, '.wasdengine'))).toEqual(['addons.json'])
+    // The settings it wrote are kept with their values, and no staging or trash folders are left behind.
+    expect(JSON.parse(await readFile(join(project, '.wasdengine', 'addon-settings.json'), 'utf8'))).toEqual({
+      format: 1,
+      addons: { 'test-camera': [{ section: 'test_camera', key: 'general/smoothing', value: 'true' }] },
+    })
+    expect(await readdir(join(project, '.wasdengine'))).toEqual(['addon-settings.json', 'addons.json'])
   })
 
   it('adds the files of its catalog overlay folders to the add-on folder', async () => {
@@ -217,7 +225,8 @@ describe('GameAddonManager.install for Godot', () => {
     const again = await manager.install(project, 'test-camera', {}, signal)
     expect(again.unchanged).toBe(true)
     expect(again.addon).toEqual(first.addon)
-    expect(again.notes).toEqual(['project.godot had lost some of the add-on\'s settings; they were written again.'])
+    expect(again.notes).toEqual(['project.godot had lost these entries of the add-on, which were written again: [editor_plugins] enabled, [autoload] TestCameraManager, [test_camera] general/smoothing.'])
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT + CAMERA_ENTRIES)
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toContain('TestCameraManager="*res://addons/test_camera/manager.gd"')
     expect(downloads.requests).toEqual([URLS.camera])
   })
@@ -245,7 +254,7 @@ describe('GameAddonManager.install for Godot', () => {
     // The replaced copy is kept in a backup of the add-on, and no trash or staging folder stays behind.
     expect(replaced.notes).toContain(`The addons/test_camera folder it replaced is kept in ${BACKUPS_DIR}/test-camera/${STAMP}/addons/test_camera.`)
     expect(await tree(join(project, BACKUPS_DIR, 'test-camera'))).toEqual([`${STAMP}/addons/test_camera/old.gd`, `${STAMP}/addons/test_camera/plugin.cfg`])
-    expect((await readdir(join(project, '.wasdengine'))).sort()).toEqual(['addons.json', 'backups'])
+    expect((await readdir(join(project, '.wasdengine'))).sort()).toEqual(['addon-settings.json', 'addons.json', 'backups'])
   })
 
   it('refuses an add-on that does the job of one already in the project, and an autoload name in use', async () => {
@@ -351,7 +360,7 @@ describe('GameAddonManager beside other writers', () => {
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(`${PROJECT_GODOT}${CAMERA_ENTRIES}`)
     expect(await readRecord(project)).toHaveLength(1)
     // Neither replaced the other's folder, so no backup, trash, or staging folder is left.
-    expect(await readdir(join(project, '.wasdengine'))).toEqual(['addons.json'])
+    expect(await readdir(join(project, '.wasdengine'))).toEqual(['addon-settings.json', 'addons.json'])
   })
 
   it('installs only one of two conflicting add-ons that are installed at once', async () => {
@@ -439,8 +448,13 @@ describe('GameAddonManager.remove', () => {
       format: 1,
       addons: {
         'test-camera': [
-          { section: 'importer_defaults', key: 'scene', before: '{\n"meshes/generate_lods": false,\n"import_script/path": "res://tools/mine.gd",\n"animation/fps": 30.0\n}' },
-          { section: 'filesystem', key: 'import/blender/enabled', before: 'true' },
+          {
+            section: 'importer_defaults',
+            key: 'scene',
+            value: '{"import_script/path": "res://addons/test_camera/hints.gd"}',
+            before: '{\n"meshes/generate_lods": false,\n"import_script/path": "res://tools/mine.gd",\n"animation/fps": 30.0\n}',
+          },
+          { section: 'filesystem', key: 'import/blender/enabled', value: 'false', before: 'true' },
         ],
       },
     })
@@ -473,6 +487,24 @@ describe('GameAddonManager.remove', () => {
       `The addons/test_camera folder it replaced is kept in ${BACKUPS_DIR}/test-camera/${STAMP}/addons/test_camera.`,
       replacedNote('[input] jump'),
     ])
+    await manager.remove(project, 'test-camera', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(start)
+  })
+
+  it('gives back at the removal a value that was no Dictionary, which the add-on\'s Dictionary replaced, and an emptied Dictionary of the project\'s', async () => {
+    const entries = catalogEntries()
+    const camera = entries['test-camera'] as { godot: { settings?: readonly unknown[] } }
+    camera.godot.settings = [
+      { section: 'importer_defaults', key: 'scene', value: '{"import_script/path": "res://addons/test_camera/hints.gd"}' },
+      { section: 'importer_defaults', key: 'texture', value: '{"compress/mode": 1}' },
+    ]
+    const { manager, project } = await setup({ issues: [] }, entries)
+    const start = `${PROJECT_GODOT}\n[importer_defaults]\n\nscene=null\ntexture={}\n`
+    await writeFile(join(project, 'project.godot'), start)
+    await manager.install(project, 'test-camera', {}, signal)
+    const installed = new ProjectFile(await readFile(join(project, 'project.godot'), 'utf8'))
+    expect(installed.get('importer_defaults', 'scene')).toBe('{\n"import_script/path": "res://addons/test_camera/hints.gd"\n}')
+    expect(installed.get('importer_defaults', 'texture')).toBe('{\n"compress/mode": 1\n}')
     await manager.remove(project, 'test-camera', signal)
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(start)
   })
@@ -552,6 +584,301 @@ describe('GameAddonManager.remove', () => {
     const rest = await readFile(path, 'utf8')
     expect(rest).not.toContain('wasd-addon:test-camera')
     expect(rest).toContain('## My music')
+  })
+})
+
+/** The settings file of a project. */
+function settingsFile(project: string): string {
+  return join(project, '.wasdengine', 'addon-settings.json')
+}
+
+/** Give a project's record of an add-on another version, as if a WASD Engine with an earlier catalog installed it. */
+async function recordVersion(project: string, version: string): Promise<void> {
+  const path = join(project, '.wasdengine', 'addons.json')
+  await writeFile(path, (await readFile(path, 'utf8')).replace('"version": "1.2.0"', `"version": "${version}"`))
+}
+
+/**
+ * A manager of the setup's project whose catalog has other entries, as a later WASD Engine ships them.
+ * @param entries - the later catalog's entries.
+ * @param files - more catalog files by path.
+ * @param folder - the scratch folder that receives the catalog, one per catalog of a spec.
+ */
+async function laterManager(entries: Record<string, unknown>, files: Readonly<Record<string, string>> = {}, folder = 'later'): Promise<GameAddonManager> {
+  const catalogDir = await writeCatalog(join(dir!.root, folder), entries)
+  for (const [path, text] of Object.entries(files)) {
+    await mkdir(dirname(join(catalogDir, path)), { recursive: true })
+    await writeFile(join(catalogDir, path), text)
+  }
+  return new GameAddonManager({
+    catalog: await loadCatalog(catalogDir),
+    downloads: { cacheDir: join(dir!.root, 'archives'), fetch: fakeDownloads().fetch },
+    blenderStore: join(dir!.root, 'store'),
+    assetsDir: join(dir!.root, 'assets'),
+    importProject: () => Promise.resolve({ issues: [] }),
+    now: () => new Date('2026-11-11T12:00:00Z'),
+    changed: () => {},
+    allowed: () => true,
+  })
+}
+
+/** The camera entry with other settings. */
+function cameraWith(settings: readonly unknown[], version = '1.2.0'): Record<string, Record<string, unknown>> {
+  const entries = editableCatalogEntries()
+  const camera = entries['test-camera'] as Record<string, unknown>
+  camera.version = version
+  const godot = camera.godot as Record<string, unknown>
+  if (settings.length === 0) delete godot.settings
+  else godot.settings = settings
+  return entries
+}
+
+/** ProtonScatter as an add-on of WASD Engine's own, whose files are its overlay folder, at a version and with settings. */
+function scatterEntries(version: string, settings?: readonly unknown[]): Record<string, Record<string, unknown>> {
+  const entries = entriesWithoutConflicts()
+  const scatter = JSON.parse(JSON.stringify(entries['other-camera'])) as Record<string, unknown>
+  delete scatter.archive
+  delete scatter.credit
+  Object.assign(scatter, { id: 'protonscatter', title: 'ProtonScatter', version, category: 'environment', godot: { addonDir: 'proton_scatter', plugin: 'plugin.cfg', overlay: ['protonscatter/addon'], ...settings === undefined ? {} : { settings } } })
+  return { ...entries, protonscatter: scatter }
+}
+
+/** The files of the ProtonScatter fixture's overlay folder. */
+const SCATTER_FILES = { 'protonscatter/addon/plugin.cfg': '[plugin]\n\nname="ProtonScatter"\nscript="plugin.gd"\n', 'protonscatter/addon/plugin.gd': '@tool\nextends EditorPlugin\n' }
+
+/** The setting that ProtonScatter 4.2.0-dev+7198cc0 wrote, and the camera add-on of some specs shares. */
+const BLENDER_IMPORT = { section: 'filesystem', key: 'import/blender/enabled', value: 'false' }
+
+describe('GameAddonManager settings across versions', () => {
+  it('takes out at an update a setting that the installed version wrote and the catalog\'s version no longer sets', async () => {
+    const { manager, project } = await setup()
+    await manager.install(project, 'test-camera', {}, signal)
+    const later = await laterManager(cameraWith([], '1.2.0+wasd.1'))
+    const update = await later.install(project, 'test-camera', {}, signal)
+    expect(update).toMatchObject({ unchanged: false, notes: [`The addons/test_camera folder it replaced is kept in ${BACKUPS_DIR}/test-camera/${STAMP}/addons/test_camera.`] })
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT + CAMERA_PLUGIN)
+    await expect(readFile(settingsFile(project), 'utf8')).rejects.toThrow(/ENOENT/u)
+    await later.remove(project, 'test-camera', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
+  })
+
+  it('takes out at a removal a setting that the installed version wrote and the catalog\'s version no longer sets', async () => {
+    const { manager, project } = await setup()
+    await manager.install(project, 'test-camera', {}, signal)
+    await (await laterManager(cameraWith([], '1.2.0+wasd.1'))).remove(project, 'test-camera', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
+    await expect(readFile(settingsFile(project), 'utf8')).rejects.toThrow(/ENOENT/u)
+  })
+
+  it('takes out the setting of ProtonScatter 4.2.0-dev+7198cc0, which WASD Engine 0.2.4 did not record, at its update and its removal', async () => {
+    const { manager, project } = await setup(undefined, scatterEntries('4.2.0-dev+7198cc0', [BLENDER_IMPORT]), SCATTER_FILES)
+    await manager.install(project, 'protonscatter', {}, signal)
+    // WASD Engine 0.2.4 wrote no settings file for a setting that the project did not have.
+    await rm(settingsFile(project), { force: true })
+    const enabled = `${PROJECT_GODOT}\n[editor_plugins]\n\nenabled=PackedStringArray("res://addons/proton_scatter/plugin.cfg")\n`
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(`${enabled}\n[filesystem]\n\nimport/blender/enabled=false\n`)
+    const later = await laterManager(scatterEntries('4.2.0-dev+7198cc0.wasd.1'), SCATTER_FILES)
+    expect((await later.install(project, 'protonscatter', {}, signal)).unchanged).toBe(false)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(enabled)
+    await later.remove(project, 'protonscatter', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
+    // A removal without the update takes it out too.
+    await manager.install(project, 'protonscatter', {}, signal)
+    await rm(settingsFile(project), { force: true })
+    await later.remove(project, 'protonscatter', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
+  })
+
+  it('keeps a setting that ProtonScatter 4.2.0-dev+7198cc0 wrote while another add-on sets it too, and takes it out with the last of them', async () => {
+    const entries = scatterEntries('4.2.0-dev+7198cc0', [BLENDER_IMPORT])
+    ;((entries['test-camera'] as Record<string, unknown>).godot as Record<string, unknown>).settings = [BLENDER_IMPORT]
+    const { manager, project } = await setup(undefined, entries, SCATTER_FILES)
+    await manager.install(project, 'protonscatter', {}, signal)
+    // The camera add-on finds the value that ProtonScatter wrote, which is not the project's own.
+    await manager.install(project, 'test-camera', {}, signal)
+    const recorded = JSON.parse(await readFile(settingsFile(project), 'utf8')) as { addons: Record<string, unknown> }
+    delete recorded.addons.protonscatter
+    await writeFile(settingsFile(project), JSON.stringify(recorded))
+    const laterEntries = scatterEntries('4.2.0-dev+7198cc0.wasd.1')
+    ;((laterEntries['test-camera'] as Record<string, unknown>).godot as Record<string, unknown>).settings = [BLENDER_IMPORT]
+    const later = await laterManager(laterEntries, SCATTER_FILES)
+    await later.install(project, 'protonscatter', {}, signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toContain('import/blender/enabled=false')
+    await later.remove(project, 'protonscatter', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toContain('import/blender/enabled=false')
+    await later.remove(project, 'test-camera', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
+  })
+
+  it('puts back at a reinstallation of the same version only what the project lost, keeping values it changed, and names both', async () => {
+    const scene = { section: 'importer_defaults', key: 'scene', value: '{"import_script/path": "res://addons/test_camera/hints.gd", "nodes/root_type": "Node3D"}' }
+    const { manager, project } = await setup(undefined, cameraWith([{ section: 'test_camera', key: 'general/smoothing', value: 'true' }, scene]))
+    await manager.install(project, 'test-camera', {}, signal)
+    const path = join(project, 'project.godot')
+    const edited = new ProjectFile(await readFile(path, 'utf8'))
+    // The project sets its own smoothing and scene import script, and loses the add-on's autoload and root type.
+    edited.set('test_camera', 'general/smoothing', 'false')
+    edited.set('importer_defaults', 'scene', '{\n"import_script/path": "res://tools/mine.gd"\n}')
+    edited.remove('autoload', 'TestCameraManager')
+    await writeFile(path, edited.toString())
+    expect((await manager.install(project, 'test-camera', {}, signal)).notes).toEqual([
+      'project.godot had lost these entries of the add-on, which were written again: [autoload] TestCameraManager, [importer_defaults] scene.',
+      'These project.godot settings keep the project\'s own values, which differ from the add-on\'s: [test_camera] general/smoothing, [importer_defaults] scene.',
+    ])
+    const repaired = new ProjectFile(await readFile(path, 'utf8'))
+    expect(repaired.get('test_camera', 'general/smoothing')).toBe('false')
+    expect(repaired.get('importer_defaults', 'scene')).toBe('{\n"import_script/path": "res://tools/mine.gd",\n"nodes/root_type": "Node3D"\n}')
+    expect(repaired.autoload('TestCameraManager')).toBe('res://addons/test_camera/manager.gd')
+    // With nothing lost, a reinstallation changes nothing and says only what keeps the project's values.
+    expect((await manager.install(project, 'test-camera', {}, signal)).notes).toEqual([
+      'These project.godot settings keep the project\'s own values, which differ from the add-on\'s: [test_camera] general/smoothing, [importer_defaults] scene.',
+    ])
+    expect(await readFile(path, 'utf8')).toBe(repaired.toString())
+  })
+
+  it('remembers at an update the value that the project gave a setting since the installation, names it, and gives it back at the removal', async () => {
+    const jump = { section: 'input', key: 'jump', value: '{"deadzone": 0.5, "events": [Object(InputEventKey,"physical_keycode":32)]}' }
+    const { manager, project } = await setup(undefined, cameraWith([jump]))
+    expect((await manager.install(project, 'test-camera', {}, signal)).notes).toEqual([replacedNote('[input] jump')])
+    // The agent puts back a jump of the game's own, as the note invites.
+    const path = join(project, 'project.godot')
+    const own = new ProjectFile(await readFile(path, 'utf8'))
+    own.set('input', 'jump', '{\n"deadzone": 0.5,\n"events": [Object(InputEventKey,"physical_keycode":87)]\n}')
+    await writeFile(path, own.toString())
+    await recordVersion(project, '1.1.0')
+    expect((await manager.install(project, 'test-camera', {}, signal)).notes).toEqual([
+      `The addons/test_camera folder it replaced is kept in ${BACKUPS_DIR}/test-camera/${STAMP}/addons/test_camera.`,
+      replacedNote('[input] jump'),
+    ])
+    expect(new ProjectFile(await readFile(path, 'utf8')).get('input', 'jump')).toBe('{\n"deadzone": 0.5,\n"events": [Object(InputEventKey,"physical_keycode":32)]\n}')
+    await manager.remove(project, 'test-camera', signal)
+    expect(new ProjectFile(await readFile(path, 'utf8')).get('input', 'jump')).toBe('{\n"deadzone": 0.5,\n"events": [Object(InputEventKey,"physical_keycode":87)]\n}')
+  })
+
+  it('keeps at an installation the values that a settings file of WASD Engine 0.2.4 remembers, and records what it wrote', async () => {
+    const { manager, project } = await setup(undefined, scatterEntries('4.2.0-dev+7198cc0', [BLENDER_IMPORT]), SCATTER_FILES)
+    const start = `${PROJECT_GODOT}\n[filesystem]\n\nimport/blender/enabled=true\n`
+    await writeFile(join(project, 'project.godot'), start)
+    for (const id of ['test-camera', 'protonscatter']) await manager.install(project, id, {}, signal)
+    // WASD Engine 0.2.4 named the settings that replaced values of the project's, without the add-ons' values.
+    const legacy = {
+      'test-camera': [{ section: 'test_camera', key: 'general/smoothing', before: 'false' }],
+      'protonscatter': [{ section: 'filesystem', key: 'import/blender/enabled', before: 'true' }],
+    }
+    await writeFile(settingsFile(project), JSON.stringify({ format: 1, addons: legacy }))
+    // The camera add-on installs again at its version after its folder went, and ProtonScatter updates to a version that
+    // still sets its setting.
+    await rm(join(project, 'addons', 'test_camera'), { recursive: true })
+    expect((await manager.install(project, 'test-camera', {}, signal)).notes).toContain(replacedNote('[test_camera] general/smoothing'))
+    const later = await laterManager(scatterEntries('4.2.0-dev+7198cc0.wasd.1', [BLENDER_IMPORT]), SCATTER_FILES)
+    expect((await later.install(project, 'protonscatter', {}, signal)).notes).toContain(replacedNote('[filesystem] import/blender/enabled'))
+    expect(JSON.parse(await readFile(settingsFile(project), 'utf8'))).toEqual({
+      format: 1,
+      addons: {
+        'protonscatter': [{ ...BLENDER_IMPORT, before: 'true' }],
+        'test-camera': [{ section: 'test_camera', key: 'general/smoothing', value: 'true', before: 'false' }],
+      },
+    })
+    for (const id of ['test-camera', 'protonscatter']) await later.remove(project, id, signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(`${start}\n[test_camera]\n\ngeneral/smoothing=false\n`)
+  })
+
+  it('remembers at an update the value from before the first installation of a setting that another add-on also sets', async () => {
+    const entries = entriesWithoutConflicts()
+    for (const id of ['test-camera', 'other-camera']) ((entries[id] as Record<string, unknown>).godot as Record<string, unknown>).settings = [BLENDER_IMPORT]
+    const { manager, project } = await setup(undefined, entries)
+    const start = `${PROJECT_GODOT}\n[filesystem]\n\nimport/blender/enabled=true\n`
+    await writeFile(join(project, 'project.godot'), start)
+    await manager.install(project, 'test-camera', {}, signal)
+    await manager.install(project, 'other-camera', {}, signal)
+    await recordVersion(project, '1.1.0')
+    await manager.install(project, 'test-camera', {}, signal)
+    await manager.remove(project, 'other-camera', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toContain('import/blender/enabled=false')
+    await manager.remove(project, 'test-camera', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(start)
+  })
+
+  it('keeps a Dictionary entry that another add-on also adds until the last of them goes, and repairs an add-on without settings', async () => {
+    const entries = entriesWithoutConflicts()
+    const scene = { section: 'importer_defaults', key: 'scene', value: '{"nodes/root_type": "Node3D"}' }
+    ;((entries['test-camera'] as Record<string, unknown>).godot as Record<string, unknown>).settings = [scene]
+    const { manager, project } = await setup(undefined, entries)
+    await manager.install(project, 'test-camera', {}, signal)
+    await manager.install(project, 'other-camera', {}, signal)
+    // Other Camera has no settings and no autoloads, so a reinstallation finds nothing lost.
+    expect((await manager.install(project, 'other-camera', {}, signal)).notes).toEqual(['Its license requires this credit in the game: Other Camera by Other'])
+    ;((entries['other-camera'] as Record<string, unknown>).godot as Record<string, unknown>).settings = [scene]
+    const later = await laterManager(entries)
+    await recordVersion(project, '1.1.0')
+    await later.install(project, 'test-camera', {}, signal)
+    const record = join(project, '.wasdengine', 'addons.json')
+    await writeFile(record, (await readFile(record, 'utf8')).replace('"version": "0.1"', '"version": "0.0.9"'))
+    await later.install(project, 'other-camera', {}, signal)
+    await later.remove(project, 'test-camera', signal)
+    expect(new ProjectFile(await readFile(join(project, 'project.godot'), 'utf8')).get('importer_defaults', 'scene')).toBe('{\n"nodes/root_type": "Node3D"\n}')
+    await later.remove(project, 'other-camera', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
+  })
+
+  it('remembers the project\'s own value of a setting that an update adds, when the installed version wrote none', async () => {
+    const { project } = await setup()
+    // The project sets its own smoothing, and has its own jump, which version 1.3.0 of the add-on also sets.
+    const start = `${PROJECT_GODOT}\n[test_camera]\n\ngeneral/smoothing=true\n`
+    await writeFile(join(project, 'project.godot'), start)
+    await (await laterManager(cameraWith([], '1.2.0'), {}, 'first')).install(project, 'test-camera', {}, signal)
+    await expect(readFile(settingsFile(project), 'utf8')).rejects.toThrow(/ENOENT/u)
+    const jump = { section: 'input', key: 'jump', value: '{"deadzone": 0.5, "events": [Object(InputEventJoypadButton,"button_index":0)]}' }
+    const later = await laterManager(cameraWith([{ section: 'test_camera', key: 'general/smoothing', value: 'true' }, jump], '1.3.0'))
+    expect((await later.install(project, 'test-camera', {}, signal)).notes).toContain(replacedNote('[input] jump'))
+    await later.remove(project, 'test-camera', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(start)
+  })
+
+  it('takes a shader global or an input action out only whole, and keeps and names one that the project changed', async () => {
+    const haze = { section: 'shader_globals', key: 'world_haze', value: '{"type": "color", "value": Color(0.86, 0.8, 0.7, 1)}' }
+    const crouch = { section: 'input', key: 'crouch', value: '{"deadzone": 0.5, "events": [Object(InputEventKey,"physical_keycode":67)]}' }
+    const dash = { section: 'input', key: 'dash', value: '{"deadzone": 0.5, "events": [Object(InputEventKey,"physical_keycode":16)]}' }
+    const { manager, project } = await setup(undefined, cameraWith([haze, crouch, dash]))
+    await manager.install(project, 'test-camera', {}, signal)
+    const path = join(project, 'project.godot')
+    // The game tunes the haze and binds crouch to another key, as Godot's editor writes them, and leaves dash as it is.
+    const tuned = new ProjectFile(await readFile(path, 'utf8'))
+    const ownHaze = '{\n"type": "color",\n"value": Color(0.5, 0.6, 0.9, 1)\n}'
+    const ownCrouch = '{\n"deadzone": 0.5,\n"events": [Object(InputEventKey,"physical_keycode":17)]\n}'
+    tuned.set('shader_globals', 'world_haze', ownHaze)
+    tuned.set('input', 'crouch', ownCrouch)
+    await writeFile(path, tuned.toString())
+    expect((await manager.remove(project, 'test-camera', signal)).kept).toEqual(['[shader_globals] world_haze', '[input] crouch'])
+    const left = new ProjectFile(await readFile(path, 'utf8'))
+    expect(left.get('shader_globals', 'world_haze')).toBe(ownHaze)
+    expect(left.get('input', 'crouch')).toBe(ownCrouch)
+    expect(left.get('input', 'dash')).toBeUndefined()
+  })
+
+  it('remembers the project\'s own values that the copy it replaces left, naming them, and counts the add-on\'s values as the copy\'s', async () => {
+    const settings = [{ section: 'test_camera', key: 'general/smoothing', value: 'true' }, { section: 'test_camera', key: 'general/speed', value: '2.0' }]
+    const { manager, project } = await setup(undefined, cameraWith(settings))
+    await mkdir(join(project, 'addons', 'test_camera'), { recursive: true })
+    await writeFile(join(project, 'addons', 'test_camera', 'plugin.cfg'), '[plugin]\nversion="0.9"\n')
+    const start = `${PROJECT_GODOT}\n[test_camera]\n\ngeneral/smoothing=true\ngeneral/speed=5.0\n`
+    await writeFile(join(project, 'project.godot'), start)
+    expect((await manager.install(project, 'test-camera', { replace: true }, signal)).notes).toContain(replacedNote('[test_camera] general/speed'))
+    await manager.remove(project, 'test-camera', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(`${PROJECT_GODOT}\n[test_camera]\n\ngeneral/speed=5.0\n`)
+  })
+
+  it('remembers the values from before the first installation when the add-on comes back after it was taken out by hand', async () => {
+    const { manager, project } = await setup()
+    const start = `${PROJECT_GODOT}\n[test_camera]\n\ngeneral/smoothing=false\n`
+    await writeFile(join(project, 'project.godot'), start)
+    await manager.install(project, 'test-camera', {}, signal)
+    // Someone deleted the add-on's folder and record entry, and left its settings in project.godot.
+    await rm(join(project, 'addons', 'test_camera'), { recursive: true })
+    await writeFile(join(project, '.wasdengine', 'addons.json'), JSON.stringify({ format: 1, addons: [] }))
+    expect((await manager.install(project, 'test-camera', {}, signal)).notes).toEqual([replacedNote('[test_camera] general/smoothing')])
+    await manager.remove(project, 'test-camera', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(start)
   })
 })
 

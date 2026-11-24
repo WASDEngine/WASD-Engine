@@ -1,7 +1,8 @@
 /**
  * The expected failures of the game add-ons. `GameAddonError` is the domain's class, and the catalog, archive, path,
- * and record failures are its subclasses, so a tool result records each one's class and code. Each code names what
- * comes next:
+ * and record failures are its subclasses, so a tool result records each one's class and code. A failure of the
+ * computer's files, such as a full disk (`ENOSPC`) or a folder without permission (`EACCES`), is none of them: it comes
+ * as Node's own error, with its `code` and `syscall`. Each code names what comes next:
  * - `GAME_ADDON_NOT_FOUND`: no catalog add-on has the id; search the catalog for it.
  * - `GAME_ADDON_PERMISSION_DENIED`: the user turned the add-on off in the Add-ons dialog; do the work without it, or
  *   ask the user to turn it on.

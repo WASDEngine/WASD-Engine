@@ -21,6 +21,7 @@ import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext }
 import { IMAGE_SCHEMA, type StoredScreenshot } from './browser.ts'
 import { MAX_MODEL_NAME } from './credits.ts'
 import { MOBILE_PLATFORM_NAMES, MOBILE_PLATFORMS } from './exports.ts'
+import { readMultiplayerConfig } from './multiplayer-project.ts'
 import { DESKTOP_PLATFORMS, MAX_DESCRIPTION, MAX_NOTES, MAX_TITLE, PLATFORM_NAMES, WebCheckRefusal, type ReleaseRequest } from './release.ts'
 import type {
   WasdDesktopExport, WasdDesktopPlatform, WasdDownloadStatus, WasdMobileExport, WasdMobilePlatform, WasdRelease, WasdWebZip,
@@ -217,6 +218,9 @@ const ZIP = {
   type: 'boolean',
   description: 'true also packs the build into one ZIP file named after the game, with index.html at its root, in the project\'s .wasdengine/web-zip folder: the file game sites such as itch.io take as an HTML5 game. Default: false.',
 } as const
+
+/** What the Web export's ZIP note adds for a game set up for WASD Multiplayer, which signs players in only on WASD Engine's site. */
+const ZIP_OFFLINE = 'Online play works only on WASD Engine\'s site and in its game library, so this game\'s WASD Multiplayer does not work in a copy from the ZIP file: there its sign-in, hosting, and joining tell players to play the game on WASD Engine\'s site.'
 
 const EXPORT_CHECK = {
   type: 'boolean',
@@ -540,7 +544,15 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
           entry: STRING,
           files: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { path: STRING, bytes: INTEGER } } },
           totalBytes: INTEGER,
-          zip: { type: 'object', additionalProperties: false, properties: { file: STRING, bytes: INTEGER } },
+          zip: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              file: STRING,
+              bytes: INTEGER,
+              multiplayer: { type: 'boolean', description: 'true when the game plays online with WASD Multiplayer, which the ZIP file\'s copy cannot.' },
+            },
+          },
           warnings: WARNINGS,
           webCheck: WEB_CHECK_SCHEMA,
           webCheckError: { type: 'string' },
@@ -553,6 +565,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
           [
             `Exported ${value.projectDir} for the Web into ${value.outputDir}: ${value.files.map(file => file.path).join(', ')} (${megabytes(value.totalBytes)}). Open ${value.entry} through a web server, not from the file system.`,
             ...value.zip === undefined ? [] : [`Packed it into ${value.zip.file} (${megabytes(value.zip.bytes)}), with index.html at its root: upload that file to a game site such as itch.io as an HTML5 game, or unpack it on any static web server.`],
+            ...value.zip?.multiplayer === true ? [ZIP_OFFLINE] : [],
             ...webCheckText(value),
           ].join('\n'),
           value.warnings,
@@ -565,10 +578,11 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
         ? {}
         : await webCheckFields(host, exported.outputDir, exec.signal)
       const view = await webCheckViewField(host, checked.webCheck, exec, audience)
+      const multiplayer = exported.zip !== undefined && await readMultiplayerConfig(exported.projectDir) !== undefined
       return {
         projectDir: exported.projectDir, outputDir: exported.outputDir, entry: exported.entry,
         files: exported.files.map(file => ({ ...file })), totalBytes: exported.totalBytes, warnings: [...exported.warnings],
-        ...exported.zip === undefined ? {} : { zip: { ...exported.zip } }, ...checked, ...view,
+        ...exported.zip === undefined ? {} : { zip: { ...exported.zip, ...multiplayer ? { multiplayer } : {} } }, ...checked, ...view,
       }
     },
   }), defineTool({

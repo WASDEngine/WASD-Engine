@@ -1,5 +1,4 @@
 /** The ambientCG API client against a fake ambientCG: searches, one asset, the categories, images, and what it keeps in memory. */
-import { AssetLibraryRequestError } from '@deepseek-ai/dsh-game-mcp/kit'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { AmbientCgApi, KINDS, type AmbientCgApiOptions } from '../src/api.ts'
 import { archiveBytes, PREVIEW, startFakeAmbientCg, type FakeAmbientCg } from './fixtures.ts'
@@ -20,6 +19,11 @@ afterEach(async () => {
 
 function api(overrides: Partial<AmbientCgApiOptions> = {}): AmbientCgApi {
   return new AmbientCgApi({ apiUrl: fake.url, userAgent: 'WASD Engine', catalogMaxAgeMs: 60_000, fetch: (input, init) => fetch(input, init), now: () => now, ...overrides })
+}
+
+/** A failed request as the plugin throws it: its own error, with the kit's request and its HTTP status as the cause. */
+function refused(message: string, status: number): Record<string, unknown> {
+  return { name: 'AmbientCgError', code: 'AMBIENTCG_REQUEST_FAILED', message, cause: { name: 'AssetLibraryRequestError', status } }
 }
 
 describe('AmbientCgApi', () => {
@@ -76,9 +80,9 @@ describe('AmbientCgApi', () => {
     expect((await client.search(['wood'], ['material'], 10, 0, signal)).total).toBe(1)
     expect((await client.asset('Wood099', signal))?.id).toBe('Wood099')
     expect(fake.requests).toHaveLength(3)
-    await expect(api().search(['wood'], ['material'], 10, 0, signal)).rejects.toThrow(new AssetLibraryRequestError(503, 'ambientCG answered HTTP 503 for the asset list.'))
+    await expect(api().search(['wood'], ['material'], 10, 0, signal)).rejects.toMatchObject(refused('ambientCG answered HTTP 503 for the asset list.', 503))
     fake.listStatus = 429
-    await expect(api().asset('Wood099', signal)).rejects.toThrow('ambientCG is limiting requests from this computer; try again in 12 seconds.')
+    await expect(api().asset('Wood099', signal)).rejects.toMatchObject(refused('ambientCG is limiting requests from this computer; try again in 12 seconds.', 429))
   })
 
   it('finds one asset by id in any letter case, reads it again once forgotten, and finds nothing for an id of another kind', async () => {
@@ -104,13 +108,17 @@ describe('AmbientCgApi', () => {
     ])
     await client.categories(signal)
     expect(fake.requests.map(request => request.url)).toEqual(['/api/v3/categories'])
+    fake.categoriesStatus = 500
+    await expect(api().categories(signal)).rejects.toMatchObject(refused('ambientCG answered HTTP 500 for the categories.', 500))
+    now += 60_000
+    expect(await client.categories(signal)).toHaveLength(5)
   })
 
   it('downloads preview images of supported types only', async () => {
     const image = await api().image(`${fake.origin}/thumbs/512/Wood099.jpg`, signal)
     expect(image).toEqual({ data: PREVIEW, mediaType: 'image/jpeg' })
     fake.previewType = 'text/html; charset=utf-8'
-    await expect(api().image(`${fake.origin}/thumbs/512/Wood099.jpg`, signal)).rejects.toThrow('ambientCG sent the preview image as text/html.')
+    await expect(api().image(`${fake.origin}/thumbs/512/Wood099.jpg`, signal)).rejects.toMatchObject(refused('ambientCG sent the preview image as text/html.', 200))
   })
 
   it('follows an archive\'s redirect on the same host, and refuses URLs and redirects that do not lead to ambientCG', async () => {
@@ -118,7 +126,8 @@ describe('AmbientCgApi', () => {
     expect(Buffer.from(await response.arrayBuffer())).toEqual(archiveBytes('Wood099_1K-JPG.zip'))
     expect(fake.requests.map(request => request.url)).toEqual(['/get?file=Wood099_1K-JPG.zip', '/file/download/Wood099_1K-JPG.zip'])
     for (const url of ['file:///etc/passwd', 'https://attacker.example/Wood099.zip', 'http://ambientcg.com/get?file=Wood099_1K-JPG.zip']) {
-      await expect(api().download(url, signal)).rejects.toThrow(`ambientCG named the archive ${url} at ${url}, which is not an ambientCG address, so nothing was downloaded from it.`)
+      await expect(api().download(url, signal)).rejects.toMatchObject(
+        refused(`ambientCG named the archive ${url} at ${url}, which is not an ambientCG address, so nothing was downloaded from it.`, 0))
     }
     const fetched: string[] = []
     const redirecting = api({
@@ -133,9 +142,10 @@ describe('AmbientCgApi', () => {
 
   it('reports an unreachable ambientCG and an answer in another format, and stops when cancelled', async () => {
     const offline = api({ fetch: () => Promise.reject(new TypeError('fetch failed')) })
-    await expect(offline.search([], KINDS, 10, 0, signal)).rejects.toThrow(`Could not reach ambientCG at ${new URL(fake.url).host} for the asset list: fetch failed`)
+    await expect(offline.search([], KINDS, 10, 0, signal)).rejects.toMatchObject(refused(`Could not reach ambientCG at ${new URL(fake.url).host} for the asset list: fetch failed`, 0))
     const strange = api({ fetch: () => Promise.resolve(Response.json({ assets: 'none' })) })
-    await expect(strange.search([], KINDS, 10, 0, signal)).rejects.toThrow('ambientCG sent the asset list in an unknown format.')
+    await expect(strange.search([], KINDS, 10, 0, signal)).rejects.toMatchObject(
+      { name: 'AmbientCgError', code: 'AMBIENTCG_REQUEST_FAILED', message: 'ambientCG sent the asset list in an unknown format.' })
     const controller = new AbortController()
     controller.abort(new Error('cancelled by the test'))
     await expect(api().categories(controller.signal)).rejects.toThrow('cancelled by the test')

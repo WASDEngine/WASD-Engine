@@ -4,3 +4,6 @@
 
 [node name="Label" type="Label" parent="."]
 text = "A 2D scene"
+
+[node name="Camera" type="Camera2D" parent="."]
+position = Vector2(2000, 500)

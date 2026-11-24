@@ -6,6 +6,7 @@
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { GameMcpProvider } from '@deepseek-ai/dsh-game-mcp'
 import { connectedLibraryTools } from '@deepseek-ai/dsh-game-mcp/kit'
+import { POLYHAVEN_ERRORS } from './errors.ts'
 import { polyHavenToolDefinitions, type PolyHavenToolHost } from './tools.ts'
 
 /** How connected agents use the Poly Haven tools. */
@@ -26,7 +27,9 @@ const DIRECTORY_PARAMETER = { type: 'string', description: 'Absolute path of the
  * @returns the provider.
  */
 export function polyHavenMcpProvider(host: PolyHavenToolHost): GameMcpProvider {
-  const tools = connectedLibraryTools<ImageAttachmentRef>(surface => polyHavenToolDefinitions(host, surface), { tool: 'polyhaven_download', directory: DIRECTORY_PARAMETER })
+  const tools = connectedLibraryTools<ImageAttachmentRef>(
+    surface => polyHavenToolDefinitions(host, surface), { tool: 'polyhaven_download', directory: DIRECTORY_PARAMETER, errors: POLYHAVEN_ERRORS },
+  )
   return {
     id: 'polyhaven',
     title: 'Poly Haven',

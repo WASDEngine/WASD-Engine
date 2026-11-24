@@ -93,7 +93,9 @@ describe('planDownload', () => {
 
   it('skips default maps the resolution lacks, and fails for a named one', () => {
     expect(planDownload('Rock', 'texture', TEXTURE, { resolution: '2k' }).maps).toEqual(['Diffuse'])
-    expect(() => planDownload('Rock', 'texture', TEXTURE, { resolution: '2k', maps: ['Rough'] })).toThrow('Rock has no jpg Rough map at 2k.')
+    expect(() => planDownload('Rock', 'texture', TEXTURE, { resolution: '2k', maps: ['Rough'] })).toThrow(expect.objectContaining({
+      name: 'PolyHavenError', code: 'POLYHAVEN_FILES_NOT_FOUND', message: 'Rock has no jpg Rough map at 2k.',
+    }))
     expect(planDownload('Rock', 'texture', TEXTURE, { maps: ['nor_dx'] }).files.map(planned => planned.path)).toEqual(['rock_nor_dx_1k.jpg'])
   })
 
@@ -117,18 +119,30 @@ describe('planDownload', () => {
     expect(() => planDownload('Rock', 'texture', TEXTURE, { maps: [] })).toThrow('maps must name at least one map.')
     expect(() => planDownload('Chair', 'model', MODEL, { maps: ['Diffuse'] })).toThrow('maps applies only to the jpg, png, and exr texture maps, not to gltf.')
     expect(() => planDownload('Empty', 'model', parseFileTree({}), {})).toThrow('Empty has no files that polyhaven_download can fetch.')
+    const missing = [
+      () => planDownload('Chair', 'model', MODEL, { format: 'blend' }),
+      () => planDownload('Chair', 'model', MODEL, { resolution: '8k' }),
+      () => planDownload('Rock', 'texture', TEXTURE, { maps: ['Metal'] }),
+    ]
+    for (const fails of missing) expect(fails).toThrow(expect.objectContaining({ name: 'PolyHavenError', code: 'POLYHAVEN_FILES_NOT_FOUND' }))
+    const refused = [() => planDownload('Rock', 'texture', TEXTURE, { maps: [] }), () => planDownload('Chair', 'model', MODEL, { maps: ['Diffuse'] })]
+    for (const fails of refused) expect(fails).toThrow(expect.objectContaining({ name: 'ToolArgsError', code: 'INVALID_ARGS' }))
   })
 
   it('stops for a referenced path that would leave the download folder', () => {
     const tree = parseFileTree({ gltf: { '1k': { gltf: file('https://dl.test/x.gltf', 1, { '../../.zshrc': { url: 'https://dl.test/x', size: 1 } }) } } })
-    expect(() => planDownload('X', 'model', tree, {})).toThrow('Poly Haven named a file "../../.zshrc", which would leave the download folder; the download stopped.')
+    expect(() => planDownload('X', 'model', tree, {})).toThrow(expect.objectContaining({
+      name: 'PolyHavenError', code: 'POLYHAVEN_DOWNLOAD_CORRUPT', message: 'Poly Haven named a file "../../.zshrc", which would leave the download folder; the download stopped.',
+    }))
   })
 
   it('writes a file two entries share once, and stops when one path names two different files', () => {
     const shared = parseFileTree({ gltf: { '1k': { gltf: file('https://dl.test/x.gltf', 1, { 'x.gltf': { url: 'https://dl.test/x.gltf', size: 1 } }) } } })
     expect(planDownload('X', 'model', shared, {}).files.map(planned => planned.path)).toEqual(['x.gltf'])
     const clash = parseFileTree({ gltf: { '1k': { gltf: { ...file('https://dl.test/x.gltf', 1), include: { 'X.GLTF': { url: 'https://dl.test/y', size: 1, md5: 'ffffffffffffffffffffffffffffffff' } } } } } })
-    expect(() => planDownload('X', 'model', clash, {})).toThrow('Poly Haven names two different files "X.GLTF" in one download; the download stopped.')
+    expect(() => planDownload('X', 'model', clash, {})).toThrow(expect.objectContaining({
+      code: 'POLYHAVEN_DOWNLOAD_CORRUPT', message: 'Poly Haven names two different files "X.GLTF" in one download; the download stopped.',
+    }))
   })
 })
 
@@ -146,5 +160,6 @@ describe('paths', () => {
     expect(() => fileNameOf('https://dl.test/a/..%2F..%2Fb')).toThrow(/would leave the download folder/u)
     expect(() => fileNameOf('https://dl.test/a/')).toThrow(/would leave the download folder/u)
     expect(() => fileNameOf('not a url')).toThrow('Poly Haven named a file at "not a url", which has no file name; the download stopped.')
+    for (const url of ['not a url', 'https://dl.test/a/..%2F..%2Fb']) expect(() => fileNameOf(url), url).toThrow(expect.objectContaining({ code: 'POLYHAVEN_DOWNLOAD_CORRUPT' }))
   })
 })

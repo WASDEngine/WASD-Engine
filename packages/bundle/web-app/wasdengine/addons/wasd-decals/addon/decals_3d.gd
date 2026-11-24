@@ -12,6 +12,8 @@ const SHADER := preload("res://addons/wasd_decals/decals.gdshader")
 ## renderer, which every Web build uses, keeps a mark's custom data as half floats, which are a second off past 2,048
 ## and hold nothing past 65,504: the end times stay small numbers however long the game runs.
 const CLOCK_SPAN := 64.0
+## The marks' render priority, which blob shadows share: over WASD Weather's cover (-2), under everything else (0).
+const PRIORITY := -1
 ## The marks drawn in code, each with the size in meters, the tint, and the shine that suit it.
 const MARKS := {
 	"bullet_hole": {"kind": 1, "size": 0.16, "tint": Color(1, 1, 1), "shine": 0.0},
@@ -56,7 +58,9 @@ var _custom := PackedColorArray()
 
 func _init() -> void:
 	_material.shader = SHADER
-	_material.render_priority = 1
+	# Marks lie on surfaces: drawn after WASD Weather's snow and wet cover (-2), so prints show on snow, and before
+	# smoke, fire, and other see-through things (0), so a puff before a mark is drawn over it.
+	_material.render_priority = PRIORITY
 	var quad := QuadMesh.new()
 	quad.orientation = PlaneMesh.FACE_Y
 	quad.material = _material

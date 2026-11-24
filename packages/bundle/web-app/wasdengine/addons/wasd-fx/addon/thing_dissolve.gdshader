@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: CC0-1.0
 // A thing that dissolves: it is eaten away in patches from a noise, with a glowing edge where it goes. It takes
-// the color and the picture of the material it stands in for.
+// the color, the picture, the vertex colors, and the holes of the material it stands in for.
 shader_type spatial;
 render_mode cull_disabled;
 
 uniform vec3 color : source_color = vec3(1.0);
 uniform sampler2D picture : source_color, hint_default_white, filter_linear_mipmap, repeat_enable;
+// How the material lays its pictures on the mesh's UV map, and whether it takes the mesh's vertex colors: 0 not, 1 as
+// they are, 2 as sRGB colors.
+uniform vec2 uv_scale = vec2(1.0);
+uniform vec2 uv_offset = vec2(0.0);
+uniform int vertex_colors = 0;
+// The material's holes: where the picture's alpha times `alpha_scale`, times the opacity picture of a cut-out, is
+// below `holes_below`, nothing is drawn; 0 draws it all.
+uniform sampler2D holes : hint_default_white, filter_linear_mipmap, repeat_disable;
+uniform float alpha_scale = 1.0;
+uniform float holes_below = 0.0;
 uniform sampler2D noise : repeat_enable, filter_linear_mipmap;
 // How much is gone, from 0 to 1; the edge's color and width; meters across the noise.
 uniform float gone : hint_range(0.0, 1.0) = 0.0;
@@ -23,7 +33,8 @@ void vertex() {
 }
 
 void fragment() {
-	vec4 shown = texture(picture, UV);
+	vec2 at = UV * uv_scale + uv_offset;
+	vec4 shown = texture(picture, at);
 	// The noise is read from three sides of the thing's own space, so that it needs no UV map.
 	float left = texture(noise, place.zy / patch_size).r;
 	float top = texture(noise, place.xz / patch_size).r;
@@ -35,10 +46,17 @@ void fragment() {
 	float height = clamp((place.y - span.x) / max(span.y - span.x, 0.001), 0.0, 1.0);
 	float level = clamp(coarse * 0.3 + fine * 0.1 + height * 0.6, 0.0, 1.0);
 	float cut = gone * (1.0 + edge * 2.0) - edge;
-	if (level < cut || shown.a < 0.4) {
+	if (level < cut || shown.a * alpha_scale * texture(holes, at).r < holes_below) {
 		discard;
 	}
-	ALBEDO = shown.rgb * color;
+	vec3 tint = color;
+	if (vertex_colors == 1) {
+		tint *= COLOR.rgb;
+	} else if (vertex_colors == 2) {
+		// As BaseMaterial3D does: sRGB colors become light, except where the renderer draws in sRGB (Compatibility).
+		tint *= OUTPUT_IS_SRGB ? COLOR.rgb : mix(pow((COLOR.rgb + vec3(0.055)) * (1.0 / 1.055), vec3(2.4)), COLOR.rgb * (1.0 / 12.92), lessThan(COLOR.rgb, vec3(0.04045)));
+	}
+	ALBEDO = shown.rgb * tint;
 	ROUGHNESS = roughness;
 	float glow = 1.0 - smoothstep(cut, cut + edge, level);
 	EMISSION = edge_color * glow * glow * 3.5 * step(0.001, gone);

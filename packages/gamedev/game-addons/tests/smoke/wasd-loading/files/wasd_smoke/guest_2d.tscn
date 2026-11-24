@@ -1,0 +1,18 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Shader" path="res://wasd_smoke/guest_2d.gdshader" id="shader"]
+[ext_resource type="Script" path="res://wasd_smoke/guest_2d.gd" id="script"]
+
+[sub_resource type="ShaderMaterial" id="paint"]
+shader = ExtResource("shader")
+
+[node name="Guest2D" type="Node2D"]
+script = ExtResource("script")
+
+[node name="Spark" type="Polygon2D" parent="."]
+material = SubResource("paint")
+polygon = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+uv = PackedVector2Array(0, 0, 1, 0, 1, 1, 0, 1)
+
+[node name="OnScreen" type="VisibleOnScreenNotifier2D" parent="."]
+rect = Rect2(-16, -16, 32, 32)

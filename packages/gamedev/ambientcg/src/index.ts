@@ -18,6 +18,7 @@ import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { AmbientCgApi } from './api.ts'
+import { AMBIENTCG_ERRORS } from './errors.ts'
 import { ambientCgMcpProvider } from './mcp.ts'
 import { ambientCgToolDefinitions, type AmbientCgToolHost } from './tools.ts'
 
@@ -73,13 +74,15 @@ export function apply(ctx: Context, config: Config): void {
     fetch: (input, init) => fetch(input, init),
     now: () => Date.now(),
   })
-  const folder = downloadFolders(ctx)
+  const folder = downloadFolders(ctx, AMBIENTCG_ERRORS)
   const host: AmbientCgToolHost = {
     api,
     maxDownloadBytes: config.maxDownloadBytes,
     requestTimeoutMs: config.requestTimeoutMs,
     downloadTimeoutMs: config.downloadTimeoutMs,
     archives: new Map(),
+    // One count of held folders for every download of this plugin, from Sessions and connected agents alike.
+    folders: new Map(),
     directory: (requested, id, exec) => folder(requested, join('assets', 'ambientcg', id), exec),
   }
   // Each preview becomes an attachment that the Session's model receives; a model that does not accept images gets none.

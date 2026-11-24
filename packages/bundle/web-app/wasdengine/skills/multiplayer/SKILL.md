@@ -48,6 +48,6 @@ Run `wasd_multiplayer_test` after each networking change. It starts a host or se
 
 ## Release and run servers
 
-`wasd_release_game` publishes the Web build; in dedicated mode it also uploads the server build, and the game's servers move to the new version with a 60-second warning to players. An older version on the game's page cannot join a server that runs a newer one.
+`wasd_release_game` publishes the Web build; in dedicated mode it also uploads the server build, and the game's servers move to the new version with a 60-second warning to players. An older version on the game's page cannot join a server that runs a newer one. Online play works only where WASD Engine hosts the game, on its site and in its game library: a copy from `wasd_export_web` with `zip`, for sites such as itch.io, tells players to play the game on WASD Engine's site when they sign in, host, or join.
 
 Use `wasd_server_status` and `wasd_server_logs` to see a server's state, players, CPU, memory, bandwidth, and errors. `wasd_server_deploy` redeploys a release's server build and restarts the server, and `wasd_server_manage` starts, stops, restarts, backs up, or restores it: tell the person before a restart, and ask before a restore, which replaces the world with the backup.

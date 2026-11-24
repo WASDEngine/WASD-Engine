@@ -40,11 +40,34 @@ text = "A game about lighthouses"
 
 The title is the project's name (`application/config/name`), the corner label its `application/config/version`. New Game loads `game_scene_path`; Options and Credits open `examples/scenes/windows/main_menu_options_window.tscn` and `main_menu_credits_window.tscn`; Exit is hidden in Web builds. `BackgroundMusicPlayer` plays its `stream` on the `Music` bus.
 
-3. Pause: in the game's scene, a plain `Node` with the script `base/nodes/utilities/pause_menu_controller.gd` and `pause_menu_packed` set to `examples/scenes/windows/pause_menu.tscn`. `ui_cancel` (Escape, or the gamepad's Start once the game adds it to the action) opens the menu and pauses the tree; closing it resumes. The menu offers close, Restart, Options, Main Menu, and Exit. Nodes that must keep running while paused need `process_mode = PROCESS_MODE_ALWAYS`.
+3. Pause: in the game's scene, a plain `Node` with the script `base/nodes/utilities/pause_menu_controller.gd` and `pause_menu_packed` set to `examples/scenes/windows/pause_menu.tscn`. `ui_cancel` (Escape, and a pad's Start after step 6) opens the menu and pauses the tree; closing it resumes. The menu offers close, Restart, Options, Main Menu, and Exit. Nodes that must keep running while paused need `process_mode = PROCESS_MODE_ALWAYS`.
 
-4. Credits: `examples/scenes/credits/credits_label.tscn` is the text all credits screens show, a `RichTextLabel` with BBCode. WASD Engine replaced the add-on's placeholder text with a short neutral one; write the game's credits into the `text` of that file, the one file of the add-on's folder that is the game's to change, or point its `attribution_file_path` at a Markdown file and set `auto_update = true`, with the licenses and credits of every asset and add-on the game uses (`THIRD_PARTY_NOTICES.md` lists them). `examples/scenes/end_credits/end_credits.tscn` scrolls them after the ending and then returns to the main menu; change to it with `get_tree().change_scene_to_file()` when the game is won, or with `WasdLoader.change_scene()` in a game that has `wasd-loading`.
+4. Credits: `examples/scenes/credits/credits_label.tscn` is the text all credits screens show, a `RichTextLabel` with BBCode. WASD Engine replaced the add-on's placeholder text with a short neutral one that credits Godot, the template, and the Godot Engine logo; write the game's credits into the `text` of that file, the one file of the add-on's folder that is the game's to change, or point its `attribution_file_path` at a Markdown file and set `auto_update = true`, with the licenses and credits of every asset and add-on the game uses (`THIRD_PARTY_NOTICES.md` lists them). Keep the logo's four lines while the opening screen shows that logo: its CC BY 4.0 license asks for them. `examples/scenes/end_credits/end_credits.tscn` scrolls them after the ending and then returns to the main menu; change to it with `get_tree().change_scene_to_file()` when the game is won, or with `WasdLoader.change_scene()` in a game that has `wasd-loading`.
 
 5. Opening: `examples/scenes/opening/opening.tscn` fades through its `images` (the Godot logo by default; put the game's or studio's logo there) and then loads the main menu. Make it `run/main_scene` to use it.
+
+6. Gamepads: Godot's `ui_accept`, `ui_cancel`, `ui_page_up`, and `ui_page_down` hold keys only, so a pad moves the focus but cannot press a button or pause, and its shoulder buttons do not turn the options tabs. When the game supports pads, write these four under `[input]` in `project.godot`, with Godot's keys and the pad's A, Start, and shoulder buttons; where `[input]` already has one of them, add the `InputEventJoypadButton` to its `events` instead:
+
+```
+[input]
+
+ui_accept={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"device":-1,"keycode":4194309), Object(InputEventKey,"device":-1,"keycode":4194310), Object(InputEventKey,"device":-1,"keycode":32), Object(InputEventJoypadButton,"device":-1,"button_index":0)]
+}
+ui_cancel={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"device":-1,"keycode":4194305), Object(InputEventJoypadButton,"device":-1,"button_index":6)]
+}
+ui_page_up={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"device":-1,"keycode":4194323), Object(InputEventJoypadButton,"device":-1,"button_index":9)]
+}
+ui_page_down={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"device":-1,"keycode":4194324), Object(InputEventJoypadButton,"device":-1,"button_index":10)]
+}
+```
 
 ## Options
 

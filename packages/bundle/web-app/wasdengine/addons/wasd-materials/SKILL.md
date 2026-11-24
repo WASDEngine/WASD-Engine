@@ -24,7 +24,7 @@ WasdSurface.paint($Level/Houses, bricks)    # every mesh and CSG shape under a n
 | Made | `plastic`, `rubber`, `fabric` |
 | Blocking out | `grid`: a line every meter, a stronger one every five |
 
-One shader lays every pattern out in meters of the world, from three sides, so a brick is 24 by 7.5 cm on any wall, floor, or boulder, whatever the mesh's size or scale, and generated or CSG geometry looks finished. Nothing is downloaded: a Web build makes the one small picture all surfaces share in 67 ms, and a street of 24 houses in 11 surfaces runs at 60 fps there. Make each material once and give it to every mesh of that surface.
+One shader lays every pattern out in meters of the world, from three sides, so a brick is 24 by 7.5 cm on any wall, floor, or boulder of any size or scale, and generated or CSG geometry looks finished. Nothing is downloaded: a Web build makes the one small picture all surfaces share in 67 ms, and a street of 24 houses in 11 surfaces runs at 60 fps there. Make each material once and give it to every mesh of that surface.
 
 Options, in a dictionary after the name:
 
@@ -41,7 +41,7 @@ var cobbles := WasdSurface.from_folder("res://assets/polyhaven/cobblestone_floor
 
 Give it the folder that `polyhaven_download` or `ambientcg_download` filled. It tells the pictures apart by their names (color, OpenGL normal map, roughness, metal, ambient occlusion, or the packed `arm` picture) and lays them out from three sides like the surfaces above, so the mesh still needs no UV map. `size` is the meters across one repeat, which the download's result gives ("2 × 2 m"). `uv: true` uses the mesh's own UV map instead; `with_object` as above. For the Web, download 1k jpg.
 
-`WasdSurface.cutout("res://assets/ambientcg/LeafSet030", {"region": Rect2(0, 0, 0.5, 0.5)})` makes a cut-out of a folder that also has an opacity picture, such as an ambientCG atlas or decal: it draws only where that picture is light, on the mesh's own UV map and from both sides, so a quad becomes a leaf, a fence, or a manhole cover. `region` shows one piece of an atlas, in shares of the picture; `shine_through` (0 to 1) lets light through leaves; `soft: true` blends instead of cutting, for stains and road lines on a quad laid 2 mm above a surface.
+`WasdSurface.cutout("res://assets/ambientcg/LeafSet030", {"region": Rect2(0, 0, 0.5, 0.5)})` makes a cut-out of a folder that also has an opacity picture, such as an ambientCG atlas or decal: it draws where that picture is light, on the mesh's own UV map and from both sides, so a quad becomes a leaf or a fence. `region` shows one piece of an atlas, in shares of the picture; `shine_through` (0 to 1) lets light through leaves; `soft: true` blends instead of cutting, for stains and road lines on a quad 2 mm above a surface, under snow and decal marks.
 
 `WasdSurface.from_picture(load("res://art/wall.png"), {"size": 1.5, "bump": 1.0})` makes a surface of one picture, such as a photograph or one from `image_generate`: its relief is worked out from the picture's light and dark.
 
@@ -61,9 +61,9 @@ add_child(human)
 WasdSurface.human(human)
 ```
 
-puts that right, and returns what it took each mesh for. A `WasdFace3D` of `wasd-face`, and with it a `WasdCharacter3D`, calls it by itself for a human that the `mpfb` guide's `wasd_mpfb` made; call it yourself for any other. It tells the parts by their names, and the rest by whether their picture has holes:
+puts that right, and returns what it took each mesh for. A `WasdFace3D` of `wasd-face`, and with it a `WasdCharacter3D`, calls it by itself for a human that the `mpfb` guide's `wasd_mpfb` made; call it yourself for any other. It tells each surface by its material's name, or its mesh's, and the rest by whether its picture has holes:
 
-- **Skin** (`body`, `skin`): light wraps round into the shade and turns warm there, which stands in for subsurface scattering; a shadow on it is not black, and the side of a face that is turned from the light is not flat and dark; it shines in patches and through pores, not as one sheet; and the picture's own lines, such as wrinkles, are pressed into it. It reads a glTF material's roughness and occlusion pictures, which `wasd_mpfb` makes for the head, and takes a normal map of no strength for the face's folds, as those humans bring them: a `WasdFace3D` has the skin press them in as the face smiles and frowns.
+- **Skin** (`body`, `skin`): light wraps round into the shade and turns warm there, standing in for subsurface scattering; its shadows are not black, and the side of a face turned from the light is not flat and dark; it shines in patches and through pores, not as one sheet; and the picture's own lines, such as wrinkles, are pressed into it. It reads a glTF material's roughness and occlusion pictures, which `wasd_mpfb` makes for the head, and takes a normal map of no strength for the face's folds, as those humans bring them: a `WasdFace3D` has the skin press them in as the face smiles and frowns.
 - **Eyes** (`eye`): shaded under the lids and in their corners, wet, with one small catchlight wherever the lights stand, as bright as the scene, and with the pink of their inner corners where one mesh holds both eyes.
 - **Teeth and tongue** (`teeth`, `tongue`): they take little of the sun and none of the sky's color, and fall dark toward the back of the mouth.
 - **Brows and lashes** (`brow`, `lash`): each lash thin and dark from any side, brows a soft band of hairs, and no shadow of their cards on the lids.
@@ -78,7 +78,7 @@ For a character of another make: `WasdSurface.skin(picture, {"relief": normal_ma
 - On a ball, bricks, tiles, and planks run as on the flat side that faces most. They are for walls, floors, and boxes; give round things `rock`, `metal`, or a plain surface.
 - A see-through surface sorts by its object's middle: two large glass panes that cross can draw in the wrong order. Keep panes apart or small.
 - A GridMap takes its materials from its MeshLibrary: set the surface on the library's meshes.
-- `paint()` skips what other WASD add-ons draw, such as halos, water, decals, and cloth, with all under it.
+- `paint()` skips every node of another WASD add-on with all under it, such as effects, water, and a `WasdCharacter3D`: paint `hero.model` itself.
 
 ## Check it
 

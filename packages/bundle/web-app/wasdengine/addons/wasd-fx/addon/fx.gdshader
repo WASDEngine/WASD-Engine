@@ -31,6 +31,16 @@ uniform float drag = 0.0;
 // smoke, none for a spark.
 uniform vec3 wind = vec3(0.0);
 uniform float carried = 0.0;
+// For an effect that runs on while the wind changes: how far the air has gone in the effect's own space since it
+// began, in meters, and the same at every `way_step` seconds of its age, the sample of age k * way_step in
+// ways[k % 24], `way_count` samples so far. A particle goes the way the air went in its life, so a new wind carries
+// on what is in the air without moving it at once. With no samples the wind has been the same all along. Before the
+// effect began, the air went at `first_wind`, the wind it began with: its first particles were already in the air.
+uniform vec3 way = vec3(0.0);
+uniform vec3 ways[24];
+uniform float way_step = 0.25;
+uniform int way_count = 0;
+uniform vec3 first_wind = vec3(0.0);
 uniform float wobble = 0.0;
 uniform float scale = 1.0;
 // A card: meters across at birth and at death, how much cards differ in size, how much a card stretches along its
@@ -62,6 +72,24 @@ varying float lived_part;
 varying float shown;
 varying vec4 seed;
 varying vec2 card;
+
+// How far the air had gone at an age of the effect, between the samples; before the first one at the wind the effect
+// began with, and before the oldest kept, once older ones are let go, at the wind there is now.
+vec3 way_at(float when) {
+	int newest = way_count - 1;
+	float newest_age = float(newest) * way_step;
+	if (when >= newest_age) {
+		return mix(ways[newest % 24], way, clamp((when - newest_age) / max(age - newest_age, 0.0001), 0.0, 1.0));
+	}
+	int oldest = max(way_count - 24, 0);
+	float oldest_age = float(oldest) * way_step;
+	if (when <= oldest_age) {
+		return ways[oldest % 24] + (oldest == 0 ? first_wind : wind) * (when - oldest_age);
+	}
+	float at = when / way_step;
+	int before = int(at);
+	return mix(ways[before % 24], ways[(before + 1) % 24], at - float(before));
+}
 
 void vertex() {
 	seed = fract(INSTANCE_CUSTOM + variation * vec4(0.731, 0.317, 0.911, 0.547));
@@ -97,8 +125,17 @@ void vertex() {
 	// Air slows a particle: the way it has gone, and its speed now.
 	float gone = drag > 0.0 ? (1.0 - exp(-drag * lived)) / drag : lived;
 	vec3 place = offset * scale + heading * (radius * scale + fast * gone) + 0.5 * pull * lived * lived;
-	// A particle is born in still air and picks the wind up within half a second.
-	place += wind * carried * (lived - (1.0 - exp(-2.0 * lived)) * 0.5);
+	// A particle is born in still air and picks the wind up within half a second. In a steady wind that carries it the
+	// wind times (lived - (1 - e^(-2 lived)) / 2); in a changing one, the way the air went from about half a second after
+	// its birth, which comes to the same in a steady wind.
+	float aloft = clamp(lived, 0.0, own_life);
+	float taken = 1.0 - exp(-2.0 * aloft);
+	if (way_count == 0) {
+		place += wind * carried * (aloft - taken * 0.5);
+	} else {
+		float picked_up = taken > 0.000001 ? 0.5 - aloft * exp(-2.0 * aloft) / taken : aloft * 0.5;
+		place += carried * taken * (way - way_at(age - aloft + picked_up));
+	}
 	if (wobble > 0.0) {
 		place += wobble * scale * lived_part * vec3(sin(lived * 3.1 + seed.x * 40.0), sin(lived * 2.3 + seed.y * 40.0), sin(lived * 2.7 + seed.z * 40.0));
 	}

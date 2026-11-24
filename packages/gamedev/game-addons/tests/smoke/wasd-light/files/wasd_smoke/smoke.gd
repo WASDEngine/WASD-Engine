@@ -1,9 +1,11 @@
 extends Node3D
 ## WASD Light smoke test (render run on the Compatibility renderer, the one every Web build uses): a halo glows
 ## round its lamp and hides behind a wall; a shaft brightens the air along a spotlight; a fog bank veils what
-## stands in it by how much fog lies before it and nothing outside it; dust shows; a flicker moves its light and the
-## halo with it, and lets go of a halo or light that is freed; a shadow card throws shade that is part light, part
-## dark; and stood upright it is striped, as blinds and a grating are.
+## stands in it by how much fog lies before it and nothing outside it, a lamp's halo before it included, and from
+## inside it leaves a halo near the camera unveiled; a bank flattened to nothing leaves no error; dust shows; a new
+## wind moves neither the dust nor a fog bank's clouds at once, and both get their own drift back when the wind goes;
+## a flicker moves its light and the halo with it, and lets go of a halo or light that is freed; a shadow card throws
+## shade that is part light, part dark; and stood upright it is striped, as blinds and a grating are.
 
 const ID := "wasd-light"
 
@@ -39,6 +41,16 @@ func _at(image: Image, place: Vector3, half := 4) -> float:
 			total += image.get_pixel(clampi(x, 0, image.get_width() - 1), clampi(y, 0, image.get_height() - 1)).get_luminance()
 			count += 1
 	return total / count
+
+
+## The mean color of a square of the picture round a point of the world.
+func _color_at(image: Image, place: Vector3, half := 2) -> Color:
+	var middle := Vector2i(camera.unproject_position(place) * Vector2(image.get_size()) / get_viewport().get_visible_rect().size)
+	var total := Color(0, 0, 0, 0)
+	for y: int in range(middle.y - half, middle.y + half + 1):
+		for x: int in range(middle.x - half, middle.x + half + 1):
+			total += image.get_pixel(clampi(x, 0, image.get_width() - 1), clampi(y, 0, image.get_height() - 1))
+	return total / float((half * 2 + 1) * (half * 2 + 1))
 
 
 func _box(size: Vector3, at: Vector3, color: Color) -> MeshInstance3D:
@@ -124,6 +136,14 @@ func _run() -> void:
 	var posts: Array[MeshInstance3D] = []
 	for index: int in 3:
 		posts.append(_box(Vector3(0.6, 3, 0.6), Vector3(-1.5 + index * 1.5, 1.5, 5.0 - index * 5.0), Color(0.05, 0.05, 0.05)))
+	# A red lamp's halo before the bank, outside it.
+	var lamp_glow := WasdHalo3D.new()
+	lamp_glow.position = Vector3(3, 2, 5)
+	lamp_glow.color = Color(1.0, 0.1, 0.05)
+	lamp_glow.energy = 2.0
+	lamp_glow.size = 1.2
+	lamp_glow.rays = 0.0
+	add_child(lamp_glow)
 	var clear := await _frame("posts.png")
 	var bank := WasdFogBank3D.new()
 	bank.size = Vector3(20, 6, 9)
@@ -141,14 +161,45 @@ func _run() -> void:
 	# The first post stands before the bank, the second in its middle, the third at its far side.
 	if absf(veil[0]) > 0.03 or veil[1] < 0.15 or veil[2] < veil[1] + 0.05:
 		return _fail("the fog bank veils its three posts by %s" % [veil])
+	# The fog is gray: in light, red over green is the halo's own, and it keeps it when the fog lies behind it.
+	var red_glow := [_color_at(clear, lamp_glow.position).srgb_to_linear(), _color_at(fogged, lamp_glow.position).srgb_to_linear()]
+	if (red_glow[1] as Color).r - (red_glow[1] as Color).g < ((red_glow[0] as Color).r - (red_glow[0] as Color).g) * 0.6:
+		return _fail("a red halo before the fog bank shows %s in light, without the bank %s" % [red_glow[1], red_glow[0]])
+	lamp_glow.queue_free()
+	# From inside, a red lamp's halo in the bank 2 m from the camera, where little fog lies before it, shows over it.
 	camera.position = Vector3(0, 2, 1.5)
+	var near_glow := WasdHalo3D.new()
+	near_glow.position = Vector3(-1.2, 2, 0)
+	near_glow.color = Color(1.0, 0.1, 0.05)
+	near_glow.energy = 2.0
+	near_glow.size = 1.2
+	near_glow.rays = 0.0
+	add_child(near_glow)
 	var inside := await _frame("fog_inside.png")
 	if _at(inside, posts[2].position) < 0.2:
 		return _fail("seen from inside, the fog bank veils the far post by only %f" % [_at(inside, posts[2].position)])
+	bank.visible = false
+	var inside_clear := await _frame("fog_inside_clear.png")
+	bank.visible = true
+	var near_red := [_color_at(inside_clear, near_glow.position).srgb_to_linear(), _color_at(inside, near_glow.position).srgb_to_linear()]
+	if (near_red[1] as Color).r - (near_red[1] as Color).g < ((near_red[0] as Color).r - (near_red[0] as Color).g) * 0.6:
+		return _fail("from inside the fog bank, a red halo 2 m off shows %s in light, without the bank %s" % [near_red[1], near_red[0]])
+	near_glow.queue_free()
 	camera.position = Vector3(0, 2, 10)
 	bank.queue_free()
 	for post: MeshInstance3D in posts:
 		post.queue_free()
+	# A bank flattened to nothing, by its size or by a parent scaled to nothing as it pops in, leaves no error.
+	var flat := WasdFogBank3D.new()
+	flat.size = Vector3(10, 0, 10)
+	add_child(flat)
+	var popping := Node3D.new()
+	popping.scale = Vector3.ZERO
+	add_child(popping)
+	popping.add_child(WasdFogBank3D.new())
+	await _frame("flat_fog.png", 4)
+	flat.queue_free()
+	popping.queue_free()
 
 	# 4. Dust shows as bright specks in its box and nowhere else.
 	var dust := WasdDust3D.new()
@@ -175,6 +226,77 @@ func _run() -> void:
 	if not dust.global_position.is_equal_approx(camera.global_position):
 		return _fail("follow_camera left the dust at %s" % [dust.global_position])
 	dust.queue_free()
+
+	# 4b. A new wind moves neither dust nor a fog bank's clouds at once: stepped a sixtieth of a second at a time in a
+	# wind of 1 m/s, the frame in which the wind rises by 0.2 m/s, as WASD Weather tells it, changes the picture as
+	# little as the frames before it. When the wind goes, as when WASD Weather leaves, each gets its own drift back.
+	var motes := WasdDust3D.new()
+	motes.size = Vector3(6, 4, 2)
+	motes.position = Vector3(0, 3, 4)
+	motes.amount = 2000
+	motes.energy = 4.0
+	motes.mote_size = 0.06
+	motes.wander = 0.0
+	motes.twinkle = 0.0
+	motes.wind = Vector3.ZERO
+	add_child(motes)
+	var cloudy := WasdFogBank3D.new()
+	cloudy.size = Vector3(14, 4, 4)
+	cloudy.position = Vector3(0, 2, -4)
+	cloudy.color = Color(0.8, 0.8, 0.8)
+	cloudy.density = 0.6
+	cloudy.thinning = 0.0
+	cloudy.clouds = 1.0
+	cloudy.cloud_size = 3.0
+	cloudy.cloud_drift = Vector2.ZERO
+	add_child(cloudy)
+	var backdrop_wall := _box(Vector3(16, 6, 0.2), Vector3(0, 3, -6.5), Color(0.05, 0.05, 0.05))
+	motes.set_wind(Vector3(1, 0, 0))
+	cloudy.set_wind(Vector3(1, 0, 0))
+	await _frame("calm_settle.png")
+	motes.set_process(false)
+	cloudy.set_process(false)
+	var stepped: Array[Image] = []
+	for step: int in 4:
+		if step == 3:
+			motes.set_wind(Vector3(1.2, 0, 0))
+			cloudy.set_wind(Vector3(1.2, 0, 0))
+		motes._process(1.0 / 60.0)
+		cloudy._process(1.0 / 60.0)
+		stepped.append(await _frame("wind_step_%d.png" % [step], 1))
+	# Samples that change at all between one frame and the next.
+	var moved: Array[int] = []
+	for step: int in 3:
+		var count := 0
+		for y: int in range(0, stepped[step].get_height(), 2):
+			for x: int in range(0, stepped[step].get_width(), 2):
+				var a := stepped[step + 1].get_pixel(x, y)
+				var b := stepped[step].get_pixel(x, y)
+				if absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b) > 0.02:
+					count += 1
+		moved.append(count)
+	motes.set_process(true)
+	cloudy.set_process(true)
+	if moved[0] == 0 or moved[2] > maxi(moved[0], moved[1]) * 1.3 + 20:
+		return _fail("frames of dust and fog clouds in the wind change %d and %d samples, the frame in which the wind rises %d" % [moved[0], moved[1], moved[2]])
+	motes.set_wind(Vector3.ZERO)
+	cloudy.set_wind(Vector3.ZERO)
+	if motes.wind != Vector3.ZERO or cloudy.cloud_drift != Vector2.ZERO:
+		return _fail("still dust and fog clouds kept %s and %s when the wind went" % [motes.wind, cloudy.cloud_drift])
+	var dust_own := Vector3(0.05, -0.02, 0.03)
+	var drift_own := Vector2(0.25, 0.1)
+	motes.wind = dust_own
+	cloudy.cloud_drift = drift_own
+	motes.set_wind(Vector3(6, 0, 2))
+	cloudy.set_wind(Vector3(6, 0, 2))
+	var blown := [motes.wind, cloudy.cloud_drift]
+	motes.set_wind(Vector3.ZERO)
+	cloudy.set_wind(Vector3.ZERO)
+	if not (blown[0] as Vector3).is_equal_approx(Vector3(6, -0.02, 2)) or not (blown[1] as Vector2).is_equal_approx(Vector2(1.8, 0.6)) or not motes.wind.is_equal_approx(dust_own) or not cloudy.cloud_drift.is_equal_approx(drift_own):
+		return _fail("dust and a fog bank in a wind took %s; when it went they kept %s and %s" % [blown, motes.wind, cloudy.cloud_drift])
+	motes.queue_free()
+	cloudy.queue_free()
+	backdrop_wall.queue_free()
 
 	# 5. A flicker moves its light's energy round the light's own, and a halo under the light with it.
 	var lamp := OmniLight3D.new()

@@ -7,6 +7,9 @@ class_name WasdDust3D
 extends MultiMeshInstance3D
 
 const SHADER := preload("res://addons/wasd_light/dust.gdshader")
+## Seconds after which the motes' own clock starts over; the shader gives every mote paces that make whole turns in
+## that time, so nothing jumps when it does.
+const CLOCK_PERIOD := 600.0
 
 ## How many motes; a few hundred is plenty.
 @export_range(1, 20000) var amount := 300: set = _set_amount
@@ -18,7 +21,7 @@ const SHADER := preload("res://addons/wasd_light/dust.gdshader")
 ## Meters across one mote: 0.015 dust, 0.05 embers and fireflies, 0.08 snowflakes.
 @export_range(0.002, 1.0, 0.001) var mote_size := 0.015: set = _set_mote_size
 ## Meters a second the air carries them: a slow drift for dust, (0, -1.2, 0) for snow, (0, 0.6, 0) for embers.
-@export var wind := Vector3(0.05, -0.02, 0.03): set = _set_wind
+@export var wind := Vector3(0.05, -0.02, 0.03)
 ## Meters each mote wanders on its own, and how much its brightness comes and goes (1 for fireflies).
 @export_range(0.0, 4.0, 0.01) var wander := 0.25: set = _set_wander
 @export_range(0.0, 1.0, 0.01) var twinkle := 0.5: set = _set_twinkle
@@ -28,6 +31,13 @@ const SHADER := preload("res://addons/wasd_light/dust.gdshader")
 @export var follow_camera := false
 
 var _material := ShaderMaterial.new()
+## How far the air has carried the motes, wrapped into the box, and the motes' own clock: both added up here each
+## frame, so that a new wind carries the motes on from where they are.
+var _drifted := Vector3.ZERO
+var _clock := 0.0
+## The `wind` the motes had before a wind from WASD Weather took them over, and whether one drives them now.
+var _own_wind := Vector3.ZERO
+var _wind_drives := false
 
 
 func _init() -> void:
@@ -40,17 +50,22 @@ func _init() -> void:
 	_material.shader = SHADER
 	material_override = _material
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	for key: StringName in [&"color", &"energy", &"mote_size", &"wind", &"wander", &"twinkle", &"gather"]:
+	for key: StringName in [&"color", &"energy", &"mote_size", &"wander", &"twinkle", &"gather"]:
 		_material.set_shader_parameter(key, get(key))
 	_set_size(size)
 	_set_amount(amount)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var camera := get_viewport().get_camera_3d() if follow_camera else null
 	if camera != null:
 		global_position = camera.global_position
+	# A mote a box further on is where it was: the way wraps there.
+	_drifted = (_drifted + wind * delta).posmodv(size.max(Vector3.ONE * 0.001))
+	_clock = fposmod(_clock + delta, CLOCK_PERIOD)
 	_material.set_shader_parameter(&"box_middle", global_position)
+	_material.set_shader_parameter(&"drift", _drifted)
+	_material.set_shader_parameter(&"clock", _clock)
 
 
 func _set_amount(value: int) -> void:
@@ -86,14 +101,18 @@ func _set_mote_size(value: float) -> void:
 
 
 ## Takes a wind from WASD Weather, for a node the game has put in the group "wasd_wind": the motes are carried
-## along it and keep their own rise or fall.
+## along it and keep their own rise or fall. No wind, as WASD Weather tells when it leaves, gives the motes back the
+## `wind` they had before a wind took them over.
 func set_wind(value: Vector3) -> void:
+	if Vector2(value.x, value.z).length() <= 0.01:
+		if _wind_drives:
+			_wind_drives = false
+			wind = _own_wind
+		return
+	if not _wind_drives:
+		_wind_drives = true
+		_own_wind = wind
 	wind = Vector3(value.x, wind.y, value.z)
-
-
-func _set_wind(value: Vector3) -> void:
-	wind = value
-	_material.set_shader_parameter(&"wind", value)
 
 
 func _set_wander(value: float) -> void:

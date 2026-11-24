@@ -1,4 +1,4 @@
-/** Writing a download plan's files: digests checked, nothing written on failure, and changed files kept. */
+/** Writing a download plan's files: digests checked, nothing written on failure, changed files kept, and coded failures. */
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -45,6 +45,7 @@ function options(overrides: Partial<WriteOptions> & { readonly bodies?: Readonly
   const bodies = { ...CONTENTS, ...overrides.bodies }
   return {
     replace: false,
+    folders: new Map(),
     signal: new AbortController().signal,
     open: (url) => {
       opened.push(url)
@@ -78,8 +79,11 @@ describe('writeDownload', () => {
   it('keeps a changed file and writes nothing unless replace is true', async () => {
     await mkdir(join(root, 'textures'), { recursive: true })
     await writeFile(join(root, 'chair.bin'), 'edited by the user')
-    await expect(writeDownload(PLAN, root, options())).rejects.toThrow(
-      `A file in ${root} already exists with other contents: chair.bin. Pass replace: true to overwrite it, or download into another directory.`)
+    await expect(writeDownload(PLAN, root, options())).rejects.toMatchObject({
+      name: 'PolyHavenError',
+      code: 'POLYHAVEN_ALREADY_EXISTS',
+      message: `A file in ${root} already exists with other contents: chair.bin. Pass replace: true to overwrite it, or download into another directory.`,
+    })
     expect(await listing(root)).toEqual(['chair.bin'])
     expect(opened).toEqual([])
     const written = await writeDownload(PLAN, root, options({ replace: true }))
@@ -97,7 +101,9 @@ describe('writeDownload', () => {
   it('writes none of the files when one arrives damaged, short, or long, and leaves no temporary file', async () => {
     for (const body of ['binary BUFFER', 'binary', 'binary buffer and more']) {
       const directory = join(root, body.replaceAll(' ', '-'))
-      await expect(writeDownload(PLAN, directory, options({ bodies: { 'https://dl.test/chair.bin': body } }))).rejects.toThrow(/chair\.bin/u)
+      const failed = writeDownload(PLAN, directory, options({ bodies: { 'https://dl.test/chair.bin': body } }))
+      await expect(failed).rejects.toMatchObject({ name: 'PolyHavenError', code: 'POLYHAVEN_DOWNLOAD_CORRUPT' })
+      await expect(failed).rejects.toThrow(/chair\.bin/u)
       expect(await listing(directory).catch(() => [])).toEqual([])
     }
   })
@@ -130,8 +136,35 @@ describe('writeDownload', () => {
     expect(await listing(root)).toEqual([])
   })
 
+  it('reports a file it cannot write as a failure on the disk, and writes nothing', async () => {
+    // The textures folder goes away before its file arrives, so the file cannot be written there.
+    const vanishing = options({
+      open: async (url) => {
+        if (url.endsWith('chair_diff_1k.jpg')) await rm(join(root, 'textures'), { recursive: true, force: true })
+        return new Response(CONTENTS[url] ?? '')
+      },
+    })
+    const failed = writeDownload(PLAN, root, vanishing)
+    await expect(failed).rejects.toMatchObject({ name: 'PolyHavenError', code: 'POLYHAVEN_DISK_FAILED', cause: { code: 'ENOENT' } })
+    const message = /^The download failed on the disk while it wrote textures\/chair_diff_1k\.jpg: ENOENT: .+; nothing was saved\./u
+    await expect(failed).rejects.toThrow(message)
+    expect(await listing(root)).toEqual([])
+  })
+
+  it('refuses a plan whose paths would be one file before anything is written', async () => {
+    const plan = { ...PLAN, files: [planned('textures/chair_diff_1k.jpg', 'https://dl.test/chair_diff_1k.jpg'), planned('TEXTURES/chair_diff_1k.jpg', 'https://dl.test/chair.bin')] }
+    await expect(writeDownload(plan, root, options())).rejects.toMatchObject({
+      name: 'PolyHavenError',
+      code: 'POLYHAVEN_DOWNLOAD_CORRUPT',
+      message: 'The files textures/chair_diff_1k.jpg and TEXTURES/chair_diff_1k.jpg would be one file in the download folder, since macOS and Windows ignore letter case in file names; the download stopped.',
+    })
+    expect(opened).toEqual([])
+    expect(await listing(root)).toEqual([])
+  })
+
   it('refuses to write over a folder', async () => {
     await mkdir(join(root, 'chair.bin'))
-    await expect(writeDownload(PLAN, root, options())).rejects.toThrow(`${join(root, 'chair.bin')} exists and is not a file; move it or download into another directory.`)
+    await expect(writeDownload(PLAN, root, options())).rejects.toMatchObject(
+      { code: 'POLYHAVEN_ALREADY_EXISTS', message: `${join(root, 'chair.bin')} exists and is not a file; move it or download into another directory.` })
   })
 })

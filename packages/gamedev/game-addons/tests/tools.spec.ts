@@ -1,10 +1,10 @@
 /**
  * The `game_addons` tool as the Session's agent calls it through the real tool runtime and executor, with an approval
  * service under the `ask` policy that records every question: the agent installs and removes add-ons without one. Its
- * searches keep to the application a query names and give every match of filters alone, its guide results stay within
- * the result limit, and its failures carry their class and code.
+ * searches keep to the application a query names and give every match of filters alone, in full in every project when
+ * the descriptions fit, its guide results stay within the result limit, and its failures carry their class and code.
  */
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent, type Model } from '@deepseek-ai/dsh-agent'
@@ -15,8 +15,9 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
-import ToolRuntime, { type ToolErrorInfo, type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { type ToolErrorInfo, type ToolExecutionResult, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadCatalog, loadGuides } from '../src/catalog.ts'
 import { GameAddonManager } from '../src/manager.ts'
@@ -260,6 +261,35 @@ describe('game_addons', () => {
     expect(text(await call(state, { action: 'search', category: 'camera', query: 'camera' }))).toMatch(/^The best 8 of 14 matching add-ons; narrow the search/u)
   })
 
+  it('describes the matches of filters alone in full in every project, with a note on each that the project has when the notes fit, else a count', async () => {
+    const state = await setup()
+    expect((await call(state, { action: 'install', id: 'test-camera' })).isError).toBe(false)
+    /** The camera category's search result within a result limit, outside a project or in the setup's. */
+    const search = async (limit: number, project?: string): Promise<string> => {
+      const definition = gameAddonToolDefinition({
+        manager: state.manager,
+        guides: new Map(),
+        resultChars: limit,
+        project: () => project === undefined ? Promise.reject(new Error('No project.')) : Promise.resolve(project),
+      }, SESSION_WORDING)
+      const value = await definition.execute({ action: 'search', category: 'camera' }, { signal: new AbortController().signal } as ToolRunContext) as JsonValue
+      return definition.output.render({}, value).map(block => block.type === 'text' ? block.text : '').join('')
+    }
+    const outside = await search(RESULT_CHARS)
+    const lines = outside.split('\n')
+    expect(lines[0]).toBe('2 matching add-ons:')
+    const noted = outside.replace('- test-camera: Test Camera 1.2.0 (Godot, MIT, 1 KB)\n', '- test-camera: Test Camera 1.2.0 (Godot, MIT, 1 KB) [installed]\n')
+    expect(noted).not.toBe(outside)
+    expect(await search(codePoints(noted), state.project)).toBe(noted)
+    // Where the note does not fit, one line counts what the project has, and the descriptions stay whole.
+    expect(await search(codePoints(noted) - 1, state.project)).toBe([...lines.slice(0, -1), 'This project has 1 of them, which action list names.'].join('\n'))
+    expect(await search(codePoints(noted) - 1)).toBe(outside)
+    // Where the descriptions do not fit, every project gets the matches by cue.
+    expect(await search(codePoints(outside))).toBe(outside)
+    expect(await search(codePoints(outside) - 1)).toMatch(/^The 2 matching add-ons, too many to describe in one result/u)
+    expect(await search(codePoints(outside) - 1, state.project)).toMatch(/^The 2 matching add-ons for .+, too many to describe/u)
+  })
+
   it('shows a guide, noting when the project does not have the add-on yet', async () => {
     const state = await setup()
     expect(text(await call(state, { action: 'guide', id: 'test-trees' }))).toBe('Test Trees is not installed in this project; install it with action install before following this guide.\n\n# test-trees\n\nUse it like this.')
@@ -382,9 +412,18 @@ describe('game_addons', () => {
     ].join('\n'))
     expect(state.downloads).toEqual([URLS.camera])
     expect(text(await call(state, { action: 'list' }))).toContain(`${state.project} has 1 catalog add-on; each one's guide is listed as the skill of its id:\n- test-camera: Test Camera 1.2.0 (Godot, MIT, 1 KB) [installed]`)
+    // The project sets its own smoothing after the installation, which the removal keeps and names.
+    const godot = join(state.project, 'project.godot')
+    await writeFile(godot, (await readFile(godot, 'utf8')).replace('general/smoothing=true', 'general/smoothing=false'))
     const removed = await call(state, { action: 'remove', id: 'test-camera' })
-    expect(text(removed)).toBe('Removed test-camera and its project.godot entries and notice. Its files moved to the backup .wasdengine/backups/test-camera/2026-11-11T12-00-00.000Z: addons/test_camera.')
+    expect(text(removed)).toBe([
+      'Removed test-camera and its project.godot entries and notice. Its files moved to the backup .wasdengine/backups/test-camera/2026-11-11T12-00-00.000Z: addons/test_camera.',
+      'The project changed these project.godot settings of the add-on since its installation, so they keep the project\'s values: [test_camera] general/smoothing.',
+    ].join('\n'))
     expect((await state.manager.presence(state.project)).get('test-camera')).toEqual({ state: 'absent' })
+    // A Blender add-on leaves no folder in the project, so its removal moves nothing to a backup.
+    expect((await call(state, { action: 'install', id: 'test-trees' })).isError).toBe(false)
+    expect(text(await call(state, { action: 'remove', id: 'test-trees' }))).toBe('Removed test-trees and its project.godot entries and notice.')
     expect(state.asked).toEqual([])
   })
 

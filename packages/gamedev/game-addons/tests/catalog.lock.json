@@ -1,0 +1,90 @@
+{
+  "format": 1,
+  "release": "0.2.4",
+  "addons": {
+    "beehave": {
+      "version": "2.9.3",
+      "sha256": "142eb562863729c0142403e5c017ddff1662dfc5cd42938f0e47f375bff7a68a"
+    },
+    "better-terrain": {
+      "version": "1.1",
+      "sha256": "a67bab15d57b8f52ae64f6e6dcb59d2851d1d6c71e10ed7437cadda52a7e4fd9"
+    },
+    "dialogue-manager": {
+      "version": "4.2.0",
+      "sha256": "bf476e7927806a17d1ffdb97018e157265a67b5f9c4be735fa287193c1a5df91"
+    },
+    "extra-import-hints": {
+      "version": "1.0",
+      "sha256": "a853216e5ae53d3cd05ca333dfacee92516cb2ba6acb1d406135312f210fad82"
+    },
+    "gaea": {
+      "version": "2.0.0-beta6",
+      "sha256": "58d3513f9cd8b2251b9f5ddcc382b59fd425208b2ca7c165da4768a02d086e6b"
+    },
+    "gdunit4": {
+      "version": "6.2.3",
+      "sha256": "fee89ef66994100d539422e87f106a3421d9db70c2e9acfa09f2752e7f977764"
+    },
+    "gloot": {
+      "version": "3.0.2",
+      "sha256": "dedccc9dba06f42c7ec30cbef32aff390bdd5e85fd757e80dad7e5fe01ca35e7"
+    },
+    "godot-state-charts": {
+      "version": "0.22.5",
+      "sha256": "82ba6ecb1710b3164c24e2fc83576ea9a0be8595b55ebd395fd678c15a828c0d"
+    },
+    "gut": {
+      "version": "9.7.1",
+      "sha256": "13ca588f6ac390f077a18a4b9b994573235d94c36e454c3506e6acca2e597f03"
+    },
+    "importality": {
+      "version": "0.4.0",
+      "sha256": "828389ef9bc5e0482064de849260238a1ec6eb597d70fbf469b5bc4f21c75038"
+    },
+    "ldtk-importer": {
+      "version": "2.0.1",
+      "sha256": "9b60dd8747677dfadccb276fd7e214f05b29a314eeeb5e6505dbd637f56ad104"
+    },
+    "phantom-camera": {
+      "version": "0.11.0.4",
+      "sha256": "9a7c1a7008e3fb853ce99caaad580b146dbe18431e49f83330dc48e28280fb7a"
+    },
+    "protonscatter": {
+      "version": "4.2.0-dev+7198cc0",
+      "sha256": "bfa340b7730442d8db08de02562fdb1ab61fa832c7b29cdc4f6db3324e65cc23"
+    },
+    "shaker": {
+      "version": "1.0.7",
+      "sha256": "521b91744fa108674819b2932002aff65e415f4eda510a5c5c82abd82536a540"
+    },
+    "sky3d": {
+      "version": "2.1.0",
+      "sha256": "3481b7f581b801938b72b0f4c21642a9799d98ab427a398a51d961aa9a637fce"
+    },
+    "smartshape2d": {
+      "version": "3.3.2",
+      "sha256": "d4b5978030ca41917b39edbe4b000445be00b88b522bad25585506523bcd734a"
+    },
+    "universal-animation-library": {
+      "version": "2025.03.25",
+      "sha256": "394ff2d8149705fc3e9274ba9f07abb6a460b12b995ccd9e21505933da00b965"
+    },
+    "universal-animation-library-2": {
+      "version": "2026.01.22",
+      "sha256": "48653e41cf2b6278b0d78b690a8e21333aa686e178a6b085d6f1707458ffe0e6"
+    },
+    "wasd-cloth": {
+      "version": "1.0.2",
+      "sha256": "7163e148e4a9d2fc734cb1194afef87e09a115a6aaef4bfdb636124e9a7db5ba"
+    },
+    "wasd-water": {
+      "version": "1.0.0",
+      "sha256": "777f34096aa47d45d29894eca8a7580c034e64b53464ea9b81007bc2e3d2da42"
+    },
+    "yati": {
+      "version": "2.2.9",
+      "sha256": "e761bce95ec39f5c645b5a11cb591a073aeabadb27c3884fb4e3773d9a4b5cc5"
+    }
+  }
+}

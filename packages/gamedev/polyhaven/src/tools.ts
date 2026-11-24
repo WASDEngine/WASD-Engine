@@ -9,13 +9,14 @@
 import type { AttachmentId, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { defineTool, ToolArgsError, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { ASSET_ID_PATTERN, type PolyHavenApi } from './api.ts'
 import { writeDownload } from './download.ts'
+import { PolyHavenError, requestStatus } from './errors.ts'
 import { downloadOptions, MAP_FORMATS, planDownload, type DownloadOptions } from './files.ts'
 import type { PolyHavenAsset, PolyHavenAssetKind } from './types.ts'
 import {
-  AssetLibraryRequestError, ATTACHED_IMAGE_SCHEMA, savedCounts, shownPreview, WRITTEN_FILES_SCHEMA, type PreviewSurface,
+  ATTACHED_IMAGE_SCHEMA, checkedInteger, savedCounts, shownPreview, WRITTEN_FILES_SCHEMA, type PreviewSurface,
 } from '@deepseek-ai/dsh-game-mcp/kit'
 
 /** License of every Poly Haven asset, as an SPDX identifier. */
@@ -55,6 +56,8 @@ export interface PolyHavenToolHost {
   readonly requestTimeoutMs: number
   /** Time limit of one download call in milliseconds. */
   readonly downloadTimeoutMs: number
+  /** The folders that the plugin's running downloads created, each with how many of them hold it. */
+  readonly folders: Map<string, number>
   /**
    * The download folder of one call.
    * @param requested - the folder the call names: absolute, or relative to the calling Session's working directory;
@@ -273,13 +276,14 @@ function keywordRanking(assets: readonly PolyHavenAsset[], query: string): PolyH
 
 /**
  * Find one asset by id.
- * @throws Error when the id is malformed or names no asset.
+ * @throws ToolArgsError when the id is malformed, and PolyHavenError `POLYHAVEN_ASSET_NOT_FOUND` when it names no
+ * asset.
  */
 async function findAsset(host: PolyHavenToolHost, id: string, signal: AbortSignal): Promise<PolyHavenAsset> {
-  if (!ASSET_ID_PATTERN.test(id)) throw new Error(`${JSON.stringify(id)} is not a Poly Haven asset id; ids are like "mossy_rock", as polyhaven_search lists them.`)
+  if (!ASSET_ID_PATTERN.test(id)) throw new ToolArgsError([`${JSON.stringify(id)} is not a Poly Haven asset id; ids are like "mossy_rock", as polyhaven_search lists them.`])
   const assets = await host.api.assets(signal)
   const asset = assets.get(id) ?? [...assets.values()].find(candidate => candidate.id.toLowerCase() === id.toLowerCase())
-  if (asset === undefined) throw new Error(`Poly Haven has no asset with the id ${JSON.stringify(id)}; find one with polyhaven_search.`)
+  if (asset === undefined) throw new PolyHavenError(`Poly Haven has no asset with the id ${JSON.stringify(id)}; find one with polyhaven_search.`, 'POLYHAVEN_ASSET_NOT_FOUND')
   return asset
 }
 
@@ -288,7 +292,7 @@ async function filesOf(host: PolyHavenToolHost, asset: PolyHavenAsset, signal: A
   try {
     return await host.api.files(asset.id, signal)
   } catch (error) {
-    if (error instanceof AssetLibraryRequestError && error.status === 404) throw new Error(`Poly Haven lists ${asset.id} but has no files for it.`, { cause: error })
+    if (requestStatus(error) === 404) throw new PolyHavenError(`Poly Haven lists ${asset.id} but has no files for it.`, 'POLYHAVEN_ASSET_NOT_FOUND', { cause: error })
     throw error
   }
 }
@@ -377,10 +381,8 @@ function textBlocks(text: string): ContentBlock[] {
   return [{ type: 'text', text }]
 }
 
-function checkedInteger(value: number | undefined, fallback: number, name: string, min: number, max: number): number {
-  const chosen = value ?? fallback
-  if (!Number.isInteger(chosen) || chosen < min || chosen > max) throw new Error(`${name} must be an integer from ${min} to ${max}.`)
-  return chosen
+function fail(message: string): never {
+  throw new ToolArgsError([message])
 }
 
 /**
@@ -407,8 +409,8 @@ export function polyHavenToolDefinitions(host: PolyHavenToolHost, surface: PolyH
     timeoutMs: host.requestTimeoutMs,
     isConcurrencySafe: () => true,
     async execute(args, exec) {
-      const limit = checkedInteger(args.limit, DEFAULT_LIMIT, 'limit', 1, MAX_LIMIT)
-      const offset = checkedInteger(args.offset, 0, 'offset', 0, Number.MAX_SAFE_INTEGER)
+      const limit = checkedInteger(args.limit, DEFAULT_LIMIT, 'limit', 1, MAX_LIMIT, fail)
+      const offset = checkedInteger(args.offset, 0, 'offset', 0, Number.MAX_SAFE_INTEGER, fail)
       const kind = args.type === undefined ? undefined : KIND_OF_FILTER[args.type]
       const category = args.category === undefined ? [] : segmentsOf(args.category)
       const query = args.query?.trim() ?? ''
@@ -457,7 +459,7 @@ export function polyHavenToolDefinitions(host: PolyHavenToolHost, surface: PolyH
       const thumbnail = asset.thumbnailUrl
       const shown = args.preview === false || thumbnail === undefined
         ? {}
-        : await shownPreview(surface, exec, signal => host.api.image(previewUrl(thumbnail), signal), `polyhaven-${asset.id}.jpg`)
+        : await shownPreview(surface, exec, signal => host.api.image(previewUrl(thumbnail), signal), `polyhaven-${asset.id}`)
       return {
         ...summaryOf(asset),
         license: LICENSE,
@@ -498,12 +500,16 @@ export function polyHavenToolDefinitions(host: PolyHavenToolHost, surface: PolyH
       })
       const totalBytes = plan.files.reduce((total, planned) => total + planned.file.size, 0)
       if (totalBytes > host.maxDownloadBytes) {
-        throw new Error(`This download of ${asset.name} is ${megabytes(totalBytes)}, more than the ${megabytes(host.maxDownloadBytes)} that one download may be; choose a lower resolution${plan.maps.length > 0 ? ', fewer maps,' : ''} or another format.`)
+        throw new PolyHavenError(
+          `This download of ${asset.name} is ${megabytes(totalBytes)}, more than the ${megabytes(host.maxDownloadBytes)} that one download may be; choose a lower resolution${plan.maps.length > 0 ? ', fewer maps,' : ''} or another format.`,
+          'POLYHAVEN_TOO_LARGE',
+        )
       }
       const directory = await host.directory(args.directory, asset.id, exec)
       const files = await writeDownload(plan, directory, {
         replace: args.replace === true,
         open: (url, signal) => host.api.download(url, signal),
+        folders: host.folders,
         signal: exec.signal,
       })
       return {

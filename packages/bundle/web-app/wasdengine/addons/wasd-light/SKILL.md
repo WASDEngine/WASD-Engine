@@ -38,7 +38,7 @@ By hand: `shape` 0 round (lamps) or 1 square (windows, doors), `length`, `openin
 
 ## WasdFogBank3D: fog that fills a box
 
-Mist in a valley, haze in a hall, smoke in a room, steam on a lake. Things in it fade by how much fog lies before them; the camera may walk through.
+Mist in a valley, haze in a hall, smoke in a room, steam on a lake. Things in it fade by how much fog lies before them; the camera may walk through. Lamps, halos, and effects before the bank, or in it nearer than 0.7 / `density` meters, where its fog hides half, show over it; further in, it veils them as if they stood at what is solid behind them.
 
 ```gdscript
 var mist := WasdFogBank3D.new()
@@ -70,7 +70,7 @@ add_child(dust)
 | Embers | `mote_size = 0.04`, `energy = 2.5`, `wind = Vector3(0.1, 0.6, 0)`, orange |
 | Snow | `mote_size = 0.08`, `energy = 1`, `wind = Vector3(0.3, -1.2, 0)`, `wander = 0.4`, `twinkle = 0` |
 
-`follow_camera = true` keeps the box round the camera while every mote keeps its place in the world: one node for a whole level's pollen or embers. For rain and snow that the sky, the wind, and the ground follow, use the `wasd-weather` add-on; with it, `dust.add_to_group("wasd_wind")` (a fog bank likewise) lets the weather's wind carry the motes.
+`follow_camera = true` keeps the box round the camera while every mote keeps its place in the world: one node for a whole level's pollen or embers. For rain and snow that the sky, the wind, and the ground follow, use the `wasd-weather` add-on; with it, `dust.add_to_group("wasd_wind")` (a fog bank likewise) lets the weather's wind carry the motes, and they get their own `wind` (a bank its `cloud_drift`) back when the weather leaves. A new wind carries them on from where they are.
 
 ## WasdFlicker: a light that lives
 

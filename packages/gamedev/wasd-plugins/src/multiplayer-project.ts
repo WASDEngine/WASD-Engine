@@ -6,15 +6,18 @@
  * `project.godot` change only the two keys they own, and edits of `res://wasd_multiplayer.cfg` only the `[wasd]` keys
  * WASD Engine writes; both keep every other line byte for byte. The setup installs the add-on and a release brings an
  * older, unchanged copy up to date; neither overwrites an example or Markdown file the game changed, and neither writes
- * through a link in the add-on's folder. The setup replaces the add-on's own files whatever their changes, and first
- * keeps the ones the game changed in a backup folder of the add-on ({@link ADDON_BACKUPS_DIR}).
+ * through a link in the add-on's folder, nor through `addons/` or the add-on's folder when that is a link leading
+ * outside the project, where the setup reads nothing and a release only the version that `plugin.cfg` names
+ * ({@link linkedAddonFolder}). The setup replaces the add-on's own files whatever their changes, and first keeps the
+ * ones the game changed in a backup folder of the add-on ({@link ADDON_BACKUPS_DIR}); its refusals are
+ * {@link MultiplayerSetupError}s.
  * @module @deepseek-ai/dsh-wasd-plugins/src/multiplayer-project
  */
 import { constants } from 'node:fs'
-import { copyFile, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, extname, isAbsolute, join, relative, sep } from 'node:path'
+import { copyFile, lstat, mkdir, readdir, readFile, readlink, realpath, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { HarnessError } from '@deepseek-ai/dsh-error'
 import { addonFileDigest, isShippedAddonFile, shippedAddonHas } from './multiplayer-addon-files.ts'
-import { MultiplayerError } from './multiplayer-api.ts'
 import { STATE_DIR, writeWhole } from './state.ts'
 
 /** The add-on's folder inside a project. */
@@ -328,8 +331,9 @@ interface AddonEntries {
  * The add-on's entries in a folder, without hidden entries, the `.i18n.yaml` translation records of this repository's
  * documentation, and the files Godot keeps beside a project's files ({@link GODOT_SIDECARS}). Each entry is read as it
  * is: a link inside the folder is one of {@link AddonEntries.links}, and the walk never enters it, while the folder
- * itself may be a link. Reads go through `node:fs/promises`, which Electron's `app.asar` support resolves, so the
- * folder may sit inside a packaged Desktop app.
+ * itself may be a link, which a project's copy follows only inside the project ({@link linkedAddonFolder}). Reads go
+ * through `node:fs/promises`, which Electron's `app.asar` support resolves, so the folder may sit inside a packaged
+ * Desktop app.
  * @param folder - absolute folder.
  * @returns its files and its other entries; none when the folder does not exist.
  */
@@ -442,8 +446,8 @@ export interface AddonBackup {
   readonly folder: string
   /**
    * The forward-slash paths in the add-on folder that the backup keeps, each at `<folder>/addons/wasd_multiplayer/<path>`:
-   * a copy of each file the game changed, and each link that stood in place of a file of the add-on or of its folder,
-   * moved as it is.
+   * a copy of each file the game changed, and each link that stood in place of a file of the add-on or of one of its
+   * folders, kept so that it leads where it led ({@link keepInBackup}).
    */
   readonly files: readonly string[]
 }
@@ -462,12 +466,50 @@ export interface AddonCopy {
 }
 
 /**
+ * The codes of a setup's refusals ({@link MultiplayerSetupError}), each made before the setup changed the add-on's folder
+ * or `project.godot`:
+ * - `WASD_MULTIPLAYER_OUTSIDE_PROJECT`: `addons/` or the add-on's folder is a link that leads outside the project or to
+ *   no folder, or a folder of the backups is a link that leads outside the project; make it a folder of the project.
+ * - `WASD_MULTIPLAYER_LINK_REFUSED`: the system refused to make the link that keeps one of the game's links in the
+ *   backup, as Windows does outside Developer Mode; turn that on, or replace the game's link with a copy of what it
+ *   leads to.
+ */
+export type MultiplayerSetupErrorCode = 'WASD_MULTIPLAYER_OUTSIDE_PROJECT' | 'WASD_MULTIPLAYER_LINK_REFUSED'
+
+/** A setup that refused to install the add-on, with a message for the model that says what to do. */
+export class MultiplayerSetupError extends HarnessError {
+  override readonly code: MultiplayerSetupErrorCode
+
+  /**
+   * @param message - what stopped the setup and what to do.
+   * @param code - the refusal's code.
+   * @param options - the failure that caused it.
+   */
+  constructor(message: string, code: MultiplayerSetupErrorCode, options?: ErrorOptions) {
+    super(message, code, options)
+    this.name = 'MultiplayerSetupError'
+    this.code = code
+  }
+}
+
+/**
+ * Whether a real path lies outside a project.
+ * @param root - the project folder's real path.
+ * @param real - the real path.
+ * @returns true when `real` is neither `root` nor inside it.
+ */
+function leadsOutside(root: string, real: string): boolean {
+  const rest = relative(root, real)
+  return rest === '..' || rest.startsWith(`..${sep}`) || isAbsolute(rest)
+}
+
+/**
  * Make the folders of {@link ADDON_BACKUPS_DIR} in a project one at a time, each checked by its real path, so that no
  * folder is made and no backup kept outside the project.
  * @param projectDir - absolute folder holding `project.godot`.
  * @returns the real path of each folder on the way, `.wasdengine` first.
- * @throws {MultiplayerError} when one of the folders is a link that leads outside the project, before anything changes
- *   outside it.
+ * @throws {MultiplayerSetupError} `WASD_MULTIPLAYER_OUTSIDE_PROJECT` when one of the folders is a link that leads outside
+ *   the project, before anything changes outside it.
  */
 async function backupFolders(projectDir: string): Promise<string[]> {
   const root = await realpath(projectDir)
@@ -481,13 +523,115 @@ async function backupFolders(projectDir: string): Promise<string[]> {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     }
     const real = await realpath(next)
-    const rest = relative(root, real)
-    if (rest === '..' || rest.startsWith(`..${sep}`) || isAbsolute(rest)) {
-      throw new MultiplayerError(`The setup changed nothing: ${segments.slice(0, index + 1).join('/')} in ${projectDir} leads outside the project, to ${real}, where the setup would keep the game's versions of the add-on files it replaces. Make it a folder of the project, then call wasd_multiplayer_setup again.`)
+    if (leadsOutside(root, real)) {
+      throw new MultiplayerSetupError(`The setup changed nothing: ${segments.slice(0, index + 1).join('/')} in ${projectDir} leads outside the project, to ${real}, where the setup would keep the game's versions of the add-on files it replaces. Make it a folder of the project, then call wasd_multiplayer_setup again.`, 'WASD_MULTIPLAYER_OUTSIDE_PROJECT')
     }
     reals.push(real)
   }
   return reals
+}
+
+/** A folder on the way to the add-on's that is a link leading outside the project or to no folder ({@link linkedAddonFolder}). */
+interface LinkedAddonFolder {
+  /** Its path in the project: `addons` or `addons/wasd_multiplayer`. */
+  readonly folder: string
+  /** Where the link leads: its real path, or the absolute path of its target when no folder is there. */
+  readonly target: string
+  /** True when the link leads to a folder outside the project, false when it leads to no folder. */
+  readonly outside: boolean
+}
+
+/**
+ * The first of the folders on the way to the add-on's, `addons` and then `addons/wasd_multiplayer`, that is a link leading
+ * outside the project or to no folder. Each is checked by its real path, as {@link backupFolders} checks the backup's,
+ * so a link that stays inside the project counts as a folder of the project. The check reads nothing through a link; a
+ * copy outside the project may be one that other projects link to, which writing the add-on there would change for all
+ * of them.
+ * @param projectDir - absolute folder holding `project.godot`.
+ * @returns the folder and where it leads, or undefined when each folder is the project's or absent.
+ */
+async function linkedAddonFolder(projectDir: string): Promise<LinkedAddonFolder | undefined> {
+  const root = await realpath(projectDir)
+  const segments = ADDON_DIR.split('/')
+  for (let end = 1; end <= segments.length; end++) {
+    const folder = segments.slice(0, end).join('/')
+    const path = join(projectDir, ...segments.slice(0, end))
+    let real: string
+    try {
+      real = await realpath(path)
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'ENOENT' && code !== 'ELOOP') throw error
+      // Absent, the folder is the setup's to make in the project; a link to a missing path, or in a loop, leads to no
+      // folder.
+      const absent = await lstat(path).then(() => false, (missing: unknown) => {
+        if ((missing as NodeJS.ErrnoException).code === 'ENOENT') return true
+        throw missing
+      })
+      if (absent) return undefined
+      return { folder, target: resolve(await realpath(dirname(path)), await readlink(path)), outside: false }
+    }
+    if (leadsOutside(root, real)) return { folder, target: real, outside: true }
+  }
+  return undefined
+}
+
+/**
+ * Keep the entries of the add-on's folder that a copy replaces in a new backup folder ({@link newBackup}), in two steps,
+ * so that a backup that fails leaves the add-on's folder as it was. First the backup gets a copy of each file, and for
+ * each link with a relative target, which would lead elsewhere from the backup's folder, a link to that target resolved
+ * against the real folder that holds the game's link. Only then do the other entries that are neither files nor
+ * folders, such as a link with an absolute target, move to the backup as they are, and the game's links that the backup
+ * made again go. Files stay in place until the shipped ones replace them whole, so a copy that stops part way leaves no
+ * file out.
+ * @param projectDir - absolute folder holding `project.godot`.
+ * @param backup - the project-relative backup folder, which is empty.
+ * @param paths - forward-slash paths in the add-on's folder to keep.
+ * @param links - the add-on folder's entries that are neither files nor folders ({@link AddonEntries.links}).
+ * @throws {MultiplayerSetupError} `WASD_MULTIPLAYER_LINK_REFUSED` when the system refuses to make a link, as Windows does
+ *   outside Developer Mode. On that and any other failure of the first step, the backup folder goes and the add-on's
+ *   folder stays as it was.
+ */
+async function keepInBackup(projectDir: string, backup: string, paths: readonly string[], links: ReadonlySet<string>): Promise<void> {
+  const destination = join(projectDir, ADDON_DIR)
+  const moves: (readonly [string, string])[] = []
+  const remade: string[] = []
+  try {
+    for (const path of paths) {
+      const from = join(destination, ...path.split('/'))
+      const to = join(projectDir, ...`${backup}/${ADDON_DIR}/${path}`.split('/'))
+      await mkdir(dirname(to), { recursive: true })
+      const target = links.has(path) && (await lstat(from)).isSymbolicLink() ? await readlink(from) : undefined
+      if (!links.has(path)) await copyFile(from, to, constants.COPYFILE_EXCL)
+      else if (target === undefined || isAbsolute(target)) moves.push([from, to])
+      else {
+        await remakeLink(path, resolve(await realpath(dirname(from)), target), to)
+        remade.push(from)
+      }
+    }
+  } catch (error) {
+    // The new backup folder is all that changed, so it goes too.
+    await rm(join(projectDir, ...backup.split('/')), { recursive: true, force: true })
+    throw error
+  }
+  for (const [from, to] of moves) await rename(from, to)
+  for (const from of remade) await rm(from)
+}
+
+/**
+ * Make the link of the backup that keeps a link of the game's.
+ * @param path - the game's link, as a forward-slash path in the add-on's folder.
+ * @param target - absolute path where the game's link leads.
+ * @param to - absolute path in the backup, whose folder exists.
+ * @throws {MultiplayerSetupError} `WASD_MULTIPLAYER_LINK_REFUSED` when the system refuses to make the link.
+ */
+async function remakeLink(path: string, target: string, to: string): Promise<void> {
+  try {
+    await symlink(target, to)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EPERM') throw error
+    throw new MultiplayerSetupError(`The setup changed nothing: the system refused to make the link in the backup folder that keeps ${ADDON_DIR}/${path}, the game's link to ${target}. On Windows, turn on Developer Mode, which lets programs make links, or replace ${ADDON_DIR}/${path} with a copy of what it leads to; then call wasd_multiplayer_setup again.`, 'WASD_MULTIPLAYER_LINK_REFUSED', { cause: error })
+  }
 }
 
 /**
@@ -496,7 +640,7 @@ async function backupFolders(projectDir: string): Promise<string[]> {
  * control, as it does the game add-ons' backups there.
  * @param projectDir - absolute folder holding `project.godot`.
  * @returns the project-relative backup folder.
- * @throws {MultiplayerError} when a folder on the way leads outside the project ({@link backupFolders}).
+ * @throws {MultiplayerSetupError} when a folder on the way leads outside the project ({@link backupFolders}).
  */
 async function newBackup(projectDir: string): Promise<string> {
   const reals = await backupFolders(projectDir)
@@ -524,15 +668,18 @@ async function newBackup(projectDir: string): Promise<string> {
  * stays, and so does a link in its place or in place of its folder, and so does the removal of an example that the
  * copy's version shipped; a file of an earlier add-on that the shipped one leaves out goes, with the files Godot keeps
  * beside it; files and links of the game's own stay. A file of the add-on's own code that the game changed, and a link
- * in place of such a file or of its folder, first go to a new backup folder of the add-on ({@link newBackup}), the
- * files as copies and the links as they are, so the copy never writes through a link. Each file is replaced whole, and
- * `plugin.cfg` last, so a copy that stops part way still names the version it replaces and the next one finishes it.
+ * in place of such a file or of its folder, first go to a new backup folder of the add-on, the files as copies and the
+ * links so that they lead where they led ({@link keepInBackup}), so the copy never writes through a link. Each file is
+ * replaced whole, and `plugin.cfg` last, so a copy that stops part way still names the version it replaces and the next
+ * one finishes it. The caller has checked that `addons/` and the add-on's folder lead nowhere outside the project
+ * ({@link linkedAddonFolder}).
  * @param projectDir - absolute folder holding `project.godot`.
  * @param shipped - the shipped add-on's files ({@link addonEntries}).
  * @param present - the project's copy, empty for a project without one.
  * @returns what was written, kept, and backed up.
- * @throws {MultiplayerError} when the copy needs a backup and its folder leads outside the project ({@link backupFolders});
- *   the add-on folder stays as it was then.
+ * @throws {MultiplayerSetupError} when the copy needs a backup and its folder leads outside the project
+ *   ({@link backupFolders}), or the system refuses a link of the backup ({@link keepInBackup}); the add-on folder stays
+ *   as it was then.
  */
 async function copyAddon(projectDir: string, shipped: ReadonlyMap<string, string>, present: PresentCopy): Promise<AddonCopy> {
   const destination = join(projectDir, ADDON_DIR)
@@ -555,14 +702,7 @@ async function copyAddon(projectDir: string, shipped: ReadonlyMap<string, string
     writes.push([path, file])
   }
   const backup = replaced.size === 0 ? undefined : await newBackup(projectDir)
-  for (const path of backup === undefined ? [] : [...replaced].sort()) {
-    const from = join(destination, ...path.split('/'))
-    const to = join(projectDir, ...`${backup}/${ADDON_DIR}/${path}`.split('/'))
-    await mkdir(dirname(to), { recursive: true })
-    // A file stays in place until the shipped one replaces it whole, so a copy that stops part way leaves no file out.
-    if (present.links.has(path)) await rename(from, to)
-    else await copyFile(from, to, constants.COPYFILE_EXCL)
-  }
+  if (backup !== undefined) await keepInBackup(projectDir, backup, [...replaced].sort(), present.links)
   const written: string[] = []
   for (const [path, file] of writes) {
     const target = join(destination, ...path.split('/'))
@@ -587,14 +727,25 @@ async function copyAddon(projectDir: string, shipped: ReadonlyMap<string, string
 /**
  * Install the shipped add-on into a project, over any copy it has: the setup's copy, which replaces the add-on's own
  * code whatever its version and changes, after keeping the files of it that the game changed in a backup folder, and
- * keeps the example and Markdown files the game changed and the files it added ({@link copyAddon}).
+ * keeps the example and Markdown files the game changed and the files it added ({@link copyAddon}). It refuses
+ * `addons/` or the add-on's folder when that is a link leading outside the project or to no folder
+ * ({@link linkedAddonFolder}), before it reads anything there.
  * @param projectDir - absolute folder holding `project.godot`.
  * @param source - absolute folder of the shipped add-on.
  * @returns what was written, kept, and backed up.
- * @throws {MultiplayerError} when the files the game changed need a backup and `.wasdengine/backups/wasd_multiplayer/`
- *   leads outside the project; the add-on folder stays as it was then.
+ * @throws {MultiplayerSetupError} with the project as it was: `WASD_MULTIPLAYER_OUTSIDE_PROJECT` when `addons/` or the
+ *   add-on's folder is a link leading outside the project or to no folder, or when the files the game changed need a
+ *   backup and `.wasdengine/backups/wasd_multiplayer/` leads outside the project; `WASD_MULTIPLAYER_LINK_REFUSED` when the
+ *   system refuses a link of the backup ({@link keepInBackup}).
  */
 export async function installMultiplayerAddon(projectDir: string, source: string): Promise<AddonCopy> {
+  const linked = await linkedAddonFolder(projectDir)
+  if (linked !== undefined) {
+    const where = linked.outside
+      ? `leads outside the project, to ${linked.target}, where the setup would write the add-on's files and change them for every project that links there`
+      : `is a link to ${linked.target}, where no folder exists`
+    throw new MultiplayerSetupError(`The setup changed nothing: ${linked.folder} in ${projectDir} ${where}. Make it a folder of the project, then call wasd_multiplayer_setup again.`, 'WASD_MULTIPLAYER_OUTSIDE_PROJECT')
+  }
   const destination = join(projectDir, ADDON_DIR)
   const present = await presentCopy(destination, await copyVersion(destination))
   return await copyAddon(projectDir, (await addonEntries(source)).files, present)
@@ -609,12 +760,21 @@ export type AddonUpdate =
    * code: files, or links in place of a file or a folder.
    */
   | { readonly outcome: 'changed'; readonly from?: string; readonly to: string; readonly changed: readonly string[] }
+  /**
+   * The project's copy stayed as it was because `folder`, `addons` or `addons/wasd_multiplayer`, is a link that leads
+   * outside the project, to `target`, where an update would change the add-on of every project that links there. Of
+   * that copy the update read only `plugin.cfg`, whose version `from`, or none, is older than `to`.
+   */
+  | { readonly outcome: 'linked'; readonly from?: string; readonly to: string; readonly folder: string; readonly target: string }
 
 /**
  * Bring a project's add-on up to the shipped one when its `plugin.cfg` names an older version, or none, and every entry
  * of its own code is a file that WASD Engine shipped ({@link isShippedAddonFile}), never a link; the examples and the
  * Markdown files do not count, and the copy keeps the ones the game changed, and the examples it removed
- * ({@link copyAddon}). The update thus replaces no file that the game changed, and needs no backup.
+ * ({@link copyAddon}). The update thus replaces no file that the game changed, and needs no backup. A project whose
+ * `addons/` or add-on folder is a link leading outside the project keeps its copy, of which the update reads only
+ * `plugin.cfg`, as the builds do, so that it reports an older copy and says nothing of a current one
+ * ({@link linkedAddonFolder}).
  * @param projectDir - absolute folder holding `project.godot`.
  * @param source - absolute folder of the shipped add-on.
  * @returns the update, or why the copy stayed; undefined when the project has no add-on or one as new as the shipped one.
@@ -625,9 +785,13 @@ export async function updateMultiplayerAddon(projectDir: string, source: string)
   const to = pluginVersion(await readFile(join(source, 'plugin.cfg'), 'utf8'))
   if (to === undefined) throw new Error(`${join(source, 'plugin.cfg')} names no version.`)
   const destination = join(projectDir, ADDON_DIR)
+  // The version reads through links, as the builds read the add-on.
   const from = await copyVersion(destination)
   if (from !== undefined && !olderAddonVersion(from, to)) return undefined
   const named = from === undefined ? {} : { from }
+  // The main script is there, so a link on the way leads to a folder.
+  const linked = await linkedAddonFolder(projectDir)
+  if (linked !== undefined) return { outcome: 'linked', ...named, to, folder: linked.folder, target: linked.target }
   const present = await presentCopy(destination, from)
   const changed = [
     ...[...present.digests].filter(([path, digest]) => !isAdaptable(path) && !isShippedAddonFile(path, digest)).map(([path]) => path),
@@ -653,7 +817,7 @@ export async function hasMultiplayerAddon(projectDir: string): Promise<boolean> 
 }
 
 /**
- * The version of a project's add-on.
+ * The version of a project's add-on as its builds carry it: read through links, which Godot's exports follow.
  * @param projectDir - absolute folder holding `project.godot`.
  * @returns the version its `plugin.cfg` names, or undefined when the project has no add-on ({@link hasMultiplayerAddon})
  *   or its `plugin.cfg` names none.

@@ -43,7 +43,7 @@ A screen of the game's own: `WasdLoader.screen_scene = preload("res://ui/loading
 
 ## The warm-up
 
-Behind the screen a camera looks down on everything visible within `warm_up_reach` (300 m) of the scene's camera, walls or not. On desktop it goes a patch of ground a frame, so that no frame has every shader to compile. A browser compiles in the background and finishes only what stays in the picture, so there the whole scene is held until the frames run evenly: `warm_up_seconds` (1) at the least, six at the most.
+Behind the screen a camera looks down on everything visible within `warm_up_reach` (300 m) of the scene's camera, walls or not. On desktop it goes a patch of ground a frame, so that no frame has every shader to compile. A browser compiles in the background and finishes only what stays in the picture, so there the whole scene is held until the frames run evenly: `warm_up_seconds` (1) at the least, six at the most. A 2D scene is shown as its own camera sees it, with the named scenes in the middle of that view.
 
 - `WasdLoader.warm_up = false` skips it: for a change between menus, where a second in the browser buys nothing.
 - The scene is paused meanwhile: `_ready` has run, `_process` and physics have not.

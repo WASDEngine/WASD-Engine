@@ -2,10 +2,11 @@
  * What `game_addons` returns over the add-on catalog that WASD Engine ships, for the Session's agent and for connected
  * agents: the profiles' `resultChars` is the gamedev preset's tool-result pruner threshold; each guide, with the files
  * it links that fit, and each linked file by itself stay within it; a search of each category describes all of the
- * category's add-ons, inside a project as outside one, as the system prompt section and the tool's description
- * promise; and a query that names Godot or Blender keeps to that application's add-ons.
+ * category's add-ons, inside a project as outside one, also in a project that has every add-on with the longest notes on
+ * what it has, as the system prompt section and the tool's description promise; and a query that names Godot or Blender
+ * keeps to that application's add-ons.
  */
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
@@ -145,6 +146,38 @@ describe('game_addons over the shipped catalog', () => {
       for (const entry of members) expect(result, `${category} ${entry.id}`).toContain(`\n- ${entry.id}: ${entry.title} ${entry.version} (`)
       // The project adds a note only on what it has, and its folder does not lengthen the descriptions' result.
       expect(await inside({ action: 'search', category }), `${category} in a project`).toBe(result)
+    }
+  })
+
+  it('describes all of each category\'s add-ons in full within the result limit in projects that have every add-on', async (test) => {
+    const folder = await scratch('shipped-results')
+    test.onTestFinished(() => folder.cleanup())
+    // A version as long as the catalog's versions run, which each note on what a project has repeats.
+    const version = '2026.12.31+abcdef0.wasd.12'
+    const recorded = await writeProject(join(folder.root, 'recorded'))
+    await mkdir(join(recorded, '.wasdengine'))
+    const addons = catalog.entries.map(entry => ({
+      id: entry.id, title: entry.title, host: entry.host, version, license: entry.license,
+      paths: entry.godot === undefined ? [] : [`addons/${entry.godot.addonDir}`], installedAt: '2026-11-23T12:00:00.000Z',
+    }))
+    await writeFile(join(recorded, '.wasdengine', 'addons.json'), JSON.stringify({ format: 1, addons }))
+    // Copies without a record, whose notes are the longest.
+    const copied = await writeProject(join(folder.root, 'copied'))
+    for (const entry of catalog.entries) {
+      if (entry.godot === undefined) continue
+      await mkdir(join(copied, 'addons', entry.godot.addonDir), { recursive: true })
+      if (entry.godot.plugin !== undefined) await writeFile(join(copied, 'addons', entry.godot.addonDir, entry.godot.plugin), `[plugin]\nversion="${version}"\n`)
+    }
+    for (const project of [recorded, copied]) {
+      const call = tool(catalog, SESSION_WORDING, project)
+      for (const category of CATEGORIES) {
+        const members = catalog.entries.filter(entry => entry.category === category)
+        if (members.length === 0) continue
+        const result = await call({ action: 'search', category })
+        expect(result.split('\n')[0], `${category} in ${project}`).toBe(`${String(members.length)} matching add-on${members.length === 1 ? '' : 's'}:`)
+        for (const entry of members) expect(result, `${category} ${entry.id} in ${project}`).toContain(`\n- ${entry.id}: ${entry.title} ${entry.version} (`)
+        expect(codePoints(result), `${category} in ${project}`).toBeLessThanOrEqual(RESULT_CHARS)
+      }
     }
   })
 

@@ -106,6 +106,9 @@ var _token_exp := 0.0
 var _me := {}
 var _game_id := ""
 var _version := 0
+# True in a Web build that runs as the game's own build on the WASD website, whose address names the game and the
+# release (_BUILD_PATH): the only page outside a WASD game page that the sign-in window hands a token to.
+var _hosted := false
 var _parent_wasd := false
 # The origin of the WASD game page that frames the game, once it answered: the site's pages answer on each of its
 # hostnames, and messages to the page go to the one it is on.
@@ -247,9 +250,10 @@ func player_info(peer_id: int) -> Dictionary:
 
 
 ## Signs the player in to WASD. In a Web build on a WASD game page, on any of the site's hostnames, the page answers at
-## once; elsewhere a WASD sign-in window opens, which browsers allow only right after a click or key press, so call
-## this from a button. A desktop build signs in with the token WASD Engine started it with. Either way the sign-in then
-## lasts while the game runs, up to a week.
+## once; elsewhere on the WASD website a WASD sign-in window opens, which browsers allow only right after a click or key
+## press, so call this from a button. A copy of the Web build hosted anywhere else can't sign players in and fails with
+## "sign_in_unavailable". A desktop build signs in with the token WASD Engine started it with. Either way the sign-in
+## then lasts while the game runs, up to a week.
 func sign_in() -> Dictionary:
 	if _test != "":
 		return {"ok": true, "player": _test_identity()}
@@ -274,9 +278,13 @@ func sign_in() -> Dictionary:
 		# site refuses it to games that share the games origin.
 		return _sign_in_failure("page_unavailable", "The WASD Engine page didn't answer the game. Reload the page, " \
 				+ "then try again.")
-	if _game_id == "":
-		return _sign_in_failure("no_game_id", "This copy of the game can't play online. Play it on the WASD Engine " \
-				+ "website.", {}, "It has no WASD game id: release the game with WASD Engine first.")
+	if not _hosted:
+		# The sign-in window hands its token only to the game's own build on the WASD website, so a copy hosted
+		# elsewhere would wait for one that never comes.
+		return _sign_in_failure("sign_in_unavailable", "This copy of the game can't play online. Play it on the " \
+				+ "WASD Engine website.", {}, "Online play works only on the WASD Engine website and in WASD Engine's " \
+				+ "game library, not in a copy of the Web build hosted elsewhere. To test online play on this " \
+				+ "computer, use a multiplayer test run.")
 	_token_reply = {}
 	var url := "%s/play/connect?game=%s&v=%d" % [config.app_origin, _game_id, _version]
 	if not _web.open_popup(url):
@@ -589,10 +597,13 @@ func _read_desktop_token() -> void:
 		_accept_token(token, {})
 
 
+## Reads the game and the release from the address of a Web build that runs as the game's own build on the WASD
+## website.
 func _read_build_path() -> void:
 	var regex := RegEx.new()
 	regex.compile(_BUILD_PATH)
 	var found := regex.search(_web.location_path())
+	_hosted = found != null
 	if found != null:
 		_game_id = found.get_string(1)
 		_version = found.get_string(2).to_int()
@@ -717,13 +728,14 @@ func _sign_in_failure(code: String, text: String, extra := {}, advice := "") -> 
 
 
 ## A player token that stays valid for at least another minute, or the failure that says why there is none. A Web build
-## that a WASD game page frames asks the page. Otherwise a token that is still valid is renewed, a desktop build reads
-## the token WASD Engine started it with, and a Web build opens the WASD sign-in window when [param open_window] is
-## true, because the player just pressed a button.
+## that a WASD game page frames asks the page, and a copy of the Web build hosted outside the WASD website fails as
+## sign_in() does there. Otherwise a token that is still valid is renewed, a desktop build reads the token WASD Engine
+## started it with, and a Web build opens the WASD sign-in window when [param open_window] is true, because the player
+## just pressed a button.
 func _ensure_token(open_window := false) -> Dictionary:
 	if _test != "" or _token_valid(60.0):
 		return {"ok": true}
-	if _web.available and (_parent_wasd or _site_frames()):
+	if _web.available and (_parent_wasd or _site_frames() or not _hosted):
 		return await sign_in()
 	if _token_valid(0.0) and _renew_refused == "":
 		await _renew_token()

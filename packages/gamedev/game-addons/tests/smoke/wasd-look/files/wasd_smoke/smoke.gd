@@ -4,7 +4,8 @@ extends Node3D
 ## energy this renderer needs; the day's clock, fades, the view distance, a photographed sky, and the lamp helper do
 ## what they say; values given as whole numbers fade; a look, an hour, or a fade stops a running fade, whose waiters
 ## go on; a sky with no light above 1, as Web builds hand every picture back, is read whole through a pass of its
-## own; and when the wind stops, the clouds drift as they did before it.
+## own; when the wind stops, the clouds drift as they did before it; and a look out of the tree takes a quality that
+## it sets once it is back.
 
 const ID := "wasd-look"
 
@@ -314,6 +315,17 @@ func _run() -> void:
 	await get_tree().create_timer(0.15).timeout
 	if (material.get_shader_parameter(&"cloud_offset") as Vector2).is_equal_approx(offset_before):
 		return _fail("the clouds did not drift")
+
+	# 11. A look taken out of the tree, as a game keeps it for a later level, takes another quality without an error,
+	# and sets it on the viewport when it enters the tree again.
+	look.quality = 0
+	remove_child(look)
+	look.quality = 2
+	if get_viewport().msaa_3d != Viewport.MSAA_DISABLED:
+		return _fail("a look out of the tree set the viewport's edge smoothing to %d" % [get_viewport().msaa_3d])
+	add_child(look)
+	if get_viewport().msaa_3d != Viewport.MSAA_4X or not get_viewport().use_debanding:
+		return _fail("a look back in the tree left the viewport's edge smoothing at %d" % [get_viewport().msaa_3d])
 	for quality: int in 4:
 		look.quality = quality
 		await get_tree().process_frame

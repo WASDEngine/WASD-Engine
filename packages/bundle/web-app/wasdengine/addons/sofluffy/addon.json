@@ -33,12 +33,16 @@
     "root": "sofluffy-09af7e68c17db7b85a4780220b28dc015da28a91/addons/so_fluffy",
     "exclude": [
       "so_fluffy_plugin.gd",
+      "so_fluffy.gd",
       "plugin.cfg",
       "README.md"
     ]
   },
   "godot": {
-    "addonDir": "so_fluffy"
+    "addonDir": "so_fluffy",
+    "overlay": [
+      "sofluffy/overlay"
+    ]
   },
   "icon": {
     "file": "icon.svg",

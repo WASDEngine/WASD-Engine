@@ -256,7 +256,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-ambientcg`
 
 - `inject`: `tools` · `workingDirectory`
-- `source`: [`packages/gamedev/ambientcg/src/index.ts:35`](../packages/gamedev/ambientcg/src/index.ts)
+- `source`: [`packages/gamedev/ambientcg/src/index.ts:36`](../packages/gamedev/ambientcg/src/index.ts)
 
 ```ts config-catalog
 /** Deployment configuration of the ambientCG tools. */
@@ -3538,7 +3538,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-polyhaven`
 
 - `inject`: `tools` · `workingDirectory`
-- `source`: [`packages/gamedev/polyhaven/src/index.ts:33`](../packages/gamedev/polyhaven/src/index.ts)
+- `source`: [`packages/gamedev/polyhaven/src/index.ts:34`](../packages/gamedev/polyhaven/src/index.ts)
 
 ```ts config-catalog
 /** Deployment configuration of the Poly Haven tools. */

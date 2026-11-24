@@ -104,6 +104,10 @@ BASE_GROUPS = ('body', 'helper-l-eye', 'helper-r-eye', 'joint-mouth', 'helper-up
 # their own.
 BUILD = ('muscle', 'weight', 'height', 'proportions', 'cupsize', 'firmness')
 
+# The rigs that human() makes its humans on: MakeHuman's game skeleton, and the same with two breast bones. The hair,
+# the hairline, the skin, and the eyes are finished by the names that these give the head, the neck, and the spine.
+RIGS = ('game_engine', 'game_engine_with_breast')
+
 # The kinds of datablock that making a human adds to the .blend: what a human that fails to be made leaves behind.
 MADE = ('objects', 'meshes', 'armatures', 'materials', 'images', 'node_groups', 'textures', 'collections', 'actions')
 
@@ -401,7 +405,9 @@ def human(module, assets, gender='female', age=25, ethnicity='caucasian', *, loo
 
     detail 'high' keeps MakeHuman's own head, with teeth and a tongue, for a human seen up close: follow it with
     add_face(). 'low' is a human for a crowd or the distance: the 1,460-triangle proxy without brows, lashes, or
-    teeth, whose face is too coarse to be seen up close or to move.
+    teeth, whose face is too coarse to be seen up close or to move. rig is 'game_engine', MakeHuman's 53-bone game
+    skeleton, or 'game_engine_with_breast', which adds two breast bones; MPFB's other rigs are refused, with the way
+    to a bare human on one.
 
     Every argument is checked before anything is made, and a human that fails to be made leaves nothing in the scene.
     """
@@ -598,15 +604,21 @@ def _asset(assets, folder, name, kind, ending='.mhclo'):
 
 
 def _check_rig(services, rig):
-    """Refuse a rig that MPFB does not have, before a human is made to carry it. MPFB keeps each rig as
-    rigs/standard/rig.<name>.json, and a Rigify rig `rigify.<name>` as rigs/rigify/rig.<name>.json."""
+    """Refuse a rig that human() does not finish, before a human is made to carry it. Its hair hangs from the head,
+    the neck, and the spine, its hairline and its skin are finished on the head and the neck, and add_face gives the
+    head its eyes, all by the names that the rigs of RIGS give those bones. MPFB's other rigs, which it keeps as
+    rigs/standard/rig.<name>.json and a Rigify rig `rigify.<name>` as rigs/rigify/rig.<name>.json, are named in the
+    refusal, with the way to a bare human on one."""
+    if isinstance(rig, str) and rig in RIGS:
+        return
     rigs = os.path.join(os.path.dirname(services.__file__), '..', 'data', 'rigs')
-    known = [prefix + file[4:-5] for folder, prefix in (('standard', ''), ('rigify', 'rigify.'))
-             for file in sorted(os.listdir(os.path.join(rigs, folder))) if file.startswith('rig.') and file.endswith('.json')]
-    if not isinstance(rig, str) or rig not in known:
-        raise ValueError(f'Unknown rig {rig!r}; the rigs are {", ".join(known)}.')
-    if rig.startswith('rigify.') and not services.SystemService.check_for_rigify():
-        raise ValueError(f'The rig {rig!r} needs Blender\'s Rigify add-on, which is not enabled.')
+    others = [prefix + file[4:-5] for folder, prefix in (('standard', ''), ('rigify', 'rigify.'))
+              for file in sorted(os.listdir(os.path.join(rigs, folder))) if file.startswith('rig.') and file.endswith('.json')]
+    others = [name for name in others if name not in RIGS]
+    call = f'HumanService.add_builtin_rig(body, "{rig}")' if rig in others else 'HumanService.add_builtin_rig(body, name) with one of their names'
+    raise ValueError(f'human() makes its humans on the rig {" or ".join(RIGS)}, by whose bones it finishes their hair and skin, not '
+                     f'{rig!r}. On MPFB\'s other rigs ({", ".join(others)}), build a bare human with MPFB\'s own services: '
+                     f'HumanService.create_human(), then {call}; add_face and export take it too.')
 
 
 def _check_base(body, call):
@@ -672,7 +684,9 @@ def _shape_face(services, body, kind, manly, races, looks, seed, aged=0.0, grown
     if looks > 0.0:
         # An old face that is good to look at has kept the flesh of its cheeks, which MakeHuman's old have lost.
         used['cheek/{s}-cheek-volume-incr'] = 0.35 * aged * looks
-    draw = random.Random(seed)
+    # Python's Random takes an integer by its size alone, which would give the seeds n and -n one face: a negative
+    # seed draws from its text instead.
+    draw = random.Random(seed if seed is None or seed >= 0 else str(seed))
     if seed is not None:
         for less, more, most_less, most_more in FEATURES:
             share = draw.uniform(-1.0, 1.0)
@@ -968,20 +982,27 @@ def _picture_of(material):
 
 
 def _own_picture(material):
-    """The picture that colors a material, made this material's alone. MPFB hands every human of a session the same
-    picture of an asset, and what one human's skin, hair, or brows were made into must not be the next one's: a
-    picture that a human has changed already is read from its file again."""
-    if material is None or not material.use_nodes:
+    """The picture that colors a material, made this material's own, which every node of the material that showed the
+    picture shows from then on. MPFB hands every human of a session the same picture of an asset: it takes a picture
+    that is loaded already by its file's name, and loads the file only for the first human. What one human's skin,
+    hair, lashes, or teeth are made into must reach neither a human made before it nor one made after it: a picture
+    that another material shows, or that MPFB would hand the next human by its name, is copied first, or read from
+    its file again where a human has changed it already."""
+    image = _picture_of(material)
+    if image is None:
         return None
+    source = bpy.path.abspath(image.filepath) if image.filepath else ''
+    if not bpy.data.user_map(subset={image})[image] - {material} and image.name != os.path.basename(source):
+        return image
+    if any(key.startswith('wasd_') for key in image.keys()) and os.path.isfile(source):
+        own = bpy.data.images.load(source, check_existing=False)
+        own.colorspace_settings.name = image.colorspace_settings.name
+    else:
+        own = image.copy()
     for node in material.node_tree.nodes:
-        if node.type == 'TEX_IMAGE' and node.image is not None and any(output.is_linked for output in node.outputs):
-            image = node.image
-            source = bpy.path.abspath(image.filepath) if image.filepath else ''
-            if any(key.startswith('wasd_') for key in image.keys()) and os.path.isfile(source):
-                node.image = bpy.data.images.load(source, check_existing=False)
-                node.image.colorspace_settings.name = image.colorspace_settings.name
-            return node.image
-    return None
+        if node.type == 'TEX_IMAGE' and node.image == image:
+            node.image = own
+    return own
 
 
 def _pixels(image):
@@ -2033,7 +2054,8 @@ def export(module, body, path, texture_size=1024):
     and tongue are written solid: MPFB makes every material see-through, and a game then draws a face's inside through
     it. Pictures larger than texture_size pixels are written scaled down to it, and stay as they are in the scene:
     1024 suits a game on the Web, 2048 a face that fills the screen. A body that add_face did not prepare has its
-    shape baked in.
+    shape baked in. The rig's action and each NLA track of one strip are written as clips, named after their actions,
+    and so are its meshes' shape keys'; a muted track, a track of two strips or more, and other rigs' actions are not.
     """
     services = importlib.import_module(module + '.services')
     # Given a path of another ending, the exporter writes the file with .glb in place of that ending, not where asked.
@@ -2081,11 +2103,20 @@ def export(module, body, path, texture_size=1024):
         mesh.select_set(True)
     rig.select_set(True)
     bpy.context.view_layer.objects.active = rig
+    # The clips are this human's own: the exporter would otherwise add every action in the file that moves bones. It
+    # writes the strip of a muted track too, so a muted track's strips are muted for the time of the export.
+    owners = [owner for owner in [rig, *(mesh.data.shape_keys for mesh in meshes)] if owner is not None and owner.animation_data is not None]
+    hushed = [strip for owner in owners for track in owner.animation_data.nla_tracks if track.mute for strip in track.strips if not strip.mute]
+    animated = any(owner.animation_data.action is not None or any(not track.mute for track in owner.animation_data.nla_tracks) for owner in owners)
+    for strip in hushed:
+        strip.mute = True
     try:
         bpy.ops.export_scene.gltf(filepath=path, export_format='GLB', use_selection=True, export_apply=True,
-                                  export_morph=True, export_morph_normal=True, export_animations=False,
-                                  export_vertex_color='ACTIVE')
+                                  export_morph=True, export_morph_normal=True, export_animations=animated,
+                                  export_anim_single_armature=False, export_vertex_color='ACTIVE')
     finally:
+        for strip in hushed:
+            strip.mute = False
         for node, image in shown:
             node.image = image
         for copy in smaller.values():

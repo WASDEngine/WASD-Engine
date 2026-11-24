@@ -216,7 +216,7 @@ func _warm_up(scene: Node, guests: Array[PackedScene]) -> void:
 	var in_browser := OS.has_feature("web")
 	var camera := get_viewport().get_camera_3d()
 	if camera == null:
-		# A 2D scene shows itself; the guests stand in the middle of the view meanwhile.
+		# A 2D scene shows itself; the guests stand in the middle of the view meanwhile, wherever its camera looks.
 		var shown: Array[Node] = []
 		for guest: PackedScene in guests:
 			shown.append(_seat(guest.instantiate(), scene, get_viewport().get_visible_rect().get_center()))
@@ -320,13 +320,18 @@ static func _patch_of(place: Vector3, bounds: AABB, side: int) -> int:
 	return along * side + across
 
 
-## Puts a guest into the scene at a place, with its particles running.
+## Puts a guest into the scene with its particles running: a 3D guest at a place in the world, and a 2D one with its
+## middle at a point of the view, which is another place in its canvas once a Camera2D or a CanvasLayer moves that.
 func _seat(guest: Node, scene: Node, place: Variant) -> Node:
 	scene.add_child(guest)
 	if guest is Node3D and place is Vector3:
 		(guest as Node3D).global_position = place
-	elif guest is Node2D and place is Vector2:
-		(guest as Node2D).global_position = place
+	elif guest is CanvasItem and place is Vector2:
+		var at: Vector2 = (guest as CanvasItem).get_canvas_transform().affine_inverse() * (place as Vector2)
+		if guest is Node2D:
+			(guest as Node2D).global_position = at
+		elif guest is Control:
+			(guest as Control).global_position = at - (guest as Control).size * 0.5
 	for part: Node in [guest] + guest.find_children("*", "", true, false):
 		if part is GPUParticles3D or part is CPUParticles3D or part is GPUParticles2D or part is CPUParticles2D:
 			part.set(&"emitting", true)

@@ -1,8 +1,9 @@
 /**
  * Releases point a multiplayer project's configuration at its game, bring an older, unchanged WASD Multiplayer add-on
- * up to date, tell the site which add-on the builds carry, and store a dedicated game's server build.
+ * up to date unless its folder leads outside the project, tell the site which add-on the builds carry, and store a
+ * dedicated game's server build.
  */
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -164,6 +165,28 @@ describe('releases of multiplayer games', () => {
     expect(released.warnings).toContain(`This project's WASD Multiplayer add-on is 1.2.0, older than WASD Engine's ${version}, and the game changed the add-on's own code (wasd_multiplayer.gd), so the release built the game with it as it is. Ask the user whether to call wasd_multiplayer_setup, which replaces the add-on's own files with ${version}'s, first keeping the ones the game changed in a backup folder that its result names, and keeps the files the game added and the example files it changed; then apply the game's changes again from that backup where ${version} still needs them.`)
     // The builds carry 1.2.0, and the site learns it.
     expect(site.addons).toEqual(['1.2.0'])
+  })
+
+  it('build with an older add-on whose folder leads outside the project as it is, say what to ask the user, and say nothing once that copy is current', async () => {
+    const dir = await multiplayerProject({ config: '[wasd]\nmode="player_hosted"\n' })
+    const shared = await mkdtemp(join(tmpdir(), 'dsh-wasd-addon-shared-'))
+    scratch.push(shared)
+    const addon = await olderAddon(shared)
+    await mkdir(join(dir, 'addons'))
+    await symlink(addon, join(dir, 'addons', 'wasd_multiplayer'))
+    const site = releaseSite()
+    const { deps, configs } = await dependencies(site.fetch)
+    const released = await releaseGame({ projectDir: dir }, { ...deps, addonSource: ADDON_SOURCE }, signal)
+    const version = pluginVersion(await readFile(join(ADDON_SOURCE, 'plugin.cfg'), 'utf8')) ?? ''
+    expect(released.warnings).toContain(`This project's addons/wasd_multiplayer leads outside the project, to ${await realpath(addon)}, so the release built the game with the WASD Multiplayer add-on 1.2.0 there as it is: updating it to WASD Engine's ${version} would change it for every project that links there. Ask the user whether to make addons/wasd_multiplayer a folder of the project with its own copy of those files, so that releases can update the add-on.`)
+    // The builds carry the shared copy, 1.2.0, and the site learns it.
+    expect(configs.plugin).toBe(PLUGIN_1_2_0)
+    expect(await readFile(join(addon, 'plugin.cfg'), 'utf8')).toBe(PLUGIN_1_2_0)
+    // Once whoever owns the shared copy brings it up to date, releases have nothing to say of it.
+    await cp(ADDON_SOURCE, addon, { recursive: true })
+    const again = await releaseGame({ projectDir: dir }, { ...(await dependencies(site.fetch)).deps, addonSource: ADDON_SOURCE }, signal)
+    expect(again.warnings.filter(warning => warning.includes('WASD Multiplayer'))).toEqual([])
+    expect(site.addons).toEqual(['1.2.0', version])
   })
 
   it('name only a major.minor.patch add-on version to the site, and none for a game that plays offline', async () => {

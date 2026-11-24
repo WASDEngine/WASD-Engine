@@ -53,7 +53,7 @@ fire.stop()          # fades out over 0.6 seconds; stop(2.0) takes longer
 - `color` (Color): multiplies the effect's colors.
 - `parent` (Node3D): the effect becomes its child and moves with it. Without one, effects stay where they were played.
 
-`WasdFx.light_level` says how brightly smoke and dust are lit, from 0 to 1. Left at -1, a WASD Look node in the scene tells it; without one it is 1, so set about 0.25 for a night scene. `WasdFx.gravity` pulls sparks, debris, and drops. `WasdFx.names()` lists the effects. `WasdFx.wind` (a Vector3 in meters a second) carries smoke, steam, dust, and embers along and leans flames; sparks and debris fly free. The `wasd-weather` add-on sets it.
+`WasdFx.light_level` says how brightly smoke and dust are lit, from 0 to 1. Left at -1, a WASD Look node in the scene tells it; without one it is 1, so set about 0.25 for a night scene. `WasdFx.gravity` pulls sparks, debris, and drops. `WasdFx.names()` lists the effects. `WasdFx.wind` (a Vector3 in meters a second) carries smoke, steam, dust, and embers along and leans flames; sparks and debris fly free. A running effect takes a new wind from then on: what is already in the air drifts on from where it is. The `wasd-weather` add-on sets it.
 
 ## On things
 
@@ -68,7 +68,7 @@ await WasdFx.dissolve(enemy, 0.8, {"free": true})    # eaten away from the botto
 await WasdFx.appear(ally, 0.8)                       # the other way round, for a thing that is hidden
 ```
 
-`dissolve` and `appear` take `{"color": Color(0.3, 0.9, 1.0)}` for the edge's glow. For their seconds each mesh wears a plain material in its own color and picture with nothing drawn over it, so a surface with a shader of its own looks plainer while it goes; CSG shapes do not dissolve. A `dissolve` or `appear` of a thing before its last one ends takes over: `dissolve` here and `appear` there is a teleport. A flash shows over an outline, which comes back after it; the wet and snowy cover of `wasd-weather` waits under all three. The outline wants smooth normals: on a plain box it opens at the corners.
+`dissolve` and `appear` take `{"color": Color(0.3, 0.9, 1.0)}` for the edge's glow. For their seconds each mesh wears a plain material in its own color, picture, vertex colors, and cut-out holes with nothing drawn over it, so a surface with a shader of its own looks plainer while it goes; CSG shapes do not dissolve. Their seconds stand still while the game is paused. A `dissolve` or `appear` of a thing before its last one ends takes over: `dissolve` here and `appear` there is a teleport. One of a part under it, such as the sword in a dissolving hand, runs alongside, and every mesh wears its own materials again once the last that reaches it ends. A flash shows over an outline, which comes back after it; the wet and snowy cover of `wasd-weather` waits under all three. The outline wants smooth normals: on a plain box it opens at the corners.
 
 ## The first effect
 
@@ -77,6 +77,7 @@ The shader compiles when the first effect is drawn, which can stall that frame, 
 ## Pitfalls
 
 - Effects are not lit by lamps and cast no shadows; smoke only follows `light_level`. Fire, sparks, and flashes carry their own light, without shadows.
+- Effects sort among other see-through things by distance, each effect as a whole: a near torch shows over a far blast's smoke. Particles of two effects in one place do not interleave.
 - Particles pass through walls and floors: play ground effects at the ground, not below it.
 - The lights of `explosion`, `sparks`, `muzzle_flash`, `zap`, `fire`, and `torch` are real lights for a moment; dozens at once cost frames.
 - For a mark left behind, such as a scorch or a bullet hole, add it with the `wasd-decals` add-on at the same place.

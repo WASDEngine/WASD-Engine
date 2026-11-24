@@ -60,7 +60,7 @@ Clips (* loops): A_TPose, Crouch_Fwd*, Crouch_Idle*, Dance*, Death01, Driving*, 
 
 ## Check it
 
-Run the game and take a `godot_screenshot` while a clip plays; `godot_eval` of the AnimationPlayer's `current_animation` names the clip that plays, and `godot_scene_tree` shows `GeneralSkeleton` under the model. On MPFB, Rigify, and Mixamo rigs the limbs follow the clips within about 10 degrees; MPFB's `game_engine` rig bends the torso up to 20 degrees differently in deep bends, and its `mixamo` rig follows more closely.
+Run the game and take a `godot_screenshot` while a clip plays; `godot_eval` of the AnimationPlayer's `current_animation` names the clip that plays, and `godot_scene_tree` shows `GeneralSkeleton` under the model. On MPFB, Rigify, and Mixamo rigs the limbs follow the clips within about 10 degrees; MPFB's `game_engine` rig, which `wasd_mpfb.human` makes, bends the torso up to 20 degrees differently in deep bends, and its `mixamo` rig, which only a bare human of MPFB's own services takes, follows more closely.
 
 ## Pitfalls
 

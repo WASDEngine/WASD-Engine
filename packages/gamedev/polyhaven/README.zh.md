@@ -61,7 +61,9 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 没有 `resolution` 时，下载使用 `1k`；该格式没有 `1k` 时使用最小的分辨率。超过 `maxDownloadBytes` 的下载在写入任何内容之前失败，并说明其大小。
 
-一次下载要么写入全部文件，要么一个也不写入。每个文件先流式写入目标旁边的临时文件，其大小和 MD5 摘要必须与 Poly Haven 文件列表一致，只有在所有文件都完好到达后，这些文件才替换各自的目标；失败或取消会让文件夹保持原样。已在原位且摘要相同的文件不会再次下载。内容不同的文件，例如用户编辑过的纹理，会在写入任何内容之前中止下载，除非 `replace` 为 true。文件列表中会离开下载文件夹的路径同样会中止下载。
+一次下载要么写入全部文件，要么一个也不写入。每个文件先流式写入目标旁边的临时文件，其大小和 MD5 摘要必须与 Poly Haven 文件列表一致，只有在所有文件都完好到达后，这些文件才替换各自的目标。失败或取消的下载一个文件也不写入，它创建的文件夹在本插件没有其他正在运行的下载使用后、仍为空时会被删除，因此无论本插件的多次失败下载以何种顺序结束，都不会留下文件夹；跨进程时成立的保证见 [kit](../game-mcp/README.zh.md#helpers-for-game-tool-plugins)。已在原位且摘要相同的文件不会再次下载。内容不同的文件，例如用户编辑过的纹理，会在写入任何内容之前中止下载，除非 `replace` 为 true。文件列表中会离开下载文件夹的路径同样会中止下载。
+
+工具预期的每个失败都是一个 `PolyHavenError`，其代码说明下一步怎么做，因此工具结果会记录类名和代码：`POLYHAVEN_ASSET_NOT_FOUND`，也用于 Poly Haven 列出却没有文件的素材；`POLYHAVEN_FILES_NOT_FOUND`，表示素材缺少所指定的格式、分辨率或贴图；`POLYHAVEN_TOO_LARGE`；`POLYHAVEN_ALREADY_EXISTS`；`POLYHAVEN_DOWNLOAD_CORRUPT`；`POLYHAVEN_DISK_FAILED`，表示磁盘无法创建、读取、写入或移动某个文件夹或文件，消息中写明文件和错误代码；以及 `POLYHAVEN_REQUEST_FAILED`，其 `cause` 保留请求的 HTTP 状态码。[`src/errors.ts`](src/errors.ts) 给出每个代码的含义。违反参数 schema 无法表达的规则的参数，例如格式错误的 id、超出范围的 `limit`，或者与没有贴图的格式一起给出的 `maps`，以 `ToolArgsError`（`INVALID_ARGS`）失败；工作目录服务报告它自己的失败；被取消的调用以其取消结束。
 
 通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `polyhaven` 下使用这些工具，不需要会话：`polyhaven_search` 与 `polyhaven_asset` 标记为只读，预览图以 JPEG 字节的形式跟在结果文本之后，`polyhaven_download` 要求 `directory` 为绝对路径。服务器指令概述中的提供方描述及其指南要求 agent 在制作或生成素材之前先到这里查找，并使用符合游戏美术风格的素材。
 
@@ -82,15 +84,16 @@ Poly Haven 的素材采用 CC0 许可，游戏可以使用它们，包括商业�
 <details>
 <summary>实现细节——点击展开</summary>
 
-插件读取 API 的三个端点，并从它们给出的 URL 下载文件。`GET /assets?type=all` 返回全部素材，2,400 个素材约 2.5 MB；列表在内存中保留 `catalogMaxAgeMs`，刷新失败时用上一次读取的列表作答。`GET /search?q=<query>&t=<type>` 按排序返回全部匹配的 id；插件把这些 id 与列表对应起来，丢弃列表中没有的 id，然后按分类过滤并分页。`GET /files/<id>` 按组（一种贴图、一种格式或 `hdri`）、分辨率和格式返回素材的文件，每个文件都带有 URL、大小、MD5 摘要和它引用的文件；不在第三层的条目，例如 HDRI 的单张色调映射图像，会被略去，引用无法全部读取的文件也会被略去。JSON 响应最多读取 64 MiB，预览图最多 8 MiB。插件只访问所配置 `apiUrl` 的主机（使用其协议）以及 `polyhaven.com` 和 `polyhaven.org` 的 HTTPS 主机，并自行跟随最多五次重定向，每次都只到这样的主机，因此文件树和重定向都不会把请求发往别处。HTTP 429 会变成说明何时重试的消息。这些请求、两类调用方的预览图、连接的 agent 调用的工具，以及要么全部写入要么一个也不写入的文件写入，都来自游戏工具 kit（[`asset-library.ts`](../game-mcp/src/asset-library.ts)），ambientCG 插件与本插件共用它。
+插件读取 API 的三个端点，并从它们给出的 URL 下载文件。`GET /assets?type=all` 返回全部素材，2,400 个素材约 2.5 MB；列表在内存中保留 `catalogMaxAgeMs`，刷新失败时用上一次读取的列表作答。`GET /search?q=<query>&t=<type>` 按排序返回全部匹配的 id；插件把这些 id 与列表对应起来，丢弃列表中没有的 id，然后按分类过滤并分页。`GET /files/<id>` 按组（一种贴图、一种格式或 `hdri`）、分辨率和格式返回素材的文件，每个文件都带有 URL、大小、MD5 摘要和它引用的文件；不在第三层的条目，例如 HDRI 的单张色调映射图像，会被略去，引用无法全部读取的文件也会被略去。JSON 响应最多读取 64 MiB，预览图最多 8 MiB。插件只访问所配置 `apiUrl` 的主机（使用其协议）以及 `polyhaven.com` 和 `polyhaven.org` 的 HTTPS 主机，并自行跟随最多五次重定向，每次都只到这样的主机，因此文件树和重定向都不会把请求发往别处。HTTP 429 会变成说明何时重试的消息，重定向到格式错误的地址或者响应到达途中连接中断，都会变成说明什么也没有保存的失败请求。这些请求、两类调用方的预览图、连接的 agent 调用的工具，以及要么全部写入要么一个也不写入的文件写入，都来自游戏工具 kit（[`asset-library.ts`](../game-mcp/src/asset-library.ts)），ambientCG 插件与本插件共用它。
 
 | 文件 | 作用 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Config、工具注册、会话的预览图附件，以及游戏 MCP 提供方 |
+| [`src/index.ts`](src/index.ts) | Config、工具注册、会话的预览图附件、插件持有的下载文件夹，以及游戏 MCP 提供方 |
 | [`src/api.ts`](src/api.ts) | API 客户端：缓存的素材列表、搜索和文件树，建立在 kit 的客户端之上，由后者获取预览图和文件 |
 | [`src/files.ts`](src/files.ts) | 素材提供的格式和分辨率，以及一次下载的文件及其路径检查 |
 | [`src/download.ts`](src/download.ts) | 取得一次下载的文件并校验其大小和摘要，交给 kit 整体写入 |
 | [`src/tools.ts`](src/tools.ts) | 工具定义及其结果文本 |
+| [`src/errors.ts`](src/errors.ts) | `PolyHavenError` 及其代码，以及插件为 kit 的失败提供的错误 |
 | [`src/mcp.ts`](src/mcp.ts) | 面向连接的 agent 的工具，以及提供方的说明 |
 
 </details>
@@ -130,7 +133,7 @@ Poly Haven 的素材采用 CC0 许可，游戏可以使用它们，包括商业�
 
 #### 模型可见内容
 
-搜索结果写明查询、匹配数量，并为每个素材列出一行：id、名称、种类、分类、最大分辨率、真实尺寸、多边形数和 Poly Haven 的描述，并说明每个素材都采用 CC0 许可；没有查询的结果还会列出分类及其素材数量。素材结果列出各格式及每种分辨率的大小以及纹理的贴图，当会话的模型接受图像时，后面附上作为附件的预览图。下载结果写明文件夹、文件及其总大小、其中多少个是新下载、替换或已在原位的、打开素材的文件、来源页面、作者与许可，以及 Godot 和 Blender 如何打开该格式。失败结果写明素材提供的内容，例如其格式或分辨率，或者 Poly Haven 拒绝的原因。
+搜索结果写明查询、匹配数量，并为每个素材列出一行：id、名称、种类、分类、最大分辨率、真实尺寸、多边形数和 Poly Haven 的描述，并说明每个素材都采用 CC0 许可；没有查询的结果还会列出分类及其素材数量。素材结果列出各格式及每种分辨率的大小以及纹理的贴图，当会话的模型接受图像时，后面附上作为附件的预览图。下载结果写明文件夹、文件及其总大小、其中多少个是新下载、替换或已在原位的、打开素材的文件、来源页面、作者与许可，以及 Godot 和 Blender 如何打开该格式。失败结果写明素材提供的内容，例如其格式或分辨率、Poly Haven 拒绝的原因，或者对于磁盘上的失败写明文件和错误代码，例如 `The download failed on the disk while it wrote textures/rock_diff_1k.jpg: ENOSPC: no space left on device, write; nothing was saved.`，后面接着说明要检查什么；参数 schema 无法拒绝的参数，其说明前面带有 `invalid arguments: `，例如 `invalid arguments: limit must be an integer from 1 to 50.`。
 
 #### Token 影响
 
@@ -152,6 +155,7 @@ Poly Haven 的素材采用 CC0 许可，游戏可以使用它们，包括商业�
 - **通用对话行**——Web 界面用通用工具行显示这些工具调用，不显示缩略图。
 - **预览需要图像输入**——模型只接受文本的会话得不到预览图。
 - **Poly Haven 的服务**——API 可能在没有通知的情况下变更或停止，而且它的搜索按语义排序，因此即使资源库中没有相应内容，也会列出相近的素材。
+- **跨进程的空文件夹**——插件对所持有文件夹的计数只涵盖它自己在同一进程中的下载；当另一个进程或 ambientCG 插件的下载在一个由失败的 Poly Haven 下载创建的文件夹中工作并且也失败时，该文件夹可能作为空文件夹留下。
 
 <a id="dev-note"></a>
 ### 开发备注

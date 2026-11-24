@@ -5,7 +5,7 @@ description: Godot State Charts 0.22.5 is installed in this project for hierarch
 
 # Godot State Charts 0.22.5
 
-Installed in `res://addons/godot_state_charts/`; it has no autoload. Do not edit that folder; ignore its `csharp/` files. In `.tscn` text each add-on node is `type="Node"` with `script = ExtResource(...)` of the script named below.
+Installed in `res://addons/godot_state_charts/`; it has no autoload. Do not edit that folder; ignore its `csharp/` files. In `.tscn` text each add-on node is `type="Node"` with `script = ExtResource(...)` of the script named below. Every add-on class that this guide names is a global class, as are `Guard`, `SavedState`, `StateChartState`, and `SerializedStateChartState`: give the game's own classes other names, such as `SceneFade` for a fade between scenes and `GuardNpc` for a guard. A game class named `Transition` stops every state chart from compiling, with errors such as `Could not resolve class "StateChartState"` that do not name the clash.
 
 ## Nodes
 

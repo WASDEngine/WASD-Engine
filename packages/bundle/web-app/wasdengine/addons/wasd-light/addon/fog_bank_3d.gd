@@ -8,6 +8,8 @@ class_name WasdFogBank3D
 extends MeshInstance3D
 
 const SHADER := preload("res://addons/wasd_light/fog_bank.gdshader")
+## Meters of fog, times its density, that hide half of what lies behind them (the natural logarithm of 2).
+const HALF_HIDDEN := 0.69
 
 ## Meters along X, Y, and Z.
 @export var size := Vector3(30, 6, 30): set = _set_size
@@ -21,9 +23,15 @@ const SHADER := preload("res://addons/wasd_light/fog_bank.gdshader")
 ## Drifting clouds in it: how strong, how large in meters, and their speed in meters a second along X and Z.
 @export_range(0.0, 1.0, 0.01) var clouds := 0.6: set = _set_clouds
 @export_range(0.5, 200.0, 0.1) var cloud_size := 14.0: set = _set_cloud_size
-@export var cloud_drift := Vector2(0.25, 0.1): set = _set_cloud_drift
+@export var cloud_drift := Vector2(0.25, 0.1)
 
 var _material := ShaderMaterial.new()
+## How far the clouds have drifted, in meters along X and Z: added up from `cloud_drift` each frame, so that a new
+## drift carries them on from where they are.
+var _drifted := Vector2.ZERO
+## The `cloud_drift` the bank had before a wind from WASD Weather took it over, and whether one drives it now.
+var _own_drift := Vector2.ZERO
+var _wind_drives := false
 
 
 func _init() -> void:
@@ -41,13 +49,26 @@ func _init() -> void:
 	mesh = box
 	_material.shader = SHADER
 	_material.set_shader_parameter(&"cloud_noise", cloud_noise)
-	# After other see-through things nearer the ground's level, such as water, and before what stands inside it.
-	_material.render_priority = 1
 	material_override = _material
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	scale = size
-	for key: StringName in [&"color", &"density", &"thinning", &"soft_edges", &"clouds", &"cloud_size", &"cloud_drift"]:
+	for key: StringName in [&"color", &"density", &"thinning", &"soft_edges", &"clouds", &"cloud_size"]:
 		_material.set_shader_parameter(key, get(key))
+
+
+func _process(delta: float) -> void:
+	# Ten cloud sizes on, the clouds look as they did, so the way starts over there.
+	_drifted = (_drifted + cloud_drift * delta).posmod(maxf(cloud_size, 0.01) * 10.0)
+	_material.set_shader_parameter(&"cloud_offset", _drifted)
+	# See-through things are drawn from the farthest to the nearest. The bank counts as far away as its nearest point,
+	# and never nearer than where its fog hides half of what lies behind: what stands before it, or in it nearer than
+	# that, as a torch beside a camera inside it, is drawn over it; what stands further in or behind it is veiled. A
+	# bank flattened to nothing, by its size or a parent's scale, keeps its last place.
+	var camera := get_viewport().get_camera_3d()
+	if camera != null and absf(global_basis.determinant()) > 0.000001:
+		var eye := camera.global_position
+		var nearest := global_transform * (global_transform.affine_inverse() * eye).clamp(Vector3.ONE * -0.5, Vector3.ONE * 0.5)
+		sorting_offset = eye.distance_to(global_position) - maxf(eye.distance_to(nearest), HALF_HIDDEN / maxf(density, 0.0001))
 
 
 func _set_size(value: Vector3) -> void:
@@ -86,11 +107,16 @@ func _set_cloud_size(value: float) -> void:
 
 
 ## Takes a wind from WASD Weather, for a node the game has put in the group "wasd_wind": the banks drift along
-## it, slower than the wind itself.
+## it, slower than the wind itself. No wind, as WASD Weather tells when it leaves, gives the bank back the
+## `cloud_drift` it had before a wind took it over.
 func set_wind(value: Vector3) -> void:
-	cloud_drift = Vector2(value.x, value.z) * 0.3
-
-
-func _set_cloud_drift(value: Vector2) -> void:
-	cloud_drift = value
-	_material.set_shader_parameter(&"cloud_drift", value)
+	var flat := Vector2(value.x, value.z)
+	if flat.length() <= 0.01:
+		if _wind_drives:
+			_wind_drives = false
+			cloud_drift = _own_drift
+		return
+	if not _wind_drives:
+		_wind_drives = true
+		_own_drift = cloud_drift
+	cloud_drift = flat * 0.3

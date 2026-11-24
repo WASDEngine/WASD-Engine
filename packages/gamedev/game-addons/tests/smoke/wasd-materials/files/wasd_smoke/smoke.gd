@@ -3,10 +3,11 @@ extends Node3D
 ## name draw in their own colors with a pattern, take a color, a size, and other options, and share one picture; a
 ## folder of downloaded textures and a single picture become materials laid out from three sides; the toon look has
 ## its outline, glass lets what is behind it through, glow glows; a cut-out seen from behind is lit like its front;
-## paint() reaches meshes and CSG shapes and leaves a WASD Light halo alone; a human whose materials all came in
-## see-through is put right: skin, eyes of any color, teeth, lashes and brows that cast no shadow, and hair each get
-## their shader, curls without a band of light, cloth with holes is cut out, and the inside of a proxy's mouth stays
-## dark; and matte skin has no black specks.
+## paint() reaches meshes and CSG shapes and leaves a WASD Light halo and a WASD FX fire alone; a human whose materials
+## all came in see-through is put right: skin, eyes of any color, teeth, lashes and brows that cast no shadow, and hair
+## each get their shader, curls without a band of light, cloth with holes is cut out, and the inside of a proxy's mouth
+## stays dark; the surfaces of a one-mesh character are told apart by their materials' names; and matte skin has no
+## black specks.
 
 const ID := "wasd-materials"
 
@@ -211,8 +212,9 @@ func _run() -> void:
 	if not lamp.emission_enabled or lamp.emission_energy_multiplier != 4.0:
 		return _fail("glow has emission %s at %f" % [lamp.emission_enabled, lamp.emission_energy_multiplier])
 
-	# 6. paint() reaches every mesh and CSG shape under a node, and leaves alone what a WASD add-on's node draws, such as
-	# a halo of WASD Light.
+	# 6. paint() reaches every mesh and CSG shape under a node, and leaves alone a WASD add-on's node of any kind with all
+	# under it: a halo of WASD Light, and a fire of WASD FX that burns on one of the meshes, whose cards are plain meshes
+	# under the fire's node, also when the fire is handed to paint() itself.
 	var house := Node3D.new()
 	add_child(house)
 	var part := MeshInstance3D.new()
@@ -224,9 +226,19 @@ func _run() -> void:
 	house.add_child(halo)
 	var halo_material := halo.material_override
 	house.position = Vector3(0, -50, 0)
+	var effects := get_node_or_null(^"/root/WasdFx")
+	if effects == null:
+		return _fail("wasd-fx's autoload WasdFx is missing")
+	var fire: Node3D = effects.call(&"play", "fire", part.global_position, {"parent": part})
+	var flames := {}
+	for flame: Node in fire.find_children("*", "GeometryInstance3D", true, false):
+		flames[flame] = (flame as GeometryInstance3D).material_override
 	WasdSurface.paint(house, bricks)
-	if part.material_override != bricks or block.material != bricks or halo.material_override != halo_material:
-		return _fail("paint() left %s on the mesh, %s on the CSG box, and %s on the halo" % [part.material_override, block.material, halo.material_override])
+	WasdSurface.paint(fire, bricks)
+	var repainted := flames.keys().filter(func(flame: GeometryInstance3D) -> bool: return flame.material_override != flames[flame])
+	if part.material_override != bricks or block.material != bricks or halo.material_override != halo_material or flames.is_empty() or not repainted.is_empty():
+		return _fail("paint() left %s on the mesh, %s on the CSG box, and %s on the halo, and repainted %d of the fire's %d cards" % [part.material_override, block.material, halo.material_override, repainted.size(), flames.size()])
+	fire.call(&"stop")
 
 	# 7. A human whose materials all came in see-through: skin, eyes, teeth, lashes, brows, and hair get their
 	# shaders, whole cloth becomes solid, and cloth with holes is cut out. Brown eyes are eyes, not brows.
@@ -327,6 +339,32 @@ func _run() -> void:
 	var casting := [(parts["Human_eyelashes01"] as MeshInstance3D).cast_shadow, (parts["Human_eyebrow001"] as MeshInstance3D).cast_shadow, (parts["Human_long01"] as MeshInstance3D).cast_shadow]
 	if casting != [GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, GeometryInstance3D.SHADOW_CASTING_SETTING_ON]:
 		return _fail("lashes, brows, and hair cast shadows as %s" % [casting])
+	# A character of another make whose one mesh, "Body", holds its skin, a jacket, its hair, and its lashes: each
+	# surface is told by its material's name, so the jacket stays cloth and the hair is hair, and the mesh keeps its
+	# shadow.
+	var one := MeshInstance3D.new()
+	one.name = "Body"
+	var whole := ArrayMesh.new()
+	for material_name: String in ["Skin", "Jacket", "Hair", "Eyelashes"]:
+		whole.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, SphereMesh.new().get_mesh_arrays())
+		var material := StandardMaterial3D.new()
+		material.resource_name = material_name
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
+		whole.surface_set_material(whole.get_surface_count() - 1, material)
+	one.mesh = whole
+	var one_human := Node3D.new()
+	one_human.position = Vector3(0, -50, 0)
+	one_human.add_child(one)
+	add_child(one_human)
+	var one_report := WasdSurface.human(one_human)
+	var one_shaders := []
+	for surface: int in whole.get_surface_count():
+		var shown := one.get_active_material(surface) as ShaderMaterial
+		one_shaders.append(shown.shader if shown != null else null)
+	var jacket := one.get_active_material(1) as BaseMaterial3D
+	if (one_report != {"Body": "skin"} or one_shaders != [WasdSurface.SKIN_SHADER, null, WasdSurface.HAIR_SHADER, WasdSurface.LASH_SHADER]
+			or jacket == null or jacket.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or one.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_ON):
+		return _fail("a one-mesh character took its surfaces for %s with the shaders %s, its jacket is %s, and it casts shadows as %d" % [one_report, one_shaders, jacket, one.cast_shadow])
 	var skirt_now := (parts["Human_skirt"] as MeshInstance3D).get_active_material(0) as BaseMaterial3D
 	var shirt_now := (parts["Human_shirt"] as MeshInstance3D).get_active_material(0) as BaseMaterial3D
 	if (skirt_now.transparency != BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR or shirt_now.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED

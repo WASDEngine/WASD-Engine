@@ -5,6 +5,10 @@
 class_name WasdOrbitCamera3D
 extends Node3D
 
+## The mouse buttons whose click takes the pointer. A step of the wheel does not, and a browser would not lock the
+## pointer on one.
+const CLICKS: Array[MouseButton] = [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]
+
 ## What the camera circles; none follows this node's parent.
 @export var target: Node3D
 ## How far behind the target the camera stays, in meters, unless a wall is nearer.
@@ -21,7 +25,8 @@ extends Node3D
 @export var pitch_limits := Vector2(-70.0, 35.0)
 ## How fast the camera catches up with its target: higher is stiffer, 0 follows at once.
 @export_range(0.0, 60.0, 0.5) var follow_speed := 14.0
-## true hides and holds the mouse pointer while the game has it: the first click takes it, the cancel key frees it.
+## true hides and holds the mouse pointer while the game has it: the first click of the left, right, or middle button
+## takes it, the cancel key frees it. A turn of the wheel does not.
 @export var capture_mouse := true
 ## Physics layers the camera stays in front of.
 @export_flags_3d_physics var collision_mask := 1: set = _set_collision_mask
@@ -102,7 +107,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var moved := (event as InputEventMouseMotion).relative
 		_yaw -= moved.x * mouse_sensitivity
 		_pitch = clampf(_pitch - moved.y * mouse_sensitivity, deg_to_rad(pitch_limits.x), deg_to_rad(pitch_limits.y))
-	elif capture_mouse and event is InputEventMouseButton and (event as InputEventMouseButton).pressed and not held:
+	elif capture_mouse and not held and event is InputEventMouseButton and (event as InputEventMouseButton).pressed and (event as InputEventMouseButton).button_index in CLICKS:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	elif capture_mouse and held and event.is_action_pressed(&"ui_cancel"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

@@ -43,10 +43,13 @@ describe('chooseArchive', () => {
   })
 
   it('names what the asset offers when it lacks the format or the resolution', () => {
-    expect(() => chooseArchive(BRICKS, { format: 'exr' })).toThrow('Bricks 097 has no exr files; it offers: jpg, png.')
+    expect(() => chooseArchive(BRICKS, { format: 'exr' })).toThrow(expect.objectContaining({
+      name: 'AmbientCgError', code: 'AMBIENTCG_FILES_NOT_FOUND', message: 'Bricks 097 has no exr files; it offers: jpg, png.',
+    }))
     expect(() => chooseArchive(BRICKS, { resolution: '8k' })).toThrow('Bricks 097 has no 8k in jpg; it offers: 1k, 2k.')
     expect(() => chooseArchive(SKY, { format: 'jpg' })).toThrow('Evening Sky HDRI 049 B has no jpg files; an HDRI is an exr panorama; leave format out.')
     expect(() => chooseArchive({ ...BRICKS, archives: [] }, {})).toThrow('Bricks 097 has no files that ambientcg_download can fetch.')
+    expect(() => chooseArchive(BRICKS, { resolution: '8k' })).toThrow(expect.objectContaining({ code: 'AMBIENTCG_FILES_NOT_FOUND' }))
   })
 })
 
@@ -60,7 +63,8 @@ describe('mapKey and checkMaps', () => {
   it('refuses a map the asset does not list before anything is downloaded', () => {
     expect(() => { checkMaps(BRICKS, ['color', 'normal', 'NormalDX', 'AO']) }).not.toThrow()
     expect(() => { checkMaps(BRICKS, ['color', 'opacity']) }).toThrow('Bricks 097 has no "opacity" map; its maps are: color, displacement, normal, roughness, ambient-occlusion.')
-    expect(() => { checkMaps(BRICKS, []) }).toThrow('maps names no map; leave it out for every map.')
+    expect(() => { checkMaps(BRICKS, []) }).toThrow(expect.objectContaining({ name: 'ToolArgsError', code: 'INVALID_ARGS', message: 'invalid arguments: maps names no map; leave it out for every map.' }))
+    expect(() => { checkMaps(BRICKS, ['opacity']) }).toThrow(expect.objectContaining({ name: 'AmbientCgError', code: 'AMBIENTCG_FILES_NOT_FOUND' }))
     expect(() => { checkMaps(SKY, ['hdr', 'tonemapped']) }).not.toThrow()
     expect(() => { checkMaps(SKY, ['color']) }).toThrow('Evening Sky HDRI 049 B has no "color" map; its maps are: HDR, TONEMAPPED.')
     expect(() => { checkMaps({ ...BRICKS, maps: [] }, ['anything']) }).not.toThrow()
@@ -95,5 +99,8 @@ describe('archivePictures and selectPictures', () => {
     expect(() => selectPictures(BRICKS, pictures, ['color', 'metalness'])).toThrow(
       'The archive of Bricks 097 has no "metalness" map; it holds: AmbientOcclusion, Color, Displacement, NormalDX, NormalGL, Roughness.')
     expect(() => selectPictures(BRICKS, [], undefined)).toThrow('The archive of Bricks 097 holds no map pictures; nothing was saved.')
+    for (const failing of [() => selectPictures(BRICKS, pictures, ['metalness']), () => selectPictures(BRICKS, [], undefined)]) {
+      expect(failing).toThrow(expect.objectContaining({ name: 'AmbientCgError', code: 'AMBIENTCG_FILES_NOT_FOUND' }))
+    }
   })
 })

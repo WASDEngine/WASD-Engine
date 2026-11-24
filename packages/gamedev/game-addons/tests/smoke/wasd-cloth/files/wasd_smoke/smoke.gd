@@ -8,7 +8,9 @@ extends SceneTree
 ## wind blows, the flag has its fabric's settings and the custom sheet its own, the sail went the way of the zone's
 ## world direction, and the curtain and the awning were built again where they rest, pinned anew, the curtain's pins
 ## following the pole. Three ropes: one between two places keeps its length and sags, one with a free end is blown
-## downwind with what hangs on it and answers a push, and one over the ground comes to lie on it.
+## downwind with what hangs on it and answers a push, and one over the ground comes to lie on it; a rope read before it
+## is laid out hangs straight down without an error, in the world once it is in the scene. A wind zone told the
+## weather's wind gets its own back when the wind goes.
 
 const SECONDS := 3.0
 
@@ -37,9 +39,13 @@ var rope_load: Node3D
 var pushed_from := Vector3.ZERO
 var pushed_to := Vector3.ZERO
 const PUSH_TICK := 120
+## A node that read a rope beside it in its _ready(), before the rope's.
+var early_reader: EarlyReader
 
 
 func _initialize() -> void:
+	check_early_rope()
+	check_zone_wind()
 	scene = (load("res://wasd_smoke/smoke.tscn") as PackedScene).instantiate()
 	root.add_child(scene)
 	add_ropes()
@@ -70,6 +76,8 @@ func _physics_process(delta: float) -> bool:
 		for index in flag.pinned_indices():
 			flag_start.append(flag.get_point_transform(index))
 		return false
+	if ticks == 2:
+		check_early_reader()
 	hero.position.x = -5.0 + 2.0 * sin(ticks * delta * 3.0)
 	if ticks == CHANGE_TICK:
 		reshape()
@@ -130,6 +138,61 @@ func add_ropes() -> void:
 	ground_rope.wind_response = 0.0
 	ground_rope.position = Vector3(-30.0, 4.0, 20.0)
 	scene.add_child(ground_rope)
+
+
+## A node that reads a rope in its own _ready(), which comes before the rope's when the node stands before it.
+class EarlyReader extends Node3D:
+	var rope: WasdRope3D
+	var read := []
+
+	func _ready() -> void:
+		read = [rope.point_count(), rope.get_position_at(1.0)]
+
+
+## A rope read before it is laid out hangs straight down from where the node is, without an error: in its parent
+## before it enters the scene, and in the world once it is in it.
+func check_early_rope() -> void:
+	var early := WasdRope3D.new()
+	early.length = 3.0
+	early.segments = 6
+	early.position = Vector3(1, 5, 0)
+	var count := early.point_count()
+	var lowest := early.get_point(count - 1)
+	var middle := early.get_position_at(0.5)
+	early.free()
+	check(count == 7 and lowest.is_equal_approx(Vector3(1, 2, 0)) and middle.is_equal_approx(Vector3(1, 3.5, 0)), "a rope before it enters the scene has %d points, its end at %s and its middle at %s" % [count, lowest, middle])
+	var parent := Node3D.new()
+	parent.position = Vector3(10, 5, 0)
+	var reader := EarlyReader.new()
+	var hung := WasdRope3D.new()
+	hung.length = 2.0
+	hung.segments = 4
+	hung.position = Vector3(1, 0, 0)
+	reader.rope = hung
+	parent.add_child(reader)
+	parent.add_child(hung)
+	root.add_child(parent)
+	early_reader = reader
+
+
+## The rope that the early reader read, after both have had their _ready().
+func check_early_reader() -> void:
+	var read := early_reader.read
+	check(read.size() == 2 and read[0] == 5 and (read[1] as Vector3).is_equal_approx(Vector3(11, 3, 0)), "a rope at (11, 5, 0) in the world, read in the scene before its _ready(), has %s" % [read])
+	early_reader.get_parent().queue_free()
+
+
+## A wind zone told a wind, as WASD Weather tells the zones in its group, takes it, and gets its own direction and
+## speed back when the wind goes, as when the weather leaves.
+func check_zone_wind() -> void:
+	var zone := WasdClothWind3D.new()
+	zone.direction = Vector3(0, 0, 1)
+	zone.speed = 3.0
+	zone.set_wind(Vector3(10, 0, 0))
+	var blown := [zone.direction, zone.speed]
+	zone.set_wind(Vector3.ZERO)
+	check(blown[0] == Vector3(1, 0, 0) and is_equal_approx(blown[1], 10.0) and zone.direction == Vector3(0, 0, 1) and is_equal_approx(zone.speed, 3.0), "a wind zone told 10 m/s took %s; when the wind went it kept %s at %.1f m/s" % [blown, zone.direction, zone.speed])
+	zone.free()
 
 
 ## The summed distance between a rope's points.

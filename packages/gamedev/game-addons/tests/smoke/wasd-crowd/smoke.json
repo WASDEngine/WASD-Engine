@@ -1,1 +1,1 @@
-{ "run": "render", "path": "res://wasd_smoke/smoke.tscn", "expect": ["SMOKE_PASS wasd-crowd"], "timeoutSeconds": 150 }
+{ "run": "render", "path": "res://wasd_smoke/smoke.tscn", "prepare": { "path": "res://wasd_smoke/bake_pole.gd", "args": ["res://wasd_smoke/pole_model.tscn", "res://wasd_smoke/pole_tool.res", "--clips=Wave,Still", "--fps=10"] }, "expect": ["SMOKE_PASS wasd-crowd"], "timeoutSeconds": 150 }

@@ -10,6 +10,7 @@ description: Sky3D 2.1.0 is installed in this project. It gives a 3D scene a day
 - The node `Sky3D` (class `Sky3D` extends `WorldEnvironment`; script `res://addons/sky_3d/src/Sky3D.gd`). It is the scene's only WorldEnvironment: remove any other.
 - When it enters the tree, it creates whatever is missing: its `environment` (sky shader, ACES tonemap, sky ambient light), `camera_attributes`, and the children `SunLight` and `MoonLight` (DirectionalLight3D), `SkyDome` (class `SkyDome`), and `TimeOfDay` (class `TimeOfDay`). Reach them as `sky3d.sun`, `sky3d.moon`, `sky3d.sky`, and `sky3d.tod`.
 - Sky3D sets the sun and moon light energy, colour, and direction on every time update. Change them through Sky3D or SkyDome, not on the light nodes.
+- The add-on takes the global class names `OrbitalElements`, `ScatterLib`, `Sky3D`, `SkyDome`, `TOD_Math`, and `TimeOfDay`: give the game's own classes other names, such as `DayClock` for a clock of the game's own. Of two classes with one name, one fails to load, the game's or Sky3D's, with `Class "TimeOfDay" hides a global script class`.
 
 ## API
 

@@ -4,7 +4,9 @@
  * filters returns the catalog's index, a few words on every add-on by category; one with an id or words to rank by
  * describes the best matches in full; one with filters alone, or with words that only name Godot or Blender, gives
  * every match, in full when the result fits within the host's `resultChars` and as the index of the matches otherwise, so
- * no result grows with the catalog beyond its index. One set of definitions
+ * no result grows with the catalog beyond its index. Whether the matches come in full does not depend on the project:
+ * the notes on what the project has of each match come when they fit too, and otherwise one line says how many of them
+ * the project has. One set of definitions
  * serves the Session's own agent, whose project paths are relative to its working directory, and agents connected
  * through WASD Engine's MCP server, which name projects by absolute path and call the Blender, GIMP, and SuperCollider
  * tools by other names, which their guides and notes use. A guide comes with the `references/` files it links while the
@@ -138,6 +140,10 @@ const OUTPUT_SCHEMA = {
       type: 'integer',
       description: 'How many add-ons a search with words or filters matched; addons holds the best of them, or index holds them all when a search without words to rank by matched too many to describe in one result.',
     },
+    inProject: {
+      type: 'integer',
+      description: 'How many of the matches in addons the project has, from a search without words to rank by whose matches fit described in full but not with a note on each one\'s presence; the result says this number instead of those notes.',
+    },
     index: {
       type: 'array',
       description: 'The catalog by category, from a search without words or filters, or the matches by category, from a search without words to rank by whose matches do not fit described in full.',
@@ -189,7 +195,17 @@ const OUTPUT_SCHEMA = {
         notes: STRINGS,
       },
     },
-    remove: { type: 'object', additionalProperties: false, properties: { id: STRING, removed: STRINGS, backup: { type: 'string' }, references: STRINGS } },
+    remove: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        id: STRING,
+        removed: STRINGS,
+        backup: { type: 'string' },
+        references: STRINGS,
+        kept: { type: 'array', items: { type: 'string' }, description: 'Settings of the add-on that the project changed since its installation, which keep the project\'s values.' },
+      },
+    },
   },
 } as const
 
@@ -206,7 +222,13 @@ function presenceFields(presence: GameAddonPresence | undefined): Pick<ViewValue
   return { presence: presence.state, ...presence.version === undefined ? {} : { presentVersion: presence.version } }
 }
 
-function viewValue(view: GameAddonView): ViewValue {
+/**
+ * The value of one add-on's view in a result.
+ * @param view - the view.
+ * @param presence - whether the value says what the project has of the add-on.
+ * @returns the value.
+ */
+function viewValue(view: GameAddonView, presence = true): ViewValue {
   return {
     id: view.id,
     title: view.title,
@@ -227,7 +249,7 @@ function viewValue(view: GameAddonView): ViewValue {
     ...view.assets === undefined ? {} : { assets: { ...view.assets } },
     conflicts: [...view.conflicts],
     ...view.allowed ? {} : { allowed: false },
-    ...presenceFields(view.presence),
+    ...presence ? presenceFields(view.presence) : {},
   }
 }
 
@@ -250,11 +272,26 @@ function presenceText(view: ViewValue): string {
   return ''
 }
 
+/**
+ * The line of a search result that says how many of its matches the project has, in place of a note on each one.
+ * @param count - how many of the matches the project has.
+ * @returns the line.
+ */
+function inProjectText(count: number): string {
+  return `This project has ${String(count)} of them, which action list names.`
+}
+
 /** The search result when the user turned off every add-on. */
 const NONE_ALLOWED = 'The user turned off every catalog add-on in WASD Engine\'s Add-ons dialog, so agents cannot use any. Do the work without add-ons, or ask the user to turn the ones it needs on there.'
 
-function renderView(view: ViewValue): string {
-  const state = [presenceText(view), ...view.allowed === false ? ['turned off by the user'] : []].filter(part => part !== '').join(', ')
+/**
+ * The text of one add-on described in full.
+ * @param view - the add-on's value.
+ * @param notes - whether the text notes what the project has of the add-on.
+ * @returns the text.
+ */
+function renderView(view: ViewValue, notes = true): string {
+  const state = [notes ? presenceText(view) : '', ...view.allowed === false ? ['turned off by the user'] : []].filter(part => part !== '').join(', ')
   return [
     `- ${view.id}: ${view.title} ${view.version} (${view.host === 'godot' ? 'Godot' : 'Blender'}, ${view.license}, ${sizeText(view)}${assetsText(view)})${state === '' ? '' : ` [${state}]`}`,
     `  ${view.summary}`,
@@ -294,13 +331,15 @@ function render(value: ToolValue, wording: GameAddonToolWording): string {
       const head = matched > addons.length
         ? `The best ${addons.length} of ${matched} matching add-ons; narrow the search with more words or a category to see the others:`
         : `${addons.length} matching add-on${addons.length === 1 ? '' : 's'}:`
-      return `${head}\n${addons.map(renderView).join('\n')}\nRead one with action guide, or install it with action install.`
+      // A count of the matches that the project has stands for the note on each one when those notes do not fit.
+      const close = value.inProject === undefined ? 'Read one with action guide, or install it with action install.' : inProjectText(value.inProject)
+      return `${head}\n${addons.map(view => renderView(view, value.inProject === undefined)).join('\n')}\n${close}`
     }
     case 'list': {
       const addons = value.addons ?? []
       if (addons.length === 0) return `${value.projectDir ?? 'This project'} has no catalog add-ons. Search the catalog with action search.`
       const off = addons.some(view => view.allowed === false) ? ', except the ones the user turned off, which agents cannot use' : ''
-      return `${value.projectDir ?? 'The project'} has ${addons.length} catalog add-on${addons.length === 1 ? '' : 's'}; ${wording.listedGuides}${off}:\n${addons.map(renderView).join('\n')}`
+      return `${value.projectDir ?? 'The project'} has ${addons.length} catalog add-on${addons.length === 1 ? '' : 's'}; ${wording.listedGuides}${off}:\n${addons.map(view => renderView(view)).join('\n')}`
     }
     case 'guide':
       return value.guide?.text ?? 'No guide.'
@@ -323,6 +362,7 @@ function render(value: ToolValue, wording: GameAddonToolWording): string {
       if (removed === undefined) return 'Nothing was removed.'
       const moved = removed.backup === undefined || removed.removed.length === 0 ? '' : ` Its files moved to the backup ${removed.backup}: ${removed.removed.join(', ')}.`
       const lines = [`Removed ${removed.id} and its project.godot entries and notice.${moved}`]
+      if (removed.kept !== undefined) lines.push(`The project changed these project.godot settings of the add-on since its installation, so they keep the project's values: ${removed.kept.join(', ')}.`)
       if (removed.references.length > 0) lines.push(`These files still use it and need changes:\n${removed.references.map(path => `- ${path}`).join('\n')}`)
       return lines.join('\n')
     }
@@ -470,17 +510,25 @@ export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAd
             ...stage === undefined ? {} : { stage },
             ...category === undefined ? {} : { category },
           }, projectDir)
-          if (ranked) return { action: 'search', ...where, total, matched: matches.length, addons: matches.slice(0, SEARCH_LIMIT).map(viewValue) }
+          if (ranked) return { action: 'search', ...where, total, matched: matches.length, addons: matches.slice(0, SEARCH_LIMIT).map(view => viewValue(view)) }
           // Without words to rank by, every match counts alike: all are described in full when the result fits, else
-          // all are listed as the index lists them.
-          const described: ToolValue = { action: 'search', ...where, total, matched: matches.length, addons: matches.map(viewValue) }
+          // all are listed as the index lists them. Whether they fit does not depend on the project: the result keeps
+          // room for the line that counts the matches the project has, which stands for the notes on each match when
+          // those do not fit.
+          const base = { action: 'search' as const, ...where, total, matched: matches.length }
+          const plain: ToolValue = { ...base, addons: matches.map(view => viewValue(view, false)) }
+          const counted: ToolValue = { ...plain, inProject: matches.length }
+          if (Math.max(codePoints(render(plain, wording)), codePoints(render(counted, wording))) > host.resultChars) {
+            return { ...base, index: indexGroups(matches) }
+          }
+          const described: ToolValue = { ...base, addons: matches.map(view => viewValue(view)) }
           if (codePoints(render(described, wording)) <= host.resultChars) return described
-          return { action: 'search', ...where, total, matched: matches.length, index: indexGroups(matches) }
+          return { ...described, inProject: matches.filter(view => view.presence !== undefined && view.presence.state !== 'absent').length }
         }
         case 'list': {
           const projectDir = await host.project(args.project, exec)
           const views = await manager.views(projectDir)
-          return { action: 'list', projectDir, addons: views.filter(view => view.presence !== undefined && view.presence.state !== 'absent').map(viewValue) }
+          return { action: 'list', projectDir, addons: views.filter(view => view.presence !== undefined && view.presence.state !== 'absent').map(view => viewValue(view)) }
         }
         case 'guide': {
           const id = requireId(args.id, 'guide')
@@ -539,7 +587,17 @@ export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAd
           const id = requireId(args.id, 'remove')
           const projectDir = await host.project(args.project, exec)
           const result = await manager.remove(projectDir, id, exec.signal)
-          return { action: 'remove', projectDir, remove: { id: result.id, removed: [...result.removed], ...result.backup === undefined ? {} : { backup: result.backup }, references: [...result.references] } }
+          return {
+            action: 'remove',
+            projectDir,
+            remove: {
+              id: result.id,
+              removed: [...result.removed],
+              ...result.backup === undefined ? {} : { backup: result.backup },
+              references: [...result.references],
+              ...result.kept === undefined ? {} : { kept: [...result.kept] },
+            },
+          }
         }
       }
     },

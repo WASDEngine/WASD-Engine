@@ -62,8 +62,11 @@ signal health_updated
 
 func _ready():
 	# Changed by WASD Engine: a browser lets a page capture the mouse only after a click or key press and prints an
-	# error otherwise, so a Web build waits for the mouse_capture action below.
-	if not OS.has_feature("web"):
+	# error otherwise, so a Web build waits for the mouse_capture action below, and the free cursor turns no view
+	# until then.
+	if OS.has_feature("web"):
+		mouse_captured = false
+	else:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 	weapon = weapons[weapon_index] # Weapon must never be nil

@@ -5,13 +5,18 @@ extends Node3D
 ## can with two, jumps a moment after walking off an edge, and pushes a crate; an action clip plays once and holds it in
 ## place, is found by its whole name too, and ends with stop_action(), a held one keeps it from jumping, a jump ends one
 ## that does not hold and a hard landing does not, one begun on jumped plays, and a looping clip plays through once,
-## after each of which it runs on with its run clip; it walks up and down a flight of stairs without leaving the ground
-## or its walk clip, and stops before a step higher than it may take; a humanoid's feet stand on the slope under them,
-## which they miss without foot placement, and stay as animated on level ground, and it has no face without the add-on
-## that gives one; a character whose body is turned faces where it goes in the world, and where face_toward() and
-## teleport() say; a character the player controls adds its actions, moves on a held key relative to its orbit camera,
-## and gets a capsule; and the camera stays in front of a wall, comes along at once when the character teleports, and
-## moves with the character in the physics steps that move it and in every frame in which a Tween carries it.
+## after each of which it runs on with its run clip; teleported out of a fall onto the ground it reports no landing,
+## and a fall from where it is put lands at that fall's speed; it walks up and down a flight of stairs without leaving
+## the ground or its walk clip, and stops before a step higher than it may take; a humanoid's feet stand on the slope
+## under them, which they miss without foot placement, and stay as animated on level ground, and it has no face without
+## the add-on that gives one; a character whose body is turned faces where it goes in the world, and where face_toward()
+## and teleport() say; a clip that stands in for a missing gait plays at the pace of its own, and a model with no clip
+## for its gait moves without asking for one; on a lift that starts, rises, stops, and sinks, the model rides with the
+## body; a character the player controls, with actions renamed in part before and after it enters the tree, adds its
+## actions, moves on a held key relative to its orbit camera, and gets a capsule, and its camera takes the mouse
+## pointer on a click and not on a turn of the wheel; and the camera stays in front of a wall, comes along at once when
+## the character teleports, and moves with the character in the physics steps that move it and in every frame in
+## which a Tween carries it.
 
 const ID := "wasd-character"
 
@@ -164,6 +169,110 @@ func _turned() -> bool:
 		_fail("a turned character teleported facing +Z faces %s" % [front.call()])
 		return false
 	turned.queue_free()
+	return true
+
+
+## A respawn ends the fall it interrupts: put back on the ground in the middle of a fall, the character reports no
+## landing, and put 1.5 m over the ground, it lands at the speed of a fall of 1.5 m.
+func _respawn(hero: WasdCharacter3D) -> bool:
+	var landings: Array[float] = []
+	var count := func(speed: float) -> void: landings.append(speed)
+	hero.landed.connect(count)
+	var falling := 0.0
+	for to: Vector3 in [Vector3(0, 0.05, 60), Vector3(0, 1.5, 60)]:
+		hero.teleport(Vector3(0, 60, 60))
+		await _seconds(1.5)
+		falling = maxf(falling, -hero.velocity.y)
+		hero.teleport(to)
+		await _seconds(1.0)
+	hero.landed.disconnect(count)
+	var expected := sqrt(2.0 * 9.8 * hero.fall_gravity * 1.5)
+	if falling < 15.0 or landings.size() != 1 or absf(landings[0] - expected) > 0.5:
+		_fail("teleported to the ground and to 1.5 m over it from falls of %.1f m/s, the character landed at %s m/s, not once at %.1f" % [falling, landings, expected])
+		return false
+	return true
+
+
+## A clip that stands in for a missing gait plays at the pace of its own: with only a walk, a run plays it at 1.8 times,
+## faster than a walk does, and with only a jog, a walk plays it at 0.6 times.
+func _stand_ins() -> bool:
+	for setup: Array in [[["Idle", "Walk"], "run", "moves/Walk", 1.8], [["Idle", "Jog_Fwd"], "walk", "moves/Jog_Fwd", 0.6]]:
+		var stand_in := WasdCharacter3D.new()
+		stand_in.controlled = false
+		stand_in.position = Vector3(-40, 0.05, 80)
+		stand_in.add_child(_model(setup[0]))
+		add_child(stand_in)
+		await _seconds(0.2)
+		stand_in.wish_direction = Vector3(1, 0, 0)
+		stand_in.wish_gait = setup[1]
+		await _seconds(1.0)
+		var clip := stand_in.animation_player.current_animation
+		var pace := stand_in.animation_player.speed_scale
+		stand_in.queue_free()
+		if clip != setup[2] or absf(pace - float(setup[3])) > 0.01:
+			_fail("with the clips %s, at a %s the character plays %s at %.2f times, not %s at %.2f" % [setup[0], setup[1], clip, pace, setup[2], setup[3]])
+			return false
+	return true
+
+
+## A model with no clip for its gait moves on with the clip it plays, and asks for no clip it lacks, which would print
+## an error in every physics step: one with only an Idle, and one with an Idle and a run clip that the game names after
+## add_child, which plays at a run.
+func _missing_gaits() -> bool:
+	for setup: Array in [[["Idle"], {}], [["Idle", "Running_A"], {"run": "moves/Running_A"}]]:
+		var bare := WasdCharacter3D.new()
+		bare.controlled = false
+		bare.position = Vector3(-60, 0.05, 80)
+		bare.add_child(_model(setup[0]))
+		add_child(bare)
+		await _seconds(0.2)
+		bare.clips.merge(setup[1], true)
+		bare.wish_direction = Vector3(1, 0, 0)
+		var speeds: Array[float] = []
+		var played: Array[String] = []
+		for gait: String in ["walk", "run"]:
+			bare.wish_gait = gait
+			await _seconds(0.6)
+			speeds.append(bare.get_ground_speed())
+			played.append(bare.animation_player.current_animation)
+		var wanted: Array[String] = ["moves/Idle", (setup[1] as Dictionary).get("run", "moves/Idle")]
+		var moved := absf(speeds[0] - bare.walk_speed) < 0.05 and absf(speeds[1] - bare.run_speed) < 0.05
+		bare.queue_free()
+		if not moved or played != wanted:
+			_fail("with the clips %s and %s named after add_child, a walk and a run went at %s m/s with %s, not %s" % [setup[0], setup[1], speeds, played, wanted])
+			return false
+	return true
+
+
+## A lift that starts, rises at 3 m/s, stops, sinks at 2 m/s, and stops again with a character on it: the model rides
+## with the body, since the floor's motion is no step, and the body stays on the lift.
+func _lift() -> bool:
+	var lift := AnimatableBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(4, 0.4, 4)
+	shape.shape = box
+	lift.add_child(shape)
+	lift.position = Vector3(40, -0.2, -40)
+	add_child(lift)
+	var rider := WasdCharacter3D.new()
+	rider.controlled = false
+	rider.position = Vector3(40, 0.05, -40)
+	rider.add_child(_model(["Idle", "Walk"]))
+	add_child(rider)
+	await _seconds(0.3)
+	var strayed := 0.0
+	for rate: float in [3.0, 0.0, -2.0, 0.0]:
+		for _i: int in 30:
+			await get_tree().physics_frame
+			lift.position.y += rate / Engine.physics_ticks_per_second
+			strayed = maxf(strayed, absf(rider.model.position.y))
+	var over := rider.global_position.y - (lift.global_position.y + 0.2)
+	rider.queue_free()
+	lift.queue_free()
+	if strayed > 0.01 or absf(over) > 0.06:
+		_fail("on a moving lift the model strayed %.2f m from the body, which ended %.2f m over the lift" % [strayed, over])
+		return false
 	return true
 
 
@@ -464,6 +573,8 @@ func _run() -> void:
 		return _fail("a jump just after walking off an edge was refused")
 	hero.wish_direction = Vector3.ZERO
 	await _seconds(2.0)
+	if not await _respawn(hero):
+		return
 
 	if not await _stairs():
 		return
@@ -471,17 +582,44 @@ func _run() -> void:
 		return
 	if not await _turned():
 		return
+	if not await _stand_ins():
+		return
+	if not await _missing_gaits():
+		return
+	if not await _lift():
+		return
 
-	# A character the player controls: it adds its actions and its capsule, and a held key moves it away from its
-	# camera.
+	# A character the player controls, with its walk renamed before it enters the tree and its sprint after: it adds its
+	# actions and its capsule, keeps the usual actions of the other roles, and a held key moves it away from its camera.
 	var played := WasdCharacter3D.new()
 	played.position = Vector3(0, 0.05, -30)
+	played.actions = {"walk": "stroll"}
 	played.add_child(_model(["Idle", "Walk"]))
 	add_child(played)
+	played.actions = {"sprint": "dash"}
 	await _seconds(0.3)
-	for action: String in ["move_left", "move_right", "move_forward", "move_back", "jump", "sprint", "walk"]:
+	for action: String in ["move_left", "move_right", "move_forward", "move_back", "jump", "sprint", "stroll", "dash"]:
 		if not InputMap.has_action(action):
 			return _fail("the action %s was not added" % [action])
+	if played.actions.get("left", "") != "move_left" or played.actions.get("walk", "") != "stroll" or played.actions.get("sprint", "") != "dash":
+		return _fail("actions renamed in part read %s" % [played.actions])
+	# A turn of the mouse wheel leaves the mouse pointer as it is; a click takes it.
+	var modes: Array[int] = []
+	for button: MouseButton in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_LEFT]:
+		var press := InputEventMouseButton.new()
+		press.button_index = button
+		press.position = Vector2(320, 180)
+		press.pressed = true
+		Input.parse_input_event(press)
+		var release := press.duplicate() as InputEventMouseButton
+		release.pressed = false
+		Input.parse_input_event(release)
+		for _i: int in 2:
+			await get_tree().process_frame
+		modes.append(Input.mouse_mode)
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if modes != [Input.MOUSE_MODE_VISIBLE, Input.MOUSE_MODE_VISIBLE, Input.MOUSE_MODE_CAPTURED]:
+		return _fail("after a wheel step up, one down, and a click, the mouse modes were %s" % [modes])
 	var has_capsule := false
 	for child: Node in played.get_children():
 		if child is CollisionShape3D and (child as CollisionShape3D).shape is CapsuleShape3D:

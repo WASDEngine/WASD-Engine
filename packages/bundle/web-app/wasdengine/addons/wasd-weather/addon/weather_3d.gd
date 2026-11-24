@@ -38,6 +38,11 @@ const SNOW_CARDS := 2000
 const RAIN_BOX := Vector3(20, 14, 20)
 const SNOW_BOX := Vector3(18, 10, 18)
 const SPLASH_CARDS := 600
+## The cover's render priority: below WASD Decals' marks (-1) and everything else, which draws at 0.
+const COVER_PRIORITY := -2
+## Covered meshes looked at each frame while things are wet or snowy, for one whose own overlay the game has taken
+## off again: that one takes the cover back.
+const RECHECKS := 32
 
 ## The weather by name: one of WEATHERS. Setting it changes the weather over `change_seconds`.
 @export var weather := "clear": set = set_weather
@@ -81,6 +86,8 @@ var _snow_way := Vector3.ZERO
 var _cover_roots: Array[WeakRef] = []
 var _covered: Array[WeakRef] = []
 var _covering := false
+## The covered mesh looked at last for an overlay the game has taken off.
+var _recheck := 0
 ## Plants that snow buries, each as [the node, its height without snow]: LiteTerrain's lifted grass, which an
 ## overlay cannot follow, and SimpleGrassTextured's tufts.
 var _buried: Array[Array] = []
@@ -143,6 +150,9 @@ func _init() -> void:
 	uneven.generate_mipmaps = true
 	_cover_material.shader = COVER_SHADER
 	_cover_material.set_shader_parameter(&"noise", uneven)
+	# The cover lies on its mesh, so it is drawn before every other see-through thing: whatever stands before the mesh,
+	# such as a fire, is drawn over it, and WASD Decals' marks (-1) show on the snow.
+	_cover_material.render_priority = COVER_PRIORITY
 	# The flash of lightning: a light that is always there at no energy, so that a strike changes nothing but its
 	# brightness.
 	_flash.shadow_enabled = false
@@ -349,6 +359,23 @@ func _process(delta: float) -> void:
 				_covered.remove_at(index)
 			else:
 				_set_cover(node as GeometryInstance3D, covering, fx)
+	elif _covering and not _covered.is_empty():
+		# A mesh whose own overlay the game has taken off since takes the cover again, a few meshes a frame, unless the
+		# rules leave it bare by now: it turned see-through, or it or a node over it joined the bare group. Such a mesh
+		# is let go.
+		var fx := _effects()
+		for _step: int in mini(RECHECKS, _covered.size()):
+			if _covered.is_empty():
+				break
+			_recheck = (_recheck + 1) % _covered.size()
+			var mesh := _covered[_recheck].get_ref() as GeometryInstance3D
+			if mesh == null or mesh.material_overlay != null:
+				continue
+			if _shows_through(mesh) or _bare_above(mesh):
+				_covered.remove_at(_recheck)
+				_recheck -= 1
+			else:
+				_set_cover(mesh, true, fx)
 	if absf(snow_cover - _buried_at) > 0.004 or (snow_cover == 0.0 and _buried_at != 0.0):
 		_buried_at = snow_cover
 		for index: int in range(_buried.size() - 1, -1, -1):
@@ -449,6 +476,16 @@ func _is_bare(node: Node) -> bool:
 	return false
 
 
+## Whether a node or one over it stays bare (see _is_bare()).
+func _bare_above(node: Node) -> bool:
+	var at := node
+	while at != null:
+		if _is_bare(at):
+			return true
+		at = at.get_parent()
+	return false
+
+
 func _cover_under(node: Node) -> void:
 	if _is_bare(node):
 		return
@@ -477,12 +514,24 @@ func _bury(plant: Array, snow: float) -> void:
 
 ## Whether the scene shows through a surface of a mesh, where the cover would lie over its holes and clear parts: a
 ## BaseMaterial3D with transparency, or a shader that writes ALPHA, as WASD Materials' cut-out leaves, glass, hair, and
-## lashes do.
+## lashes do. A CSG shape is drawn with its own material and those of the CSG shapes combined into it.
 static func _shows_through(mesh: GeometryInstance3D) -> bool:
 	var materials: Array[Material] = [mesh.material_override]
 	if mesh.material_override == null and mesh is MeshInstance3D and (mesh as MeshInstance3D).mesh != null:
 		for surface: int in (mesh as MeshInstance3D).mesh.get_surface_count():
 			materials.append((mesh as MeshInstance3D).get_active_material(surface))
+	elif mesh.material_override == null and mesh is CSGShape3D:
+		var shapes: Array[Node] = [mesh]
+		while not shapes.is_empty():
+			var shape: Node = shapes.pop_back()
+			if not (shape is CSGShape3D):
+				continue
+			materials.append(shape.get(&"material") as Material)
+			var shape_mesh: Mesh = shape.get(&"mesh") as Mesh
+			if shape.get(&"material") == null and shape_mesh != null:
+				for surface: int in shape_mesh.get_surface_count():
+					materials.append(shape_mesh.surface_get_material(surface))
+			shapes.append_array(shape.get_children())
 	for material: Material in materials:
 		if material is BaseMaterial3D and (material as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
 			return true
@@ -541,9 +590,16 @@ func _on_node_added(node: Node) -> void:
 			return
 		for kept: WeakRef in _cover_roots:
 			if kept.get_ref() == at:
-				_cover_node.call_deferred(node)
+				_cover_later.call_deferred(node.get_instance_id())
 				return
 		at = at.get_parent()
+
+
+## Covers a mesh that came into the tree once it has had its turn to set itself up, unless it is gone by then.
+func _cover_later(id: int) -> void:
+	var node := instance_from_id(id) as Node
+	if node != null:
+		_cover_node(node)
 
 
 ## Cards for a shader to place: each with four random numbers.

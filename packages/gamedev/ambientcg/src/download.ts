@@ -3,8 +3,9 @@
  * ZIP file, so a download fetches the archive into a temporary folder while its size and, where the server names one,
  * its SHA-1 digest are checked, reads the archive's directory, and unpacks only the pictures the call takes, each
  * checked against the directory's CRC-32. The pictures are written whole or not at all, as the kit's
- * `writeAssetFiles` does it. The plugin remembers the directory of each archive it read, so a later download of the
- * same archive whose pictures are all in place fetches nothing.
+ * `writeAssetFiles` does it, in folders that the plugin's held folders let the last failed download remove. The plugin
+ * remembers the directory of each archive it read, so a later download of the same archive whose pictures are all in
+ * place fetches nothing.
  * @module @deepseek-ai/dsh-ambientcg/src/download
  */
 import { createReadStream, createWriteStream } from 'node:fs'
@@ -16,6 +17,7 @@ import { pipeline } from 'node:stream/promises'
 import { crc32 } from 'node:zlib'
 import { open as openZip, type Entry, type ZipFile } from 'yauzl'
 import { kilobytes, saveBody, writeAssetFiles, type WrittenAssetFile } from '@deepseek-ai/dsh-game-mcp/kit'
+import { AMBIENTCG_ERRORS, AmbientCgError, isStaleListing } from './errors.ts'
 import { archivePictures, selectPictures } from './files.ts'
 import type { AmbientCgArchive, AmbientCgArchiveListing, AmbientCgAsset, AmbientCgPicture } from './types.ts'
 
@@ -25,9 +27,15 @@ const MAX_ARCHIVE_FILES = 2000
 /** The headers in which ambientCG's file host names a file's SHA-1 digest. */
 const SHA1_HEADERS = ['x-bz-content-sha1', 'x-bz-info-large_file_sha1'] as const
 
-/** An archive that differs from what the asset's listing or the remembered directory says, as after an update of the asset. */
-export class AmbientCgArchiveChanged extends Error {
-  override name = 'AmbientCgArchiveChanged'
+/**
+ * Whether a failure is the file system's, which names its error code and the call that failed, unlike the errors of a
+ * damaged archive's data.
+ * @param error - the failure.
+ * @returns true for an error of a file system call, such as `ENOSPC` from `write`.
+ */
+function isDiskFailure(error: unknown): error is NodeJS.ErrnoException {
+  const { code, syscall } = error instanceof Error ? error as NodeJS.ErrnoException : {}
+  return typeof code === 'string' && typeof syscall === 'string'
 }
 
 /** How one download reaches its archive. */
@@ -47,6 +55,8 @@ export interface DownloadOptions {
   readonly open: (url: string, signal: AbortSignal) => Promise<Response>
   /** The directories of the archives read so far, by asset id and archive name; the download adds its own. */
   readonly known: Map<string, AmbientCgArchiveListing>
+  /** The folders that the plugin's running downloads created, each with how many of them hold it. */
+  readonly folders: Map<string, number>
   /** Cancellation of the whole download. */
   readonly signal: AbortSignal
 }
@@ -57,7 +67,10 @@ export interface DownloadedPictures {
   readonly files: WrittenAssetFile[]
   /** The map of each picture, in the same order. */
   readonly maps: string[]
-  /** Size in bytes of the archive this call fetched; 0 when every picture was already in place. */
+  /**
+   * Size in bytes of the archive this call fetched; 0 when it fetched none, as when every picture was in place and the
+   * plugin still knew the archive's directory from an earlier download.
+   */
   readonly fetchedBytes: number
 }
 
@@ -68,8 +81,11 @@ interface OpenedArchive {
   readonly listing: AmbientCgArchiveListing
 }
 
-function changed(asset: AmbientCgAsset): AmbientCgArchiveChanged {
-  return new AmbientCgArchiveChanged(`ambientCG's files of ${asset.title} differ from its listing, as after an update of the asset; nothing was saved. Call again to read the new listing.`)
+function changed(asset: AmbientCgAsset): AmbientCgError {
+  return new AmbientCgError(
+    `ambientCG's files of ${asset.title} differ from its listing, as after an update of the asset; nothing was saved. Call again to read the new listing.`,
+    'AMBIENTCG_STALE_LISTING',
+  )
 }
 
 /** The SHA-1 digest the file host names for a response's body, in lowercase; undefined when it names none. */
@@ -83,15 +99,18 @@ function expectedSha1(headers: Headers): string | undefined {
 
 /**
  * Download the archive into a new file and check it.
- * @throws AmbientCgArchiveChanged when its size differs from the listing's.
- * @throws Error when the request fails or the digest differs from the file host's.
+ * @throws AmbientCgError `AMBIENTCG_STALE_LISTING` when its size differs from the listing's,
+ * `AMBIENTCG_DOWNLOAD_CORRUPT` when the digest differs from the file host's, and `AMBIENTCG_REQUEST_FAILED` when the
+ * request fails or breaks off; the file system's error as it is when the file cannot be written.
  */
 async function fetchArchive(path: string, asset: AmbientCgAsset, archive: AmbientCgArchive, options: DownloadOptions): Promise<void> {
   const response = await options.open(archive.url, options.signal)
   const { bytes, digest } = await saveBody(response, path, 'sha1', archive.size, () => changed(asset), options.signal)
   if (bytes !== archive.size) throw changed(asset)
   const expected = expectedSha1(response.headers)
-  if (expected !== undefined && digest !== expected) throw new Error(`The archive of ${asset.title} arrived damaged: its SHA-1 digest differs from ambientCG's; nothing was saved.`)
+  if (expected !== undefined && digest !== expected) {
+    throw new AmbientCgError(`The archive of ${asset.title} arrived damaged: its SHA-1 digest differs from ambientCG's; nothing was saved.`, 'AMBIENTCG_DOWNLOAD_CORRUPT')
+  }
 }
 
 /** Read every entry of an archive's directory. */
@@ -114,7 +133,8 @@ function readDirectory(zipfile: ZipFile): Promise<Entry[]> {
 
 /**
  * Open a downloaded archive and read its directory.
- * @throws Error when the file is not a readable ZIP archive.
+ * @throws AmbientCgError `AMBIENTCG_DOWNLOAD_CORRUPT` when the file is not a readable ZIP archive; the file system's
+ * error as it is when reading the file fails.
  */
 async function readArchive(path: string, asset: AmbientCgAsset, archive: AmbientCgArchive): Promise<OpenedArchive> {
   let zipfile: ZipFile | undefined
@@ -131,7 +151,9 @@ async function readArchive(path: string, asset: AmbientCgAsset, archive: Ambient
     return { zipfile, entries, listing: { size: archive.size, pictures: archivePictures(asset, files) } }
   } catch (error) {
     zipfile?.close()
-    throw new Error(`The archive of ${asset.title} is not a readable ZIP file: ${error instanceof Error ? error.message : String(error)}; nothing was saved.`, { cause: error })
+    if (isDiskFailure(error)) throw error
+    const why = error instanceof Error ? error.message : String(error)
+    throw new AmbientCgError(`The archive of ${asset.title} is not a readable ZIP file: ${why}; nothing was saved.`, 'AMBIENTCG_DOWNLOAD_CORRUPT', { cause: error })
   }
 }
 
@@ -143,24 +165,32 @@ async function crcOf(path: string, signal: AbortSignal): Promise<number> {
 
 /**
  * Unpack one picture into a new file and check it.
- * @throws Error when its contents differ from the archive's directory.
+ * @throws AmbientCgError `AMBIENTCG_DOWNLOAD_CORRUPT` when its data cannot be read or inflated, or its contents differ
+ * from the archive's directory; the file system's error, and the cancellation, as they are.
  */
 async function unpack(zipfile: ZipFile, entry: Entry, picture: AmbientCgPicture, temporary: string, signal: AbortSignal): Promise<void> {
-  const stream = await new Promise<Readable>((resolve, reject) => {
-    zipfile.openReadStream(entry, (error, opened) => {
-      if (error === null) resolve(opened)
-      else reject(error)
-    })
-  })
   let checksum = 0
-  async function* checked(): AsyncGenerator<Buffer> {
-    for await (const chunk of stream) {
-      checksum = crc32(chunk as Buffer, checksum)
-      yield chunk as Buffer
+  try {
+    const stream = await new Promise<Readable>((resolve, reject) => {
+      zipfile.openReadStream(entry, (error, opened) => {
+        if (error === null) resolve(opened)
+        else reject(error)
+      })
+    })
+    async function* checked(): AsyncGenerator<Buffer> {
+      for await (const chunk of stream) {
+        checksum = crc32(chunk as Buffer, checksum)
+        yield chunk as Buffer
+      }
     }
+    await pipeline(checked(), createWriteStream(temporary, { flags: 'wx' }), { signal })
+  } catch (error) {
+    // The kit turns the file system's error into the plugin's disk error.
+    if (signal.aborted || isDiskFailure(error)) throw error
+    const why = error instanceof Error ? error.message : String(error)
+    throw new AmbientCgError(`${picture.name} arrived damaged: ${why}; nothing was saved.`, 'AMBIENTCG_DOWNLOAD_CORRUPT', { cause: error })
   }
-  await pipeline(checked(), createWriteStream(temporary, { flags: 'wx' }), { signal })
-  if (checksum !== picture.crc32) throw new Error(`${picture.name} arrived damaged: its checksum differs from the archive's; nothing was saved.`)
+  if (checksum !== picture.crc32) throw new AmbientCgError(`${picture.name} arrived damaged: its checksum differs from the archive's; nothing was saved.`, 'AMBIENTCG_DOWNLOAD_CORRUPT')
 }
 
 /**
@@ -168,11 +198,15 @@ async function unpack(zipfile: ZipFile, entry: Entry, picture: AmbientCgPicture,
  * @param asset - the asset.
  * @param archive - the archive of the resolution and picture format to save.
  * @param directory - absolute download folder.
- * @param options - the maps to take, whether to replace changed pictures, how to fetch the archive, and cancellation.
+ * @param options - the maps to take, whether to replace changed pictures, how to fetch the archive, the plugin's held
+ * folders, and cancellation.
  * @returns the pictures and what happened to each.
- * @throws AmbientCgArchiveChanged when the archive differs from the asset's listing.
- * @throws Error when a picture conflicts, the request fails, the archive or a picture arrives damaged, or writing
- * fails; no picture is written then, except when moving the checked pictures into place fails partway.
+ * @throws AmbientCgError: `AMBIENTCG_STALE_LISTING` when the archive differs from the asset's listing,
+ * `AMBIENTCG_FILES_NOT_FOUND` when it lacks a map the call names, `AMBIENTCG_TOO_LARGE` when the pictures are too
+ * large unpacked, `AMBIENTCG_ALREADY_EXISTS` when a picture conflicts, `AMBIENTCG_DOWNLOAD_CORRUPT` when the archive or
+ * a picture arrives damaged, `AMBIENTCG_DISK_FAILED` when the disk fails, and `AMBIENTCG_REQUEST_FAILED` when the
+ * request fails; the cancellation as it is. No picture is written then, except when moving the checked pictures into
+ * place fails partway, which the disk error says.
  */
 export async function writeDownload(
   asset: AmbientCgAsset, archive: AmbientCgArchive, directory: string, options: DownloadOptions,
@@ -182,12 +216,21 @@ export async function writeDownload(
   let opened: Promise<OpenedArchive> | undefined
   // The archive is fetched once, by whichever step first needs it, and not at all when no step does.
   const fetched = (): Promise<OpenedArchive> => opened ??= (async () => {
-    folder = await mkdtemp(join(tmpdir(), 'dsh-ambientcg-'))
-    const path = join(folder, 'archive.zip')
-    await fetchArchive(path, asset, archive, options)
-    const read = await readArchive(path, asset, archive)
-    options.known.set(key, read.listing)
-    return read
+    try {
+      folder = await mkdtemp(join(tmpdir(), 'dsh-ambientcg-'))
+      const path = join(folder, 'archive.zip')
+      await fetchArchive(path, asset, archive, options)
+      const read = await readArchive(path, asset, archive)
+      options.known.set(key, read.listing)
+      return read
+    } catch (error) {
+      if (options.signal.aborted || !isDiskFailure(error)) throw error
+      throw new AmbientCgError(
+        `The download failed on the disk while it fetched the archive of ${asset.title}: ${error.message}; nothing was saved. Check that the computer's temporary folder can be written and that the disk has room.`,
+        'AMBIENTCG_DISK_FAILED',
+        { cause: error },
+      )
+    }
   })()
   try {
     const remembered = options.known.get(key)
@@ -195,7 +238,10 @@ export async function writeDownload(
     const pictures = selectPictures(asset, listing.pictures, options.maps)
     const unpacked = pictures.reduce((total, picture) => total + picture.bytes, 0)
     if (unpacked > options.maxUnpackedBytes) {
-      throw new Error(`The maps of this download are ${kilobytes(unpacked)} unpacked, more than the ${kilobytes(options.maxUnpackedBytes)} that one download may be; choose a lower resolution or fewer maps.`)
+      throw new AmbientCgError(
+        `The maps of this download are ${kilobytes(unpacked)} unpacked, more than the ${kilobytes(options.maxUnpackedBytes)} that one download may be; choose a lower resolution or fewer maps.`,
+        'AMBIENTCG_TOO_LARGE',
+      )
     }
     const files = await writeAssetFiles(pictures.map(picture => ({
       path: picture.name,
@@ -207,11 +253,11 @@ export async function writeDownload(
         if (entry === undefined || entry.crc32 !== picture.crc32 || entry.uncompressedSize !== picture.bytes) throw changed(asset)
         await unpack(zipfile, entry, picture, temporary, signal)
       },
-    })), directory, options)
+    })), directory, { replace: options.replace, folders: options.folders, errors: AMBIENTCG_ERRORS, signal: options.signal })
     return { files, maps: pictures.map(picture => picture.map), fetchedBytes: opened === undefined ? 0 : archive.size }
   } catch (error) {
     // The next call reads the archive's directory again instead of trusting one that no longer fits.
-    if (error instanceof AmbientCgArchiveChanged) options.known.delete(key)
+    if (isStaleListing(error)) options.known.delete(key)
     throw error
   } finally {
     await opened?.then((read) => { read.zipfile.close() }, () => undefined)

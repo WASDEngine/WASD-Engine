@@ -3,7 +3,8 @@
  * the categories, preview images, and ZIP archives of five assets (the materials `Bricks097` and `Wood099`, the decal
  * `Leaking019C`, the atlas `LeafSet030`, and the HDRI `EveningSkyHDRI049B`), plus list entries of other kinds and one
  * broken entry that the plugin must skip. Each archive holds the files a real one holds: the map pictures, material
- * files for other programs, and a preview. It records each request with its User-Agent.
+ * files for other programs, and a preview. It records each request with its User-Agent, and can fail the categories,
+ * offer an asset's preview only as a PNG, and break the connection partway through an archive.
  */
 import { createHash } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -28,6 +29,12 @@ export interface FakeAmbientCg {
   readonly requests: FakeRequest[]
   /** Status of the asset list; 200 answers. */
   listStatus: number
+  /** Status of the categories; 200 answers, and 0 sends no answer until the client closes the connection. */
+  categoriesStatus: number
+  /** Ids of the assets whose listing offers their preview only as a 512-pixel PNG, which the fake sends as `image/png`. */
+  readonly pngPreviews: Set<string>
+  /** Archive file names whose download breaks off: the fake sends half of the archive, then closes the connection. */
+  readonly cut: Set<string>
   /** Content type of preview images. */
   previewType: string
   /** Archive file names, such as `Bricks097_1K-JPG.zip`, that arrive with one byte of their first picture changed. */
@@ -176,7 +183,9 @@ function listed(fake: FakeAmbientCg, asset: FakeAsset): Record<string, unknown> 
         size: archiveBytes(`${asset.id}_${attributes}.zip`).byteLength + fake.listedSizeOffset,
       })),
     ],
-    thumbnails: { '64-PNG': `${fake.origin}/thumbs/64/${asset.id}.png`, '512-JPG-FFFFFF': `${fake.origin}/thumbs/512/${asset.id}.jpg` },
+    thumbnails: fake.pngPreviews.has(asset.id)
+      ? { '64-PNG': `${fake.origin}/thumbs/64/${asset.id}.png`, '512-PNG': `${fake.origin}/thumbs/512/${asset.id}.png` }
+      : { '64-PNG': `${fake.origin}/thumbs/64/${asset.id}.png`, '512-JPG-FFFFFF': `${fake.origin}/thumbs/512/${asset.id}.jpg` },
   }
 }
 
@@ -208,6 +217,8 @@ interface Reply {
   readonly body: Buffer | string
   readonly type: string
   readonly headers?: Readonly<Record<string, string>>
+  /** Send half of the body, then close the connection. */
+  readonly cut?: boolean
 }
 
 function plain(status: number, body: string, headers: Readonly<Record<string, string>> = {}): Reply {
@@ -238,15 +249,15 @@ function route(fake: FakeAmbientCg, url: URL): Reply {
     if (fake.listStatus === 429) return plain(429, 'slow down', { 'retry-after': '12' })
     return fake.listStatus === 200 ? json(assetList(fake, url)) : plain(fake.listStatus, 'unavailable')
   }
-  if (url.pathname === '/api/v3/categories') return json(CATEGORIES)
+  if (url.pathname === '/api/v3/categories') return fake.categoriesStatus === 200 ? json(CATEGORIES) : plain(fake.categoriesStatus, 'unavailable')
   if (url.pathname === '/get') return { status: 302, body: '', type: 'text/plain', headers: { location: `/file/download/${url.searchParams.get('file') ?? ''}` } }
-  if (url.pathname.startsWith('/thumbs/')) return { status: 200, body: PREVIEW, type: fake.previewType }
+  if (url.pathname.startsWith('/thumbs/')) return { status: 200, body: PREVIEW, type: url.pathname.endsWith('.png') ? 'image/png' : fake.previewType }
   if (url.pathname.startsWith('/file/download/')) {
     const name = decodeURIComponent(url.pathname.slice('/file/download/'.length))
     const archive = sentArchive(fake, name)
     if (archive === undefined) return plain(404, 'not found')
     const digest = createHash('sha1').update(archiveBytes(name)).digest('hex')
-    return { status: 200, body: archive, type: 'application/zip', headers: fake.digests ? { 'x-bz-content-sha1': digest } : {} }
+    return { status: 200, body: archive, type: 'application/zip', headers: fake.digests ? { 'x-bz-content-sha1': digest } : {}, cut: fake.cut.has(name) }
   }
   return plain(404, 'not found')
 }
@@ -262,6 +273,9 @@ export async function startFakeAmbientCg(): Promise<FakeAmbientCg> {
     origin: '',
     requests: [],
     listStatus: 200,
+    categoriesStatus: 200,
+    pngPreviews: new Set(),
+    cut: new Set(),
     previewType: 'image/jpeg',
     damaged: new Set(),
     digests: true,
@@ -276,7 +290,20 @@ export async function startFakeAmbientCg(): Promise<FakeAmbientCg> {
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
     const url = new URL(request.url ?? '/', origin)
     fake.requests.push({ url: `${url.pathname}${url.search}`, userAgent: request.headers['user-agent'] })
+    if (url.pathname === '/api/v3/categories' && fake.categoriesStatus === 0) {
+      // No answer: the client's cancellation closes the connection, or the fake gives up after a while.
+      const gaveUp = setTimeout(() => { response.destroy() }, 10_000)
+      response.once('close', () => { clearTimeout(gaveUp) })
+      return
+    }
     const reply = route(fake, url)
+    if (reply.cut === true) {
+      const body = Buffer.from(reply.body)
+      response.writeHead(reply.status, { 'content-type': reply.type, 'content-length': String(body.byteLength), ...reply.headers })
+      response.write(body.subarray(0, Math.floor(body.byteLength / 2)))
+      setTimeout(() => { response.socket?.destroy() }, 20)
+      return
+    }
     response.writeHead(reply.status, { 'content-type': reply.type, ...reply.headers })
     response.end(reply.body)
   })

@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-WASD Multiplayer 是把游戏接入 WASD Engine 联机功能的 Godot 4 插件：为玩家提供 WASD 登录、玩家主机大厅和 WASD 专用服务器。WASD Engine 的多人游戏设置会把此文件夹复制到游戏的 `res://addons/wasd_multiplayer/`，注册 `WasdMultiplayer` autoload（自动加载），并写入 `res://wasd_multiplayer.cfg`。WASD Engine 发布游戏时会用自带的插件替换较旧的副本，除非游戏改动过插件的脚本；设置和发布都不会覆盖游戏改动过的示例文件或 Markdown 文件，也不会经由此文件夹中的链接写入，因此可以随意改写 `examples/`，其余文件请保持原样。设置会替换插件自身的文件，无论它们是否被改动过，但会先把游戏改动过的文件保留到 `.wasdengine/backups/wasd_multiplayer/<time>/` 中。插件只使用 GDScript，因此 Web 版本可以照常运行；其文件采用 CC0-1.0 许可，可以随任何游戏一起分发。
+WASD Multiplayer 是把游戏接入 WASD Engine 联机功能的 Godot 4 插件：为玩家提供 WASD 登录、玩家主机大厅和 WASD 专用服务器。WASD Engine 的多人游戏设置会把此文件夹复制到游戏的 `res://addons/wasd_multiplayer/`，注册 `WasdMultiplayer` autoload（自动加载），并写入 `res://wasd_multiplayer.cfg`。WASD Engine 发布游戏时会用自带的插件替换较旧的副本，除非游戏改动过插件的脚本；设置和发布都不会覆盖游戏改动过的示例文件或 Markdown 文件，也不会经由此文件夹中的链接写入，因此可以随意改写 `examples/`，其余文件请保持原样。设置会替换插件自身的文件，无论它们是否被改动过，但会先把游戏改动过的文件保留到 `.wasdengine/backups/wasd_multiplayer/<time>/` 中，移到那里的链接仍指向游戏的文件。当 `addons/` 或此文件夹是指向项目之外的链接（例如指向多个项目共用的副本）时，设置会拒绝执行，发布也会让该副本保持原样。插件只使用 GDScript，因此 Web 版本可以照常运行；其文件采用 CC0-1.0 许可，可以随任何游戏一起分发。
 
 ## 模式
 
@@ -42,7 +42,7 @@ func _ready() -> void:
 
 | 成员 | 作用 |
 |---|---|
-| `sign_in()` | 让玩家登录。在 WASD 游戏页面上（网站任一主机名下）由页面立即应答，游戏在那里从不打开登录窗口；在其他地方会打开 WASD 登录窗口；由 WASD Engine 启动的桌面版本则用启动时获得的令牌登录。登录随后在游戏运行期间一直有效，最长一周。 |
+| `sign_in()` | 让玩家登录。在 WASD 游戏页面上（网站任一主机名下）由页面立即应答，游戏在那里从不打开登录窗口；在 WASD 网站的其他地方（例如游戏在该网站上的版本在单独的标签页中运行时）会打开 WASD 登录窗口；由 WASD Engine 启动的桌面版本则用启动时获得的令牌登录。托管在其他任何地方的 Web 版本副本无法让玩家登录，会以 `sign_in_unavailable` 失败。登录随后在游戏运行期间一直有效，最长一周。 |
 | `host_lobby(options)` | 主持大厅；`options` 接受 `name`、`public`、`max_players`（2 到 16）和 `data`。结果包含 `lobby` 和 `code`。 |
 | `join_lobby(code)` | 按代码加入大厅，连接到主机后返回。 |
 | `list_lobbies()` | 以 `lobbies` 列出本版本中仍有空位的公开大厅。 |
@@ -56,7 +56,7 @@ func _ready() -> void:
 | `is_server()`, `is_signed_in()`, `player()`, `role()`, `lobby()`, `players()`, `player_info(peer_id)` | 读取当前状态。 |
 | `stats()` | 以字节和包计的流量、已连接的 peer 数，以及每帧耗时。 |
 
-`host_lobby()`、`join_lobby()` 和 `join_server()` 在需要时会先像 `sign_in()` 一样让玩家登录，因此请在按钮按下时调用它们；`list_lobbies()` 和 `list_servers()` 从不打开登录窗口，而是以 `signed_out` 失败。
+`host_lobby()`、`join_lobby()` 和 `join_server()` 在需要时会先像 `sign_in()` 一样让玩家登录，因此请在按钮按下时调用它们；`list_lobbies()` 和 `list_servers()` 从不打开登录窗口，而是以 `signed_out` 失败；在 `sign_in()` 以 `sign_in_unavailable` 失败的地方，它们也以 `sign_in_unavailable` 失败。
 
 信号：`signed_in(player)`、`sign_in_failed(reason)`、`lobby_joined(lobby)`、`lobby_updated(lobby)`、`lobby_closed(reason)`、`player_joined(peer_id, player)`、`player_left(peer_id)`、`connected()`、`connection_failed(reason)`、`server_warning(seconds, reason, message)`、`server_waking()` 和 `server_stopping()`。专用服务器会在 WASD 停止它之前收到 `server_stopping()`，没有玩家而进入休眠时也会收到；请在该处理函数中保存世界。需要等待的保存（例如在线程中写入的保存）先调用 `delay_stop()`，完成后调用 `stop_ready()`；所有这样的保存都完成后，或 15 秒后，服务器退出。`server_waking()` 告诉正在加入的玩家的游戏服务器正在启动，以便游戏向玩家说明。`lobby_closed` 说明大厅结束的原因：`host_left`、`closed`、`replaced`、`kicked`（主机移出了这名玩家）、`dropped`（主机未能及时连上这名玩家；可以再次加入）、`left` 或 `signal_lost`。
 
@@ -85,6 +85,7 @@ WASD 工具和 WASD 服务器会设置环境变量，它们优先于该文件：
 
 ## 已知限制
 
+- 联机游玩只能在 WASD Engine 网站和 WASD Engine 的游戏库中进行。托管在其他地方的 Web 版本副本（例如上传到其他游戏网站的 Web 导出 ZIP 文件）无法让玩家登录，因此其登录、大厅和服务器加入都会以 `sign_in_unavailable` 失败，并附带一条引导玩家前往 WASD Engine 网站的消息。
 - 原生桌面版本中的玩家主机模式需要 webrtc-native 扩展；桌面测试运行改用回环 WebSocket。
 - 流量统计只包含多人数据载荷，不含 WebSocket、TLS、DTLS 或 IP 开销。
 - 主机离开时，其大厅无法转交给其他玩家。

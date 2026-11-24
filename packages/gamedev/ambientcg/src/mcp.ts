@@ -6,6 +6,7 @@
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { GameMcpProvider } from '@deepseek-ai/dsh-game-mcp'
 import { connectedLibraryTools } from '@deepseek-ai/dsh-game-mcp/kit'
+import { AMBIENTCG_ERRORS } from './errors.ts'
 import { ambientCgToolDefinitions, type AmbientCgToolHost } from './tools.ts'
 
 /** How connected agents use the ambientCG tools. */
@@ -26,7 +27,9 @@ const DIRECTORY_PARAMETER = { type: 'string', description: 'Absolute path of the
  * @returns the provider.
  */
 export function ambientCgMcpProvider(host: AmbientCgToolHost): GameMcpProvider {
-  const tools = connectedLibraryTools<ImageAttachmentRef>(surface => ambientCgToolDefinitions(host, surface), { tool: 'ambientcg_download', directory: DIRECTORY_PARAMETER })
+  const tools = connectedLibraryTools<ImageAttachmentRef>(
+    surface => ambientCgToolDefinitions(host, surface), { tool: 'ambientcg_download', directory: DIRECTORY_PARAMETER, errors: AMBIENTCG_ERRORS },
+  )
   return {
     id: 'ambientcg',
     title: 'ambientCG',

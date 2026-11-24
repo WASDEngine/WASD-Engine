@@ -317,6 +317,20 @@ describe('wasdToolDefinitions', () => {
     expect(stub.calls).toEqual([['export', '/work/game', 'zip']])
     expect(value).toMatchObject({ zip: { file: '/work/game/.wasdengine/web-zip/Neon Drift.zip', bytes: 1536 * 1024 } })
     expect(textOf(exporter.output.render({}, value))).toContain('Packed it into /work/game/.wasdengine/web-zip/Neon Drift.zip (1.5 MB), with index.html at its root: upload that file to a game site such as itch.io as an HTML5 game, or unpack it on any static web server.')
+    expect(textOf(exporter.output.render({}, value))).not.toContain('WASD Multiplayer')
+  })
+
+  it('says in the ZIP note that the copy of a game set up for WASD Multiplayer cannot play online', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-wasd-tools-'))
+    folders.push(dir)
+    await writeFile(join(dir, 'wasd_multiplayer.cfg'), '[wasd]\nmode="player_hosted"\n')
+    const exporter = wasdToolDefinitions({ ...host(), project: () => Promise.resolve(dir) }, LENGTHS).find(definition => definition.name === 'wasd_export_web')!
+    const zipped = await exporter.execute({ zip: true, check: false }, exec) as JsonValue
+    expect(zipped).toMatchObject({ zip: { multiplayer: true } })
+    expect(textOf(exporter.output.render({}, zipped))).toContain('or unpack it on any static web server.\nOnline play works only on WASD Engine\'s site and in its game library, so this game\'s WASD Multiplayer does not work in a copy from the ZIP file: there its sign-in, hosting, and joining tell players to play the game on WASD Engine\'s site.')
+    // An export without the ZIP file says nothing of it.
+    const plain = await exporter.execute({ check: false }, exec) as JsonValue
+    expect(textOf(exporter.output.render({}, plain))).not.toContain('WASD Multiplayer')
   })
 
   it('exports the nearest project, names the folder to serve, and reports the Web check', async () => {

@@ -45,6 +45,7 @@ if not hit.is_empty():
 - `unlit` (false): false lights the marks like the surface, so they darken in shadow; true keeps their own colors, for glowing embers and neon paint.
 - `lift` (0.012 m): how far marks float above the surface; raise it if marks flicker at a distance.
 - `count()`, `clear()`.
+- Marks lie on what they mark: they show on `wasd-weather`'s snow and wet ground and on `wasd-materials`' soft marks, such as road lines, and a puff of smoke or a fire before a mark is drawn over it. Blob shadows likewise.
 
 For a mark the list lacks, such as a paw, a tire track, or a rune, make a texture with `image_generate` (a sheet of four to nine marks on a transparent background reads less repetitive than one); keep it small, 256 to 512 pixels.
 
