@@ -154,8 +154,11 @@ func _run() -> void:
 	# The clock's first hour tells which light is up, then each change.
 	if changes != ["day", "night", "day"]:
 		return _fail("night_changed told %s" % [changes])
-	look.day_minutes = 0.01
-	await get_tree().create_timer(0.2).timeout
+	# At 0.8 game hours a second even a frame of several seconds, as on a software renderer, stays before dusk.
+	look.day_minutes = 0.5
+	var started := Time.get_ticks_msec()
+	while look.hour <= 9.5 and Time.get_ticks_msec() - started < 10_000:
+		await get_tree().process_frame
 	look.day_minutes = 0.0
 	if look.hour <= 9.5:
 		return _fail("the clock did not run: hour %f" % [look.hour])

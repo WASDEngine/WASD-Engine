@@ -2,7 +2,9 @@ extends Node3D
 ## TrailRenderer smoke test (render run on the Compatibility renderer): a trail follows a node that circles in front
 ## of the camera, draws its gradient's color, and fades out once it stops emitting; a LineRenderer draws the points
 ## that code gives it, and in its own space, where `alignment` does nothing, a line along -Z has width only when its
-## points face across it.
+## points face across it. A trail point lives on the wall clock, so the trail keeps its points for twelve frames at
+## least and the emitter moves for eight frames at least: a software renderer, such as the one that GitHub's macOS
+## runners give OpenGL, takes a large part of a second for a frame.
 
 const ID := "trail-renderer"
 
@@ -23,6 +25,15 @@ func _material() -> StandardMaterial3D:
 	material.vertex_color_use_as_albedo = true
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return material
+
+
+## The seconds that a frame takes here, measured over three frames.
+func _frame_seconds() -> float:
+	await get_tree().process_frame
+	var began := Time.get_ticks_usec()
+	for _i: int in 3:
+		await get_tree().process_frame
+	return float(Time.get_ticks_usec() - began) / 3_000_000.0
 
 
 ## The share of the frame's pixels whose color is close to `color`.
@@ -56,7 +67,7 @@ func _run() -> void:
 	var tip := Node3D.new()
 	add_child(tip)
 	var trail := TrailRenderer.new()
-	trail.lifetime = 0.6
+	trail.lifetime = maxf(0.6, 12.0 * await _frame_seconds())
 	trail.min_vertex_distance = 0.1
 	trail.alignment = LineRenderer.Alignment.View
 	trail.material = _material()
@@ -72,9 +83,11 @@ func _run() -> void:
 
 	var angle := 0.0
 	var started := Time.get_ticks_msec()
-	while Time.get_ticks_msec() - started < 700:
+	var moves := 0
+	while Time.get_ticks_msec() - started < 700 or moves < 8:
 		angle = float(Time.get_ticks_msec() - started) / 1000.0 * 6.0
 		tip.position = Vector3(cos(angle), sin(angle), 0) * 2.0
+		moves += 1
 		await get_tree().process_frame
 	var lines := trail.find_children("*", "LineRenderer", true, false)
 	if lines.is_empty():
@@ -95,7 +108,7 @@ func _run() -> void:
 
 	# A point lives for the trail's lifetime on the wall clock, however fast the frames run.
 	trail.is_emitting = false
-	await get_tree().create_timer(1.5).timeout
+	await get_tree().create_timer(trail.lifetime + 0.9).timeout
 	var faded := await _share(Color(0, 1, 0), "faded.png")
 	if faded > 0.0005:
 		return _fail("the trail still shows after its lifetime (share %f)" % [faded])

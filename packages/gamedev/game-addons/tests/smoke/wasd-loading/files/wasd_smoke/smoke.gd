@@ -37,7 +37,8 @@ class Runner extends Node:
 		var first := tree.current_scene
 
 		# 1. A change behind the built-in screen: frames go on, the bar only moves forward and ends full, the screen
-		# shows meanwhile and is gone afterwards.
+		# shows meanwhile and is gone afterwards. Frames going on means that the progress arrives on three frames at
+		# least (about five here on a graphics card, more on a slow renderer), which holds however long a frame takes.
 		loader.min_seconds = 0.3
 		loader.title = "Smoke"
 		loader.tips = ["Keep your powder dry."]
@@ -56,7 +57,11 @@ class Runner extends Node:
 				if tree.current_scene != null and tree.current_scene.get(&"frames") != null:
 					ran_while_paused[0] = tree.current_scene.get(&"frames")
 		tree.process_frame.connect(count)
-		loader.progress_changed.connect(func(part: float) -> void: parts.append(part))
+		var part_frames := {}
+		var note_part := func(part: float) -> void:
+			parts.append(part)
+			part_frames[Engine.get_process_frames()] = true
+		loader.progress_changed.connect(note_part)
 		var done: Array[Node] = []
 		loader.finished.connect(func(scene: Node) -> void: done.append(scene))
 		var began := Time.get_ticks_msec()
@@ -71,8 +76,8 @@ class Runner extends Node:
 		var forward := true
 		for index: int in range(1, parts.size()):
 			forward = forward and parts[index] >= parts[index - 1]
-		if parts.is_empty() or not forward or parts[0] != 0.0 or parts[parts.size() - 1] != 1.0 or frames[0] < 12 or not screen_seen[0] or Time.get_ticks_msec() - began < 300:
-			return _fail("the load took %d ms and %d frames, the screen was seen %s, progress went %s" % [Time.get_ticks_msec() - began, frames[0], screen_seen[0], parts])
+		if parts.is_empty() or not forward or parts[0] != 0.0 or parts[parts.size() - 1] != 1.0 or part_frames.size() < 3 or not screen_seen[0] or Time.get_ticks_msec() - began < 300:
+			return _fail("the load took %d ms and %d frames, its progress came on %d frames, the screen was seen %s, progress went %s" % [Time.get_ticks_msec() - began, frames[0], part_frames.size(), screen_seen[0], parts])
 		if (loader.get_child(0) as CanvasLayer).visible or loader.is_loading() or done != [level]:
 			return _fail("after the change the screen still shows, the loader is busy, or finished said %s" % [done])
 

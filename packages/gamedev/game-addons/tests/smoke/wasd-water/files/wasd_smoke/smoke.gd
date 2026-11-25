@@ -7,6 +7,9 @@ extends Node3D
 ## floats, that rings are stored, that diving tints the view, sets the fog, and puts it back, and that a red
 ## pillar shows in the water under it with the SCREEN and the PLANAR reflection and not with the SKY one. With the
 ## environment variable WASD_WATER_SHOTS set to a folder, it saves a picture of each preset there.
+## It waits in game time and physics steps rather than in frames, and on a software renderer, such as the one that
+## GitHub's macOS runners give OpenGL, it draws the 3D view at half resolution: there the full shader's loops run on
+## the processor, a frame at 640x360 takes about a second, and counted frames would outlast the smoke test's budget.
 
 var failures: PackedStringArray = []
 var environment: Environment
@@ -38,7 +41,15 @@ func _ready() -> void:
 	camera.position = Vector3(-4, 3.0, -9)
 	camera.look_at(Vector3(2, 0, 6))
 	camera.current = true
+	if software_renderer():
+		get_viewport().scaling_3d_scale = 0.5
 	run.call_deferred()
+
+
+## Whether OpenGL draws on the processor instead of a graphics card.
+func software_renderer() -> bool:
+	var adapter := RenderingServer.get_video_adapter_name()
+	return adapter.contains("Software Renderer") or adapter.contains("llvmpipe") or adapter.contains("SwiftShader")
 
 
 ## Sand that slopes from a beach at -Z down to 6 m under the lagoon, so the water has a shore and a depth.
@@ -69,8 +80,20 @@ func frames(count: int) -> void:
 		await get_tree().process_frame
 
 
+## Waits `time` seconds of game time, which a slow renderer passes in fewer frames.
+func seconds(time: float) -> void:
+	await get_tree().create_timer(time).timeout
+
+
+## Waits `count` physics steps, the simulated time that a falling body needs, however long the frames take.
+func physics_steps(count: int) -> void:
+	for index in count:
+		await get_tree().physics_frame
+
+
+## The picture once three frames have drawn the scene as it is now.
 func picture() -> Image:
-	await frames(6)
+	await frames(3)
 	return get_viewport().get_texture().get_image()
 
 
@@ -157,7 +180,7 @@ func run() -> void:
 	check(ResourceLoader.exists("res://addons/wasd_water/foam.png") and not ((lagoon.material_override as ShaderMaterial).get_shader_parameter("foam_noise") is NoiseTexture2D), "the foam does not use the add-on's foam.png")
 	check(lagoon.wave_count == 24 and (lagoon.material_override as ShaderMaterial).get_shader_parameter("wave_count") == 24, "the ocean does not send its 24 waves to the shader")
 	var before := lagoon.height_at(Vector3(5, 0, 5))
-	await frames(20)
+	await seconds(0.3)
 	check(absf(lagoon.height_at(Vector3(5, 0, 5)) - before) > 0.001, "the waves do not move")
 	check(lagoon.contains(Vector3(29, 9, -29)) and not lagoon.contains(Vector3(31, 0, 0)), "the rectangle's outline is wrong")
 	check(lagoon.is_underwater(Vector3(0, -3, 0)) and not lagoon.is_underwater(Vector3(0, 3, 0)) and not lagoon.is_underwater(Vector3(0, -60, 0)), "is_underwater is wrong for the lagoon")
@@ -184,7 +207,7 @@ func run() -> void:
 
 	# The crate fell in and floats at the surface.
 	lagoon.preset = "lake"
-	await frames(240)
+	await physics_steps(240)
 	var floater := crate.get_node("Floater") as WasdWaterFloater3D
 	var surface := lagoon.height_at(crate.global_position)
 	check(floater.is_in_water() and absf(crate.global_position.y - surface) < 0.6, "the crate is at %.2f, not floating at the surface %.2f" % [crate.global_position.y, surface])
@@ -226,7 +249,7 @@ func run() -> void:
 	var seen := {}
 	for mode: int in [WasdWater3D.Reflection.SKY, WasdWater3D.Reflection.SCREEN, WasdWater3D.Reflection.PLANAR]:
 		lagoon.reflection = mode
-		await frames(10)
+		await seconds(0.15)
 		var image: Image = await picture()
 		# The pillar's mirror image lies where a pillar under the water would be seen. A block of pixels is read,
 		# because the mirrored rays of single pixels start at different depths.

@@ -130,6 +130,10 @@ func _run() -> void:
 	var ground := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(60, 60)
+	# Ground in cells, as a game's is: over one quad 60 m wide, Apple's software renderer (the OpenGL of GitHub's
+	# macOS runners) puts the cover's pass at other depths than the ground's own and draws an eighth of it.
+	plane.subdivide_width = 16
+	plane.subdivide_depth = 16
 	plane.material = gray
 	ground.mesh = plane
 	level.add_child(ground)

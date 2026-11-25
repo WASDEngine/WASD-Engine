@@ -264,13 +264,15 @@ func _run() -> void:
 	await _wait(0.3)
 	var at_thing := Vector2i(camera.unproject_position(thing.position) * Vector2(whole.size) / get_viewport().get_visible_rect().size)
 	var plain := (await _picture("thing.png")).get_pixelv(at_thing)
-	fx.flash(thing, Color.WHITE, 0.4)
+	# The flash fades over its seconds of game time, and the picture comes three frames on, which a software renderer
+	# draws in up to 0.4 s of game time: a flash of 1.2 s is still two thirds white then.
+	fx.flash(thing, Color.WHITE, 1.2)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	var flashed := (await _picture("thing_flash.png")).get_pixelv(at_thing)
 	if plain.r < plain.g * 2.0 or flashed.g < plain.g + 0.3 or thing.material_overlay == null:
 		return _fail("the thing shows %s and in a flash %s, with %s over it" % [plain, flashed, thing.material_overlay])
-	await _wait(0.6)
+	await _wait(1.4)
 	if thing.material_overlay != null:
 		return _fail("the flash stayed on the thing")
 	fx.outline(thing, Color(0.0, 1.0, 0.0), 6.0)

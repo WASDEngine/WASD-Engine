@@ -12,6 +12,8 @@
  * that install together declare the same global class, which would stop both from loading.
  * Godot add-ons need `WASD_LIBGODOT_DIR`, an installed runtime folder; Blender add-ons need uv's cached bpy 5.2.3; the
  * archives download from their pinned URLs, into `WASD_ADDON_ARCHIVES` when it is set so that later runs reuse them.
+ * Where the Compatibility renderer draws on the processor, as on GitHub's macOS runners, whose OpenGL is Apple's
+ * software renderer, a rendering smoke test gets `SOFTWARE_RENDER_BUDGET` times its time.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { cp, link, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -60,6 +62,27 @@ if (shared !== undefined) {
   await mkdir(shared, { recursive: true })
   for (const name of await readdir(shared)) if (name.endsWith('.zip')) await link(join(shared, name), join(archives, name))
 }
+
+/** Device names of OpenGL renderers that draw on the processor. */
+const SOFTWARE_RENDERER = /Software Renderer|llvmpipe|SwiftShader/u
+
+/**
+ * How many times its time a rendering smoke test gets on such a renderer: a frame there takes a large part of a second,
+ * and the first frame that draws a shader variant waits seconds more while the renderer compiles it.
+ */
+const SOFTWARE_RENDER_BUDGET = 3
+
+/** The device that Godot's Compatibility renderer draws with here, as Godot's start-up line names it. */
+async function renderDevice(): Promise<string> {
+  const project = await mkdtemp(join(root, 'renderer-'))
+  await writeFile(join(project, 'project.godot'), `${TEMPLATE}\n[rendering]\n\nrenderer/rendering_method="gl_compatibility"\n`)
+  await writeFile(join(project, 'probe.gd'), 'extends SceneTree\n\n\nfunc _initialize() -> void:\n\tquit()\n')
+  const ran = await godot(['--path', project, '--embedded', '--resolution', '64x64', '--script', 'res://probe.gd'], project, 60_000)
+  return /Using Device: (.+)$/mu.exec(ran.output)?.[1]?.trim() ?? ''
+}
+
+const softwareRenderer = godotReady && SOFTWARE_RENDERER.test(await renderDevice())
+const renderBudget = softwareRenderer ? SOFTWARE_RENDER_BUDGET : 1
 
 afterAll(async () => {
   if (shared !== undefined) {
@@ -221,7 +244,7 @@ describe('the shipped catalog on Godot 4.7.2', () => {
       const ran = spec.run === 'script'
         ? await godot(['--headless', '--path', project, '--script', spec.path, ...spec.args === undefined || spec.args.length === 0 ? [] : ['--', ...spec.args]], project, timeoutMs)
         : spec.run === 'render'
-          ? await godot(['--path', project, '--embedded', '--resolution', '640x360', spec.path], project, timeoutMs)
+          ? await godot(['--path', project, '--embedded', '--resolution', '640x360', spec.path], project, timeoutMs * renderBudget)
           : await godot(['--headless', '--path', project, spec.path], project, timeoutMs)
       for (const marker of spec.expect) expect(ran.output, `${entry.id} output`).toContain(marker)
       expect(ran.output, `${entry.id} output`).not.toContain('SMOKE_FAIL')
@@ -236,7 +259,7 @@ describe('the shipped catalog on Godot 4.7.2', () => {
         settings: (entry.godot?.settings ?? []).map(() => false),
       })
       expect(existsSync(join(project, NOTICES_FILE)), `${entry.id} notices after removal`).toBe(false)
-    }, 600_000)
+    }, 600_000 * renderBudget)
   }
 
   it('no two add-ons that install together declare the same global class', () => {
